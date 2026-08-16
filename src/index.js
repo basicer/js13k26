@@ -1,4 +1,4 @@
-import { G, Q, d, c, $, heldKeys } from "./globals.js";
+import { G, Q, d, c, $, heldKeys, canvasFormat, canvasSrgbFormat } from "./globals.js";
 import { render } from "./render.js";
 
 import { magic } from "./sfx.js";
@@ -9,11 +9,13 @@ Object.assign(c.style, {
 	left: 0,
 	width: "100%",
 	height: "100%",
+	imageRendering: 'pixelated'
 });
 
 G.configure({
 	device: d,
-	format: navigator.gpu.getPreferredCanvasFormat(),
+	format: canvasFormat,
+	viewFormats: [canvasSrgbFormat],
 });
 
 if (DEBUG) console.log("HI");

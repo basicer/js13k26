@@ -12,6 +12,8 @@ export let $ = document,
 		antialias: true,
 		depth: true,
 	}),
+	canvasFormat = navigator.gpu.getPreferredCanvasFormat(),
+	canvasSrgbFormat = `${canvasFormat}-srgb`,
 	heldKeys = new Set(),
 	GenArray = (N, F) => new Array(N).fill(0).map((_, i) => F(i))
 	;

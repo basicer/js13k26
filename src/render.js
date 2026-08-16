@@ -1,42 +1,69 @@
-import { $, d, c, Q, G, GenArray, heldKeys } from "./globals.js";
-import { vec3, vec3_add, vec3_muls } from "./math.js";
-import { material, palette } from "./palette.js";
+import { $, d, c, Q, G, GenArray, heldKeys, canvasSrgbFormat } from "./globals.js";
+import { vec3 } from "./math.js";
 import shaderCode from "../shaders/shader.wgsl";
 import postShaderCode from "../shaders/post.wgsl";
+import { palette } from "./palette.js";
 
-let cameraPosition = vec3(8, 8.5, 2);
-let cameraYaw = -Math.PI / 2;
-let cameraPitch = -Math.atan2(8.5, 8);
-let cameraRoll = 0;
 let lastFrameTime = performance.now();
 
-const ENTITY_DATA_SIZE = 8;
+const ENTITY_DATA_SIZE = 12;
 const ENTITY_COUNT = 900;
+const VOXEL_SIZE = 64;
+let projectorSize, projectorVoxels;
+let floorTileSize, floorTileVoxels;
+let floorTileS04Size, floorTileS04Voxels;
 
-let debug;
+let debugModule;
 
 if (DEBUG && import.meta.env.DEV) {
-    import("./debug/debug.js").then((module) => debug = module.debug);
+	const [{ ddsVolume }, { default: projectorDds }, { default: floorTileLr01Dds }, { default: floorTileS04Dds }] = await Promise.all([
+		import("./dds.js"),
+		import("../dds/Projector.dds.gz"),
+		import("../dds/FloorTile-LR01.dds"),
+		import("../dds/FloorTile-S04.dds"),
+	]);
+	const [projector, floorTile, floorTileS04] = await Promise.all([
+		ddsVolume(projectorDds, true),
+		ddsVolume(floorTileLr01Dds),
+		ddsVolume(floorTileS04Dds),
+	]);
+	({ size: projectorSize, voxels: projectorVoxels } = projector);
+	({ size: floorTileSize, voxels: floorTileVoxels } = floorTile);
+	({ size: floorTileS04Size, voxels: floorTileS04Voxels } = floorTileS04);
+
+	import("./debug/debug.js").then((module) => {
+		debugModule = module;
+		c.addEventListener("pointerdown", async (event) => {
+			if (event.button !== 0 || module.wantsMouse()) return;
+			const bounds = c.getBoundingClientRect();
+			const index = await pickEntity(
+				(event.clientX - bounds.left) * c.width / bounds.width,
+				(event.clientY - bounds.top) * c.height / bounds.height,
+			);
+			if (index >= 0) module.selectEntity(index);
+		});
+	});
 }
 
 // Bit-packed -1/+1 cube vertices.
 const vertices = new Float32Array(GenArray(24, i=>(i / 3 >> i % 3 & 1) * 2 - 1));
 
-// WGSL uniforms require vec3 values to begin at 16-byte boundaries.
-const cameraUniform = new Float32Array(12);
+const entitys = new Float32Array(ENTITY_COUNT * ENTITY_DATA_SIZE);
+const cameraEntity = entitys.subarray(0, ENTITY_DATA_SIZE);
+const cameraPosition = cameraEntity.subarray(4, 7);
+const cameraRotation = cameraEntity.subarray(8, 11);
+const entityOverrides = new Map();
+cameraEntity[0] = 255;
+cameraPosition.set([8, 8.5, 2]);
+cameraRotation.set([-Math.atan2(8.5, 8), -Math.PI / 2, 0]);
 
-var timeBuffer = d.createBuffer({
-	"label": "Time buffer",
-	"size": cameraUniform.byteLength,
-	"usage": GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST,
-});
-
-
-const entitys = new Float32Array(ENTITY_COUNT * ENTITY_DATA_SIZE); // 250 entities, 8 floats each
-
-for (let i = 0; i < ENTITY_COUNT; i++) {
-    let e = entitys.subarray(i * ENTITY_DATA_SIZE, (i + 1) * ENTITY_DATA_SIZE);
-    e[0] = i % 64;
+for (let i = 1; i < ENTITY_COUNT; i++) {
+	let e = entitys.subarray(i * ENTITY_DATA_SIZE, (i + 1) * ENTITY_DATA_SIZE);
+	e[0] = i % 64;
+	e[4] = Math.floor(i / 30);
+	e[5] = i % 3 + Math.sin(performance.now() * 1e-3);
+	e[6] = i % 30;
+	if (entityOverrides.has(i)) e.set(entityOverrides.get(i));
 }
 
 var entityBuffer = d.createBuffer({
@@ -48,21 +75,22 @@ var entityBuffer = d.createBuffer({
 var voxT = GenArray(64, i =>
 	d.createTexture({
 		"label": `Voxel texture ${i}`,
-		"size": [64, 64, 64],
+		"size": i == 2 && projectorSize ? projectorSize : i == 4 && floorTileSize ? floorTileSize : i == 5 && floorTileS04Size ? floorTileS04Size : [VOXEL_SIZE, VOXEL_SIZE, VOXEL_SIZE],
 		"dimension": "3d",
 		"format": "rgba32float",
 		"usage": GPUTextureUsage.TEXTURE_BINDING | GPUTextureUsage.COPY_DST,
 	}),
 );
 
-const voxKindBuffers = voxT.map((_, kind) => {
+const renderStates = voxT.map((_, kind) => {
+	const data = new ArrayBuffer(16);
+	new Uint32Array(data)[3] = kind;
 	const buffer = d.createBuffer({
-		label: `Voxel kind ${kind}`,
+		label: `Render state ${kind}`,
 		size: 16,
 		usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST,
 	});
-	Q.writeBuffer(buffer, 0, new Uint32Array([kind]));
-	return buffer;
+	return { data, values: new Float32Array(data), buffer };
 });
 
 
@@ -73,14 +101,13 @@ var paletteTexture = d.createTexture({
     "usage": GPUTextureUsage.STORAGE_BINDING | GPUTextureUsage.COPY_DST,
 });
 
-const paletteData = new Uint32Array(256 * 2);
-paletteData.set(palette);
-for (let i = 0; i < 256; i++)
-	paletteData[256 + i] = material[i * 2] | material[i * 2 + 1] << 8 | 255 << 24;
+Q.writeTexture({ texture: paletteTexture }, palette, { bytesPerRow: 1024, rowsPerImage: 2 }, [256, 2]);
 
 let depthTexture;
 let sceneTexture;
 let sceneView;
+let entityIndexTexture;
+let entityIndexView;
 
 const vertexBuffer = d.createBuffer({
 	label: "Cell vertices",
@@ -103,12 +130,13 @@ const shader = d.createShaderModule({
 });
 const postShader = d.createShaderModule({ code: postShaderCode });
 
+let scaleDown = 0;
 function resizeCanvas() {
 	const bounds = c.getBoundingClientRect();
-	const pixelRatio = devicePixelRatio;
+	const pixelRatio = devicePixelRatio * (1/2**scaleDown);
 	const width = Math.max(1, Math.round(bounds.width * pixelRatio));
 	const height = Math.max(1, Math.round(bounds.height * pixelRatio));
-	if (c.width === width && c.height === height && depthTexture && sceneTexture) return;
+	if (c.width === width && c.height === height && depthTexture && sceneTexture && entityIndexTexture) return;
 
 	c.width = width;
 	c.height = height;
@@ -127,6 +155,14 @@ function resizeCanvas() {
 		usage: GPUTextureUsage.RENDER_ATTACHMENT | GPUTextureUsage.TEXTURE_BINDING,
 	});
 	sceneView = sceneTexture.createView();
+	entityIndexTexture?.destroy();
+	entityIndexTexture = d.createTexture({
+		label: "Entity index texture",
+		size: [width, height],
+		format: "r32uint",
+		usage: GPUTextureUsage.RENDER_ATTACHMENT | GPUTextureUsage.COPY_SRC,
+	});
+	entityIndexView = entityIndexTexture.createView();
 }
 
 if (window.ResizeObserver) new ResizeObserver(resizeCanvas).observe(c);
@@ -159,6 +195,9 @@ const pipeline = d.createRenderPipeline({
 			{
 				"format": "rgba16float",
 			},
+			{
+				"format": "r32uint",
+			},
 		],
 	},
 	// The proxy is wound inward: from outside, keep only its back-facing shell.
@@ -176,35 +215,44 @@ const bloomPipeline = d.createRenderPipeline({
 	"fragment": {
 		"module": postShader,
 		"entryPoint": "fs_post",
-		"targets": [{ "format": navigator.gpu.getPreferredCanvasFormat() }],
+		"targets": [{ "format": canvasSrgbFormat }],
 	},
 });
 const bloomSampler = d.createSampler({ magFilter: "linear", minFilter: "linear" });
 
 console.log(pipeline.getBindGroupLayout(0));
-const bg = d.createBindGroup({
+const renderBindGroups = renderStates.map(({ buffer }) => d.createBindGroup({
 	"layout": pipeline.getBindGroupLayout(0),
 	"entries": [
-		{
-			"binding": 0,
-			"resource": { "buffer": timeBuffer },
-		},
-    	{
-			"binding": 1,
-			"resource": { "buffer": entityBuffer },
-		},
-        {
-            binding: 2,
-            resource: paletteTexture.createView(),
-        }
+		{ "binding": 0, "resource": { buffer } },
+		{ "binding": 1, "resource": { "buffer": entityBuffer } },
+		{ "binding": 2, "resource": paletteTexture.createView() },
 	],
-});
+}));
 
-const VOXEL_SIZE = 64;
 const sphereCenter = (VOXEL_SIZE - 1) / 2;
 const sphereRadius = VOXEL_SIZE * 0.38;
 
 voxT.forEach((texture, kind) => {
+	if (kind == 2 && projectorVoxels) {
+		Q.writeTexture(
+			{ texture },
+			projectorVoxels,
+			{ bytesPerRow: projectorSize[0] * 16, rowsPerImage: projectorSize[1] },
+			projectorSize,
+		);
+		return;
+	}
+	if (kind == 4 && floorTileVoxels) {
+		Q.writeTexture({ texture }, floorTileVoxels,
+			{ bytesPerRow: floorTileSize[0] * 16, rowsPerImage: floorTileSize[1] }, floorTileSize);
+		return;
+	}
+	if (kind == 5 && floorTileS04Voxels) {
+		Q.writeTexture({ texture }, floorTileS04Voxels,
+			{ bytesPerRow: 64 * 16, rowsPerImage: 4 }, floorTileS04Size);
+		return;
+	}
 	const voxels = new Float32Array(VOXEL_SIZE ** 3 * 4);
 	for (let z = 0; z < VOXEL_SIZE; z++) {
 		for (let y = 0; y < VOXEL_SIZE; y++) {
@@ -235,23 +283,23 @@ export function render(t) {
 
 
 	const turnSpeed = 1.5;
-	const moveSpeed = heldKeys.has("shift") ? 32 : 12;
+	const moveSpeed = heldKeys.has("shift") ? 16 : 6;
 
-	if (heldKeys.has("arrowleft")) cameraYaw -= turnSpeed * deltaTime;
-	if (heldKeys.has("arrowright")) cameraYaw += turnSpeed * deltaTime;
-	if (heldKeys.has("arrowup")) cameraPitch += turnSpeed * deltaTime;
-	if (heldKeys.has("arrowdown")) cameraPitch -= turnSpeed * deltaTime;
-	if (heldKeys.has("q")) cameraRoll += turnSpeed * deltaTime;
-	if (heldKeys.has("e")) cameraRoll -= turnSpeed * deltaTime;
-	cameraPitch = Math.max(-1.5, Math.min(1.5, cameraPitch));
+	if (heldKeys.has("arrowleft")) cameraRotation[1] -= turnSpeed * deltaTime;
+	if (heldKeys.has("arrowright")) cameraRotation[1] += turnSpeed * deltaTime;
+	if (heldKeys.has("arrowup")) cameraRotation[0] += turnSpeed * deltaTime;
+	if (heldKeys.has("arrowdown")) cameraRotation[0] -= turnSpeed * deltaTime;
+	if (heldKeys.has("q")) cameraRotation[2] += turnSpeed * deltaTime;
+	if (heldKeys.has("e")) cameraRotation[2] -= turnSpeed * deltaTime;
+	cameraRotation[0] = Math.max(-1.5, Math.min(1.5, cameraRotation[0]));
 
-	const cosPitch = Math.cos(cameraPitch);
+	const cosPitch = Math.cos(cameraRotation[0]);
 	const lookDirection = vec3(
-		Math.sin(cameraYaw) * cosPitch,
-		Math.sin(cameraPitch),
-		-Math.cos(cameraYaw) * cosPitch,
+		Math.sin(cameraRotation[1]) * cosPitch,
+		Math.sin(cameraRotation[0]),
+		-Math.cos(cameraRotation[1]) * cosPitch,
 	);
-	const right = vec3(Math.cos(cameraYaw), 0, Math.sin(cameraYaw));
+	const right = vec3(Math.cos(cameraRotation[1]), 0, Math.sin(cameraRotation[1]));
 	const forward_amount = Number(heldKeys.has("w")) - Number(heldKeys.has("s"));
 	const strafe_amount = Number(heldKeys.has("d")) - Number(heldKeys.has("a"));
 	const vertical_amount = Number(heldKeys.has("r")) - Number(heldKeys.has("f"));
@@ -261,19 +309,24 @@ export function render(t) {
 		lookDirection[2] * forward_amount + right[2] * strafe_amount,
 	);
 	const movement_length = Math.hypot(...movement);
-	if (movement_length)
-		cameraPosition = vec3_add(cameraPosition, vec3_muls(movement, moveSpeed * deltaTime / movement_length));
+	if (movement_length) {
+		const movementScale = moveSpeed * deltaTime / movement_length;
+		cameraPosition[0] += movement[0] * movementScale;
+		cameraPosition[1] += movement[1] * movementScale;
+		cameraPosition[2] += movement[2] * movementScale;
+	}
 
 	const time = now / 1000;
 	const fov = 60;
-    let target = G.getCurrentTexture().createView();
+	let canvasTexture = G.getCurrentTexture();
+	let target = canvasTexture.createView({ format: canvasSrgbFormat });
 
-	cameraUniform[0] = time;
-	cameraUniform[1] = c.width / c.height;
-	// Camera position occupies the second vec4 in the WGSL uniform.
-	cameraUniform.set([...cameraPosition, fov], 4);
-	// Look direction and roll occupy the final vec4.
-	cameraUniform.set([...lookDirection, cameraRoll], 8);
+	for (const state of renderStates) {
+		state.values[0] = time;
+		state.values[1] = c.width / c.height;
+		state.values[2] = fov;
+		Q.writeBuffer(state.buffer, 0, state.data);
+	}
 
 
 	const e = d.createCommandEncoder();
@@ -283,6 +336,12 @@ export function render(t) {
 			{
 				"view": sceneView,
 				"clearValue": [0, 0, 0, 1],
+				"loadOp": "clear",
+				"storeOp": "store",
+			},
+			{
+				"view": entityIndexView,
+				"clearValue": [0xffffffff, 0, 0, 0],
 				"loadOp": "clear",
 				"storeOp": "store",
 			},
@@ -298,7 +357,7 @@ export function render(t) {
 	let pass = e.beginRenderPass(GRAPHICS_PASS_DESCRIPTOR);
 	for (let i = 0; i < voxT.length; i++) {
 
-		pass.setBindGroup(0, bg);
+		pass.setBindGroup(0, renderBindGroups[i]);
 		pass.setPipeline(pipeline);
 		pass.setVertexBuffer(0, vertexBuffer);
 		pass.setIndexBuffer(indexBuffer, "uint16");
@@ -310,10 +369,6 @@ export function render(t) {
 					{
 						"binding": 0,
 						"resource": voxT[i].createView(),
-					},
-					{
-						"binding": 1,
-						"resource": { "buffer": voxKindBuffers[i] },
 					},
 				],
 			}),
@@ -341,18 +396,26 @@ export function render(t) {
 		],
 	}));
 	bloomPass.draw(3);
-	if (DEBUG && debug) debug(bloomPass);
 	bloomPass.end();
 
+	// ImGui's WebGPU backend targets the canvas's base unorm format. Use its
+	// compatible view in a separate pass after the linear scene was encoded by
+	// the sRGB view above.
+	if (DEBUG && debugModule) {
+		let debugPass = e.beginRenderPass({
+			colorAttachments: [{
+				view: canvasTexture.createView(),
+				loadOp: "load",
+				storeOp: "store",
+			}],
+		});
+		debugModule.debug(debugPass, entitys, ENTITY_DATA_SIZE, entityOverrides);
+		debugPass.end();
+	}
+
+
         
-	Q.writeBuffer(timeBuffer, 0, cameraUniform);
 	Q.writeBuffer(entityBuffer, 0, entitys);
-    Q.writeTexture({
-        "texture": paletteTexture,
-    }, paletteData, {
-        "bytesPerRow": 256 * 4,
-        "rowsPerImage": 2,
-	}, [256, 2]);
 
 	
    
@@ -363,4 +426,27 @@ export function render(t) {
 		if (x)
 			x.textContent = `FPS: ${Math.floor(1 / deltaTime)} | Time: ${Math.floor(performance.now() - now)}ms`;
 	}
+}
+
+export async function pickEntity(x, y) {
+	if (!entityIndexTexture) return -1;
+	const pixelX = Math.max(0, Math.min(c.width - 1, Math.floor(x)));
+	const pixelY = Math.max(0, Math.min(c.height - 1, Math.floor(y)));
+	const readback = d.createBuffer({
+		label: "Entity index readback",
+		size: 256,
+		usage: GPUBufferUsage.COPY_DST | GPUBufferUsage.MAP_READ,
+	});
+	const encoder = d.createCommandEncoder();
+	encoder.copyTextureToBuffer(
+		{ texture: entityIndexTexture, origin: [pixelX, pixelY] },
+		{ buffer: readback, bytesPerRow: 256 },
+		[1, 1],
+	);
+	Q.submit([encoder.finish()]);
+	await readback.mapAsync(GPUMapMode.READ);
+	const index = new Uint32Array(readback.getMappedRange())[0];
+	readback.unmap();
+	readback.destroy();
+	return index === 0xffffffff ? -1 : index;
 }
