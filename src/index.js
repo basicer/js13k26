@@ -3,9 +3,6 @@ import { render } from "./render.js";
 
 import { magic } from "./sfx.js";
 
-globalThis["DEBUG"] =
-	typeof globalThis["DEBUG"] !== "undefined" ? globalThis["DEBUG"] : true;
-
 Object.assign(c.style, {
 	position: "absolute",
 	top: 0,
@@ -19,27 +16,28 @@ G.configure({
 	format: navigator.gpu.getPreferredCanvasFormat(),
 });
 
-$.body.appendChild(c);
-
 if (DEBUG) console.log("HI");
 
-addEventListener("keydown", (event) => {
+$.addEventListener("keydown", (event) => {
 	if (
+		event.repeat ||
 		!event.key.startsWith("Arrow") &&
-		!"wasdqerf".includes(event.key.toLowerCase())
+		!"wasdqerf".includes(event.key.toLowerCase()) &&
+		event.key !== "Shift"
 	)
 		return;
 
-	window.x = magic();
+	// window.x = magic();
 
 	event.preventDefault();
 	heldKeys.add(event.key.toLowerCase());
 });
 
-addEventListener("keyup", (event) => {
+$.addEventListener("keyup", (event) => {
 	if (
 		!event.key.startsWith("Arrow") &&
-		!"wasdqerf".includes(event.key.toLowerCase())
+		!"wasdqerf".includes(event.key.toLowerCase()) &&
+		event.key !== "Shift"
 	)
 		return;
 	event.preventDefault();
@@ -62,8 +60,9 @@ if (DEBUG) {
 	document.body.appendChild(x);
 }
 
-let step = (dt) => {
-	render(dt);
+let step = async (dt) => {
+	await render(dt);
 	requestAnimationFrame(step);
 };
-step(document.timeline.currentTime);
+if (DEBUG) console.log("Starting render loop");
+step(performance.now());

@@ -1,5 +1,7 @@
+globalThis["DEBUG"] = !!globalThis["DEBUG"];
+
 export let $ = document,
-	c = $.createElement("canvas"),
+	c = DEBUG ? $.getElementById("canvas") || $.createElement("canvas") : $.createElement("canvas"),
 	/** @type {GPUAdapter} */
 	a = await navigator.gpu.requestAdapter(),
 	/** @type {GPUDevice} */
@@ -10,4 +12,8 @@ export let $ = document,
 		antialias: true,
 		depth: true,
 	}),
-	heldKeys = new Set();
+	heldKeys = new Set(),
+	GenArray = (N, F) => new Array(N).fill(0).map((_, i) => F(i))
+	;
+
+if (!c.parentElement || !DEBUG) $.body.appendChild(c);

@@ -1,4 +1,3 @@
-const addEventListener = window.addEventListener;
 
 /** @type {number} */
 const devicePixelRatio = window.devicePixelRatio;
@@ -21,11 +20,11 @@ GPUBufferUsage.MAP_READ;
 /** @type {number} */
 GPUBufferUsage.MAP_WRITE;
 /** @type {number} */
-GPUBufferUsage.COPY_SRC;
+GPUBufferUsage.COPY_SRC = 4;
 /** @type {number} */
 GPUBufferUsage.COPY_DST;
 /** @type {number} */
-GPUBufferUsage.INDEX;
+GPUBufferUsage.INDEX = 16;
 /** @type {number} */
 GPUBufferUsage.VERTEX;
 /** @type {number} */
@@ -218,27 +217,27 @@ GPUDevice.prototype.queue;
 /** @return {undefined} */
 GPUDevice.prototype.destroy = function () {};
 /** @return {!GPUBuffer} */
-GPUDevice.prototype.createBuffer = function () {};
+GPUDevice.prototype.createBuffer = function (options) {};
 /** @return {!GPUTexture} */
-GPUDevice.prototype.createTexture = function () {};
-/** @return {!GPUSampler} */
-GPUDevice.prototype.createSampler = function () {};
+GPUDevice.prototype.createTexture = function (options) {};
+/** @return {!GPUSampler} */    
+GPUDevice.prototype.createSampler = function (options) {};
 /** @return {!GPUExternalTexture} */
 GPUDevice.prototype.importExternalTexture = function () {};
 /** @return {!GPUBindGroupLayout} */
-GPUDevice.prototype.createBindGroupLayout = function () {};
+GPUDevice.prototype.createBindGroupLayout = function (options) {};
 /** @return {!GPUPipelineLayout} */
-GPUDevice.prototype.createPipelineLayout = function () {};
+GPUDevice.prototype.createPipelineLayout = function (options) {};
 /** @return {!GPUBindGroup} */
-GPUDevice.prototype.createBindGroup = function () {};
+GPUDevice.prototype.createBindGroup = function (options) {};
 /** @return {!GPUShaderModule} */
-GPUDevice.prototype.createShaderModule = function () {};
+GPUDevice.prototype.createShaderModule = function (options) {};
 /** @return {!GPUComputePipeline} */
-GPUDevice.prototype.createComputePipeline = function () {};
+GPUDevice.prototype.createComputePipeline = function (options) {};
 /** @return {!GPURenderPipeline} */
-GPUDevice.prototype.createRenderPipeline = function () {};
+GPUDevice.prototype.createRenderPipeline = function (options) {};
 /** @return {!Promise<!GPUComputePipeline>} */
-GPUDevice.prototype.createComputePipelineAsync = function () {};
+GPUDevice.prototype.createComputePipelineAsync = function (options) {};
 /** @return {!Promise<!GPURenderPipeline>} */
 GPUDevice.prototype.createRenderPipelineAsync = function () {};
 /** @return {!GPUCommandEncoder} */
@@ -367,14 +366,14 @@ function GPUComputePipeline() {}
 /** @type {string} */
 GPUComputePipeline.prototype.label;
 /** @return {!GPUBindGroupLayout} */
-GPUComputePipeline.prototype.getBindGroupLayout = function () {};
+GPUComputePipeline.prototype.getBindGroupLayout = function (id) {};
 
 /** @constructor */
 function GPURenderPipeline() {}
 /** @type {string} */
 GPURenderPipeline.prototype.label;
 /** @return {!GPUBindGroupLayout} */
-GPURenderPipeline.prototype.getBindGroupLayout = function () {};
+GPURenderPipeline.prototype.getBindGroupLayout = function (id) {};
 
 /** @constructor */
 function GPUCommandBuffer() {}
@@ -392,7 +391,7 @@ GPUCommandEncoder.prototype.popDebugGroup = function () {};
 /** @return {undefined} */
 GPUCommandEncoder.prototype.insertDebugMarker = function () {};
 /** @return {!GPURenderPassEncoder} */
-GPUCommandEncoder.prototype.beginRenderPass = function () {};
+GPUCommandEncoder.prototype.beginRenderPass = function (options) {};
 /** @return {!GPUComputePassEncoder} */
 GPUCommandEncoder.prototype.beginComputePass = function () {};
 /** @return {undefined} */
@@ -421,9 +420,9 @@ GPUComputePassEncoder.prototype.popDebugGroup = function () {};
 /** @return {undefined} */
 GPUComputePassEncoder.prototype.insertDebugMarker = function () {};
 /** @return {undefined} */
-GPUComputePassEncoder.prototype.setBindGroup = function () {};
+GPUComputePassEncoder.prototype.setBindGroup = function (id, bindGroup) {};
 /** @return {undefined} */
-GPUComputePassEncoder.prototype.setBindGroup = function () {};
+GPUComputePassEncoder.prototype.setBindGroup = function (id, bindGroup) {};
 /** @return {undefined} */
 GPUComputePassEncoder.prototype.setPipeline = function () {};
 /** @return {undefined} */
@@ -444,19 +443,19 @@ GPURenderPassEncoder.prototype.popDebugGroup = function () {};
 /** @return {undefined} */
 GPURenderPassEncoder.prototype.insertDebugMarker = function () {};
 /** @return {undefined} */
-GPURenderPassEncoder.prototype.setBindGroup = function () {};
+GPURenderPassEncoder.prototype.setBindGroup = function (id, bindGroup) {};
 /** @return {undefined} */
-GPURenderPassEncoder.prototype.setBindGroup = function () {};
+GPURenderPassEncoder.prototype.setBindGroup = function (id, bindGroup) {};
 /** @return {undefined} */
-GPURenderPassEncoder.prototype.setPipeline = function () {};
+GPURenderPassEncoder.prototype.setPipeline = function (pipeline) {};
 /** @return {undefined} */
-GPURenderPassEncoder.prototype.setIndexBuffer = function () {};
+GPURenderPassEncoder.prototype.setIndexBuffer = function (buffer, format) {};
 /** @return {undefined} */
-GPURenderPassEncoder.prototype.setVertexBuffer = function () {};
+GPURenderPassEncoder.prototype.setVertexBuffer = function (id, buffer) {};
 /** @return {undefined} */
-GPURenderPassEncoder.prototype.draw = function () {};
+GPURenderPassEncoder.prototype.draw = function (nVerticies, instanceCount = 1, firstVertex = 0, firstInstance = 0) {};
 /** @return {undefined} */
-GPURenderPassEncoder.prototype.drawIndexed = function () {};
+GPURenderPassEncoder.prototype.drawIndexed = function (indexCount, instanceCount, firstIndex, baseVertex, firstInstance = 0) {};
 /** @return {undefined} */
 GPURenderPassEncoder.prototype.drawIndirect = function () {};
 /** @return {undefined} */
@@ -519,13 +518,13 @@ function GPUQueue() {}
 /** @type {string} */
 GPUQueue.prototype.label;
 /** @return {undefined} */
-GPUQueue.prototype.submit = function () {};
+GPUQueue.prototype.submit = function (passes) {};
 /** @return {!Promise<undefined>} */
 GPUQueue.prototype.onSubmittedWorkDone = function () {};
 /** @return {undefined} */
-GPUQueue.prototype.writeBuffer = function () {};
+GPUQueue.prototype.writeBuffer = function (buffer, start, data) {};
 /** @return {undefined} */
-GPUQueue.prototype.writeTexture = function () {};
+GPUQueue.prototype.writeTexture = function (spec, data, options, size) {};
 /** @return {undefined} */
 GPUQueue.prototype.copyExternalImageToTexture = function () {};
 

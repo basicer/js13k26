@@ -5,6 +5,7 @@
 	"scripts": {
 		"dev": "vite",
 		"build": "vite build",
+		"native:mac": "sh build_macos.sh",
 		"serve": "vite preview",
 		"format": "prettier --write src/*.js *.js *.json",
 		"test": "echo \"Error: no test specified\" && exit 1"
@@ -25,5 +26,8 @@
 		"tabWidth": 4,
 		"useTabs": true,
 		"quoteProps": "preserve"
+	},
+	"dependencies": {
+		"@mori2003/jsimgui": "^0.14.0"
 	}
 }
