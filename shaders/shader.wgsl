@@ -8,6 +8,7 @@ struct VertexOutput {
 
 struct FragmentOutput {
     @location(0) color: vec4<f32>,
+    @location(1) entity_index: u32,
     @builtin(frag_depth) depth: f32,
 };
 
@@ -17,23 +18,22 @@ struct VoxelHit {
     normal: vec3<f32>,
 };
 
-struct Camera {
+struct RenderState {
     time: f32,
     aspect: f32,
-    viewport_size: vec2<f32>,
-    position: vec3<f32>,
     fov: f32,
-    look_direction: vec3<f32>,
-    roll: f32,
+    current_vox_kind: u32,
 };
 
 struct Entity {
     kind: f32,
-    _0: f32,
     _1: f32,
     _2: f32,
+    _3: f32,
     pos: vec3<f32>,
-    _3: f32
+    _7: f32,
+    rot: vec3<f32>,
+    _8: f32
 };
 
 const NEAR_PLANE = 0.1f;
@@ -43,26 +43,29 @@ fn clip_depth(view_z: f32) -> f32 {
     return view_z * FAR_PLANE / (FAR_PLANE - NEAR_PLANE) - NEAR_PLANE * FAR_PLANE / (FAR_PLANE - NEAR_PLANE);
 }
 
-fn fragment_depth(view_z: f32) -> f32 {
-    return clip_depth(view_z) / view_z;
-}
-
 @group(0) @binding(0)
-var<uniform> camera: Camera;
+var<uniform> render_state: RenderState;
 @group(0) @binding(1)
 var<storage> entities: array<Entity>;
 @group(0) @binding(2)
 var palette: texture_storage_2d<rgba8unorm, read>;
 
-fn hsl2rgb(hsl: vec3<f32>) -> vec3<f32> {
-    let l = clamp(hsl.z, 0.0f, 1.0f);
-    let hue_rgb = clamp(
-        abs(fract(fract(hsl.x) + vec3<f32>(0.0f, 2.0f / 3.0f, 1.0f / 3.0f)) * 6.0f - 3.0f) - 1.0f,
-        vec3<f32>(0.0f),
-        vec3<f32>(1.0f),
+fn look_direction(rotation: vec3<f32>) -> vec3<f32> {
+    let cos_pitch = cos(rotation.x);
+    return vec3<f32>(
+        sin(rotation.y) * cos_pitch,
+        sin(rotation.x),
+        -cos(rotation.y) * cos_pitch,
     );
-    let chroma = (1.0f - abs(2.0f * l - 1.0f)) * clamp(hsl.y, 0.0f, 1.0f);;
-    return l + (hue_rgb - vec3<f32>(0.5f)) * chroma;
+}
+
+fn rotation_matrix(rotation: vec3<f32>) -> mat3x3<f32> {
+    let forward = look_direction(rotation);
+    let base_right = normalize(cross(forward, vec3<f32>(0.0f, 1.0f, 0.0f)));
+    let base_up = cross(base_right, forward);
+    let right = base_right * cos(rotation.z) + base_up * sin(rotation.z);
+    let up = base_up * cos(rotation.z) - base_right * sin(rotation.z);
+    return mat3x3<f32>(right, up, -forward);
 }
 
 fn fresnel_schlick(cos_theta: f32, f0: vec3<f32>) -> vec3<f32> {
@@ -70,7 +73,7 @@ fn fresnel_schlick(cos_theta: f32, f0: vec3<f32>) -> vec3<f32> {
 }
 
 fn distribution_ggx(n_dot_h: f32, roughness: f32) -> f32 {
-    let a2 = roughness * roughness * roughness * roughness;
+    let a2 = pow(roughness, 4.0f);
     let denominator = n_dot_h * n_dot_h * (a2 - 1.0f) + 1.0f;
     return a2 / max(3.14159265f * denominator * denominator, 0.0001f);
 }
@@ -112,27 +115,24 @@ fn vs_main(
 
     // This draw call has one voxel texture bound. Clip instances whose kind
     // belongs to a different texture before they reach rasterization.
-    if (u32(entities[idx].kind) != current_vox_kind) {
+    if (u32(entities[idx].kind) != render_state.current_vox_kind) {
         out.clip_position = vec4<f32>(0.0f, 0.0f, 2.0f, 1.0f);
         return out;
     }
 
-    let forward = normalize(camera.look_direction);
-    let base_right = normalize(cross(forward, vec3<f32>(0.0f, 1.0f, 0.0f)));
-    let base_up = cross(base_right, forward);
-    let roll = camera.roll;
-    let right = base_right * cos(roll) + base_up * sin(roll);
-    let up = base_up * cos(roll) - base_right * sin(roll);
-    let entity_center = vec3<f32>(
-        f32(idx % 30u) * 1.35f - 0.5f,
-        -0.5f,
-        f32(idx / 30u) * 1.35f - 0.5f,
-    ) + entities[idx].pos;
+    let camera_entity = entities[0];
+    let camera_position = camera_entity.pos;
+    let camera_rotation = rotation_matrix(camera_entity.rot);
+    let forward = -camera_rotation[2];
+    let right = camera_rotation[0];
+    let up = camera_rotation[1];
+    let entity = entities[idx];
+    let entity_center = entity.pos;
     // Rasterize the containment cube directly in world space. The fragment
     // shader still finds the real voxel hit, then supplies its true depth.
-    let world_position = entity_center + pos * 0.6f;
+    let world_position = entity_center + rotation_matrix(entity.rot) * (pos * 0.6f);
     out.world_position = world_position;
-    let from_camera = world_position - camera.position;
+    let from_camera = world_position - camera_position;
     let view_position = vec3<f32>(
         dot(from_camera, right),
         dot(from_camera, up),
@@ -140,8 +140,8 @@ fn vs_main(
         dot(from_camera, forward),
     );
 
-    let focal_length = 1.0f / tan(radians(camera.fov) * 0.5f);
-    let aspect = camera.aspect;
+    let focal_length = 1.0f / tan(radians(render_state.fov) * 0.5f);
+    let aspect = render_state.aspect;
     out.clip_position = vec4<f32>(
         view_position.x * focal_length / aspect,
         view_position.y * focal_length,
@@ -152,15 +152,14 @@ fn vs_main(
 }
 
 @group(1) @binding(0) var vox: texture_3d<f32>;
-@group(1) @binding(1) var<uniform> current_vox_kind: u32;
 
 fn voxel_search(ray_origin: vec3<f32>, ray_direction: vec3<f32>) -> VoxelHit {
     let safe_direction = select(ray_direction, vec3<f32>(0.000001f), abs(ray_direction) < vec3<f32>(0.000001f));
     let inverse_direction = 1.0f / safe_direction;
-    let bounds_near = min((vec3<f32>(0.0f) - ray_origin) * inverse_direction,
-        (vec3<f32>(1.0f) - ray_origin) * inverse_direction);
-    let bounds_far = max((vec3<f32>(0.0f) - ray_origin) * inverse_direction,
-        (vec3<f32>(1.0f) - ray_origin) * inverse_direction);
+    let first_bounds = -ray_origin * inverse_direction;
+    let second_bounds = (vec3<f32>(1.0f) - ray_origin) * inverse_direction;
+    let bounds_near = min(first_bounds, second_bounds);
+    let bounds_far = max(first_bounds, second_bounds);
     var distance = max(max(bounds_near.x, bounds_near.y), max(bounds_near.z, 0.0f));
     let exit_distance = min(min(bounds_far.x, bounds_far.y), bounds_far.z);
     if (distance > exit_distance) { return VoxelHit(0.0f, 0.0f, vec3<f32>(0.0f)); }
@@ -179,8 +178,8 @@ fn voxel_search(ray_origin: vec3<f32>, ray_direction: vec3<f32>) -> VoxelHit {
         if (material > 0.0f) { return VoxelHit(distance, material, normal); }
         let smallest = side_distance < min(side_distance.yzx, side_distance.zxy);
         let mask = select(vec3<f32>(0.0f), vec3<f32>(1.0f), smallest);
-        distance = length(side_distance * mask);
-        cell += step * select(vec3<i32>(0), vec3<i32>(1), smallest);
+        distance = dot(side_distance, mask);
+        cell += step * vec3<i32>(mask);
         side_distance += delta_distance * mask;
         normal = -vec3<f32>(step) * mask;
         if (distance > exit_distance || any(cell < vec3<i32>(0)) || any(cell >= volume_size)) { break; }
@@ -191,23 +190,27 @@ fn voxel_search(ray_origin: vec3<f32>, ray_direction: vec3<f32>) -> VoxelHit {
 @fragment
 fn fs_main(in: VertexOutput) -> FragmentOutput {
     let e = entities[in.idx];
+    let camera_entity = entities[0];
+    let camera_position = camera_entity.pos;
+    let camera_direction = look_direction(camera_entity.rot);
     let scale = 0.6f;
-    let entity_center = vec3<f32>(
-        f32(in.idx % 30u) * 1.35f - 0.5f,
-        -0.5f,
-        f32(in.idx / 30u) * 1.35f - 0.5f,
-    ) + e.pos;
+    let entity_center = e.pos;
+    let entity_rotation = rotation_matrix(e.rot);
+    let inverse_entity_rotation = transpose(entity_rotation);
 
-    let world_ray = normalize(in.world_position - camera.position);
-    let ray_origin = (camera.position - entity_center) / scale + vec3<f32>(0.5f);
-    let ray_direction = world_ray / scale;
+    let world_ray = normalize(in.world_position - camera_position);
+    let ray_origin = inverse_entity_rotation * (camera_position - entity_center) / scale + vec3<f32>(0.5f);
+    let ray_direction = inverse_entity_rotation * world_ray / scale;
     let hit = voxel_search(ray_origin, ray_direction);
     if (hit.material == 0.0f) { discard; }
     let color = textureLoad(palette, vec2<u32>(u32(hit.material), 0));
     let surface = textureLoad(palette, vec2<u32>(u32(hit.material), 1));
-    let hit_world = camera.position + world_ray * hit.distance;
-    let view_depth = dot(hit_world - camera.position, normalize(camera.look_direction));
-    let depth = fragment_depth(view_depth);
-    let view = normalize(camera.position - hit_world);
-    return FragmentOutput(vec4<f32>(shade_pbr(color.rgb, hit.normal, view, surface.r, surface.g), color.a), depth);
+    let view_depth = hit.distance * dot(world_ray, camera_direction);
+    let depth = clip_depth(view_depth) / view_depth;
+    let world_normal = entity_rotation * hit.normal;
+    return FragmentOutput(
+        vec4<f32>(shade_pbr(color.rgb, world_normal, -world_ray, surface.g, surface.r), color.a),
+        in.idx,
+        depth,
+    );
 }

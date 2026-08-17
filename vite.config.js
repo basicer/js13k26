@@ -11,6 +11,7 @@ import advzip from "advzip-bin";
 
 export default defineConfig(({ command }) => ({
 	plugins: [
+		dds(),
 		shader(command == "build"),
 		...(command == "build" ? [closure(), roadroller(), zip()] : []),
 	],
@@ -28,6 +29,11 @@ export default defineConfig(({ command }) => ({
 		proxy: {},
 	},
 }));
+
+var dds = () => ({
+	name: "vite:dds",
+	load: (id) => /\.dds(?:\.gz)?$/.test(id) ? `export default "${readFileSync(id).toString("base64")}";` : undefined,
+});
 
 var shader = (isBuild) => ({
 	name: "vite:shader",
