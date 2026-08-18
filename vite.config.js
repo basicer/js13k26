@@ -9,27 +9,28 @@ import ClosureCompiler from "google-closure-compiler";
 import ect from "ect-bin";
 import advzip from "advzip-bin";
 
-export default defineConfig(({ command }) => {
-	let pack = command == "build" && !process.env.DEV;
+export default defineConfig(({ command, mode }) => {
+	let pack = command == "build" && mode != "development";
 
 	return {
+		base: "./",
 		plugins: [
 			dds(),
 			shader(pack),
 			...(pack ? [closure(), roadroller(), zip()] : []),
 		],
+		define: {
+			"import.meta.env.DEBUG": JSON.stringify(mode === "development"),
+		},
 		build: {
 			assetsDir: "",
 			modulePreload: { polyfill: false },
 			rolldownOptions: {
 				output: {
 					comments: true, // So closure can see them
+					minify: mode == "development" ? "dce-only" : true,
 				},
 			},
-		},
-		input: {
-			main: path.resolve(import.meta.dirname, "index.html"),
-			debug: path.resolve(import.meta.dirname, "debug.html"),
 		},
 		resolve: {},
 		server: {

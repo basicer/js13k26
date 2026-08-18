@@ -31,7 +31,7 @@ const MAX_POINT_LIGHTS = 32;
 let debugModule;
 let cameraDragPointerId = null;
 
-if (DEBUG && import.meta.env.DEV) {
+if (DEBUG && import.meta.env.DEBUG) {
 	import("./debug/debug.js").then((module) => {
 		debugModule = module;
 		c.addEventListener("pointerdown", (event) => {

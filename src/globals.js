@@ -1,4 +1,7 @@
-globalThis["DEBUG"] = !!globalThis["DEBUG"];
+if (import.meta.env.DEBUG) {
+	console.log("DEBUG", window.location);
+	globalThis["DEBUG"] = /debug/i.test(window.location.search);
+}
 
 export let $ = document,
 	c = DEBUG

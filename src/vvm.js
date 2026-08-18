@@ -5,7 +5,7 @@ let projectorSize, projectorVoxels;
 let floorTileSize, floorTileVoxels;
 let floorTileS04Size, floorTileS04Voxels;
 
-if (DEBUG && import.meta.env.DEV) {
+if (DEBUG && import.meta.env.DEBUG) {
 	const [
 		{ ddsVolume },
 		{ default: projectorDds },
