@@ -6,7 +6,7 @@
 		"dev": "vite",
 		"build": "vite build",
 		"build:dev": "vite build --mode development",
-		"native:mac": "sh build_macos.sh",
+		"native:mac": "python3 build_macos.py",
 		"serve": "vite preview",
 		"format": "prettier --write src/*.js *.js *.json",
 		"test": "echo \"Error: no test specified\" && exit 1",

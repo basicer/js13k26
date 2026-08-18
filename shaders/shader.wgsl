@@ -208,7 +208,14 @@ fn fs_main(in: VertexOutput) -> FragmentOutput {
     let inverse_entity_rotation = transpose(entity_rotation);
 
     let world_ray = normalize(in.world_position - camera_position);
-    let ray_origin = inverse_entity_rotation * (camera_position - entity_center) / scale + vec3<f32>(0.5f);
+    // Storage-buffer vec3 members become packed_float3 in Metal. Build an
+    // ordinary vector from their scalar components before matrix arithmetic.
+    let camera_offset = vec3<f32>(
+        camera_position.x - entity_center.x,
+        camera_position.y - entity_center.y,
+        camera_position.z - entity_center.z,
+    );
+    let ray_origin = inverse_entity_rotation * camera_offset / scale + vec3<f32>(0.5f);
     let ray_direction = inverse_entity_rotation * world_ray / scale;
     let hit = voxel_search(ray_origin, ray_direction);
     if (hit.material == 0.0f) { discard; }
