@@ -8,7 +8,8 @@
 		"native:mac": "sh build_macos.sh",
 		"serve": "vite preview",
 		"format": "prettier --write src/*.js *.js *.json",
-		"test": "echo \"Error: no test specified\" && exit 1"
+		"test": "echo \"Error: no test specified\" && exit 1",
+		"postinstall": "patch-package"
 	},
 	"author": "Rob Blanckaert",
 	"license": "MIT",
@@ -17,6 +18,7 @@
 		"advzip-bin": "^2.0.0",
 		"ect-bin": "^1.4.1",
 		"google-closure-compiler": "^20260810.0.0",
+		"patch-package": "^8.0.1",
 		"prettier": "^3.9.6",
 		"roadroller": "^2.1.0",
 		"vite": "^8.2.1"

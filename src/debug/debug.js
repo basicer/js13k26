@@ -8,6 +8,9 @@ export { selectEntity } from "./entityInspector.js";
 
 let initialization = false;
 
+let paletteShown = false;
+let entityInspectorShown = true;
+
 export const wantsMouse = () => initialization && ImGui.GetIO().WantCaptureMouse;
 
 export function debug(passEncoder, entities, entitySize, overrides) {
@@ -23,18 +26,37 @@ export function debug(passEncoder, entities, entitySize, overrides) {
         
 	ImGuiImplWeb.BeginRender();
 
-	entityInspector(entities, entitySize, overrides);
+    if (ImGui.BeginMainMenuBar()) {
 
-	ImGui.Begin("Palette");
-    let p = new Uint32Array(palette.buffer, 0, 256);
-    for (let i = 0; i < p.length; i++) {
-        let c = new ImVec4((p[i] >> 16 & 0xFF) / 255, (p[i] >> 8 & 0xFF) / 255, (p[i] & 0xFF) / 255, 1);
-        ImGui.ColorButton(`Color ${i}`, c, 0, new ImVec2(20, 20));
-        if (i % 21 !== 0) {
-            ImGui.SameLine();
+        if (ImGui.BeginMenu("Windows")) {
+            if (ImGui.MenuItem("Entity Inspector", "", entityInspectorShown)) {
+                entityInspectorShown = !entityInspectorShown;
+            }
+            if (ImGui.MenuItem("Palette", "", paletteShown)) {
+                paletteShown = !paletteShown;
+            }
+            ImGui.EndMenu();
         }
+
+        ImGui.EndMainMenuBar();
     }
-    ImGui.End();
+
+	if (entityInspectorShown) {
+        entityInspector(overrides);
+    }
+
+    if (paletteShown) {
+        ImGui.Begin("Palette");
+        let p = new Uint32Array(palette.buffer, 0, 256);
+        for (let i = 0; i < p.length; i++) {
+            let c = new ImVec4((p[i] >> 16 & 0xFF) / 255, (p[i] >> 8 & 0xFF) / 255, (p[i] & 0xFF) / 255, 1);
+            ImGui.ColorButton(`Color ${i}`, c, 0, new ImVec2(20, 20));
+            if (i % 21 !== 0) {
+                ImGui.SameLine();
+            }
+        }
+        ImGui.End();
+    }
 
 
 

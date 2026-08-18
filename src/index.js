@@ -1,4 +1,13 @@
-import { G, Q, d, c, $, heldKeys, canvasFormat, canvasSrgbFormat } from "./globals.js";
+import {
+	G,
+	Q,
+	d,
+	c,
+	$,
+	heldKeys,
+	canvasFormat,
+	canvasSrgbFormat,
+} from "./globals.js";
 import { render } from "./render.js";
 
 import { magic } from "./sfx.js";
@@ -9,13 +18,13 @@ Object.assign(c.style, {
 	left: 0,
 	width: "100%",
 	height: "100%",
-	imageRendering: 'pixelated'
+	imageRendering: "pixelated",
 });
 
 G.configure({
-	device: d,
-	format: canvasFormat,
-	viewFormats: [canvasSrgbFormat],
+	"device": d,
+	"format": canvasFormat,
+	"viewFormats": [canvasSrgbFormat],
 });
 
 if (DEBUG) console.log("HI");
@@ -23,12 +32,15 @@ if (DEBUG) console.log("HI");
 $.addEventListener("keydown", (event) => {
 	if (
 		event.repeat ||
-		!event.key.startsWith("Arrow") &&
-		!"wasdqerf".includes(event.key.toLowerCase()) &&
-		event.key !== "Shift"
+		(!event.key.startsWith("Arrow") &&
+			!"wasdqerfg".includes(event.key.toLowerCase()) &&
+			event.key !== "Shift")
 	)
 		return;
 
+	if (event.key === "g") {
+		magic();
+	}
 	// window.x = magic();
 
 	event.preventDefault();
@@ -54,7 +66,7 @@ if (DEBUG) {
 		top: 0,
 		right: 0,
 		color: "white",
-		backgroundColor: "black",
+		backgroundColor: "rgba(0, 0, 0, 0.5)",
 		fontFamily: "monospace",
 		fontSize: "24px",
 		padding: "2px",
@@ -63,7 +75,7 @@ if (DEBUG) {
 }
 
 let step = async (dt) => {
-	await render(dt);
+	render(dt);
 	requestAnimationFrame(step);
 };
 if (DEBUG) console.log("Starting render loop");

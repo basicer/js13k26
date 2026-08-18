@@ -1,4 +1,3 @@
-
 /** @type {number} */
 const devicePixelRatio = window.devicePixelRatio;
 
@@ -220,7 +219,7 @@ GPUDevice.prototype.destroy = function () {};
 GPUDevice.prototype.createBuffer = function (options) {};
 /** @return {!GPUTexture} */
 GPUDevice.prototype.createTexture = function (options) {};
-/** @return {!GPUSampler} */    
+/** @return {!GPUSampler} */
 GPUDevice.prototype.createSampler = function (options) {};
 /** @return {!GPUExternalTexture} */
 GPUDevice.prototype.importExternalTexture = function () {};
@@ -453,9 +452,20 @@ GPURenderPassEncoder.prototype.setIndexBuffer = function (buffer, format) {};
 /** @return {undefined} */
 GPURenderPassEncoder.prototype.setVertexBuffer = function (id, buffer) {};
 /** @return {undefined} */
-GPURenderPassEncoder.prototype.draw = function (nVerticies, instanceCount = 1, firstVertex = 0, firstInstance = 0) {};
+GPURenderPassEncoder.prototype.draw = function (
+	nVerticies,
+	instanceCount = 1,
+	firstVertex = 0,
+	firstInstance = 0,
+) {};
 /** @return {undefined} */
-GPURenderPassEncoder.prototype.drawIndexed = function (indexCount, instanceCount, firstIndex, baseVertex, firstInstance = 0) {};
+GPURenderPassEncoder.prototype.drawIndexed = function (
+	indexCount,
+	instanceCount,
+	firstIndex,
+	baseVertex,
+	firstInstance = 0,
+) {};
 /** @return {undefined} */
 GPURenderPassEncoder.prototype.drawIndirect = function () {};
 /** @return {undefined} */

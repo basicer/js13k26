@@ -32,13 +32,29 @@ export default defineConfig(({ command }) => ({
 
 var dds = () => ({
 	name: "vite:dds",
-	load: (id) => /\.dds(?:\.gz)?$/.test(id) ? `export default "${readFileSync(id).toString("base64")}";` : undefined,
+	load: (id) =>
+		/\.dds(?:\.gz)?$/.test(id)
+			? `export default "${readFileSync(id).toString("base64")}";`
+			: undefined,
 });
 
 var shader = (isBuild) => ({
 	name: "vite:shader",
 	transform: (code, id) => {
 		if (!id.endsWith(".wgsl")) return;
+
+		/*
+		code = code.replace(/^#import "([^"]*)".*$/gm, (str) => {
+			return '${await import("./' + str + '").then(m => m.default)}';
+		}); 
+		*/
+
+		code = code.replace(/^#import "([^"]*)".*$/gm, (_, str) => {
+			return readFileSync(path.resolve(path.dirname(id), str), "utf-8");
+		});
+
+		console.log(code);
+
 		if (!isBuild) {
 			code = code.replace(/^\s*\/\/.*$/gm, ""); // remove comments
 			code = code.replace(/^\s*$/gm, ""); // remove empty lines
@@ -54,16 +70,16 @@ var shader = (isBuild) => ({
 		} else {
 			writeFileSync("./tmp.wgsl", code);
 			const result = execFileSync("wgsl-minifier", [
-				'--force',
-				'./tmp.wgsl',
-				'./tmp.out.wgsl'
+				"--force",
+				"./tmp.wgsl",
+				"./tmp.out.wgsl",
 			]);
 			console.log(result.toString());
 			code = readFileSync("./tmp.out.wgsl", "utf-8");
 			return {
 				code: `export default \`${code}\`;`,
 				map: null,
-			}
+			};
 		}
 	},
 });
@@ -111,7 +127,6 @@ var roadroller = () => ({
 				sortAttributes: true,
 				minifyCSS: true,
 			};
-
 
 			const packer = new Packer(
 				[
@@ -165,12 +180,14 @@ var closure = () => ({
 			"GPUShaderStage.VERTEX": 1,
 			"GPUShaderStage.FRAGMENT": 2,
 			"GPUShaderStage.COMPUTE": 4,
-		}
+		};
 
-		for ( const [key, value] of Object.entries(WEBGPU_CONSTANTS)) {
+		for (const [key, value] of Object.entries(WEBGPU_CONSTANTS)) {
 			code = code.replace(new RegExp(`\\b${key}\\b`, "g"), value);
 		}
 
+		code = code.replace(/label`[^`]*`/g, "''");
+		code = code.replace(/"label": '',/g, "");
 
 		await writeFile(
 			tmpobj.name,

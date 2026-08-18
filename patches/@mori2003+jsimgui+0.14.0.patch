@@ -1,0 +1,25 @@
+diff --git a/node_modules/@mori2003/jsimgui/build/imgui.js b/node_modules/@mori2003/jsimgui/build/imgui.js
+index 8af4c57..3f44f62 100644
+--- a/node_modules/@mori2003/jsimgui/build/imgui.js
++++ b/node_modules/@mori2003/jsimgui/build/imgui.js
+@@ -9,18 +9,10 @@ export const Mod = {
+             MainExport = await import(loaderPath);
+         }
+         else if (enableFreeType) {
+-            MainExport = extensions
+-                ? // @ts-expect-error
+-                    await import("./loader-freetype-extensions.js")
+-                : // @ts-expect-error
+-                    await import("./loader-freetype.js");
++            MainExport = await import("./loader-freetype.js");
+         }
+         else {
+-            MainExport = extensions
+-                ? // @ts-expect-error
+-                    await import("./loader-extensions.js")
+-                : // @ts-expect-error
+-                    await import("./loader.js");
++            MainExport = await import("./loader.js");
+         }
+         Mod.export = await MainExport.default();
+     },
