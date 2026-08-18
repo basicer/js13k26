@@ -9,26 +9,34 @@ import ClosureCompiler from "google-closure-compiler";
 import ect from "ect-bin";
 import advzip from "advzip-bin";
 
-export default defineConfig(({ command }) => ({
-	plugins: [
-		dds(),
-		shader(command == "build"),
-		...(command == "build" ? [closure(), roadroller(), zip()] : []),
-	],
-	build: {
-		assetsDir: "",
-		modulePreload: { polyfill: false },
-		rolldownOptions: {
-			output: {
-				comments: true, // So closure can see them
+export default defineConfig(({ command }) => {
+	let pack = command == "build" && !process.env.DEV;
+
+	return {
+		plugins: [
+			dds(),
+			shader(pack),
+			...(pack ? [closure(), roadroller(), zip()] : []),
+		],
+		build: {
+			assetsDir: "",
+			modulePreload: { polyfill: false },
+			rolldownOptions: {
+				output: {
+					comments: true, // So closure can see them
+				},
 			},
 		},
-	},
-	resolve: {},
-	server: {
-		proxy: {},
-	},
-}));
+		input: {
+			main: path.resolve(import.meta.dirname, "index.html"),
+			debug: path.resolve(import.meta.dirname, "debug.html"),
+		},
+		resolve: {},
+		server: {
+			proxy: {},
+		},
+	};
+});
 
 var dds = () => ({
 	name: "vite:dds",
@@ -52,8 +60,6 @@ var shader = (isBuild) => ({
 		code = code.replace(/^#import "([^"]*)".*$/gm, (_, str) => {
 			return readFileSync(path.resolve(path.dirname(id), str), "utf-8");
 		});
-
-		console.log(code);
 
 		if (!isBuild) {
 			code = code.replace(/^\s*\/\/.*$/gm, ""); // remove comments
