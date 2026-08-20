@@ -6,5 +6,7 @@ struct Entity {
     pos: vec3<f32>,
     _7: f32,
     rot: vec3<f32>,
-    _8: f32
+    _11: f32,
+    scale: vec3<f32>,
+    _16: f32,
 };

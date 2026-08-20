@@ -1,6 +1,6 @@
 import { GenArray } from "./globals.js";
 
-export const ENTITY_DATA_SIZE = 12;
+export const ENTITY_DATA_SIZE = 16;
 export const ENTITY_COUNT = 1900;
 
 export const entities = new Float32Array(ENTITY_COUNT * ENTITY_DATA_SIZE).fill(
@@ -27,5 +27,7 @@ for (let i = 1; i < 1000; i++) {
 	e[4] = Math.floor(i / 30);
 	e[5] = 0;
 	e[6] = i % 30;
+    e[12] = e[13] = e[14] = 1;
+    e[13] = 1;
 	if (entityOverrides.has(i)) e.set(entityOverrides.get(i));
 }

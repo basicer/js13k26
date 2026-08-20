@@ -2,6 +2,7 @@ import { ImGui, ImGuiImplWeb, ImVec2, ImVec4 } from "@mori2003/jsimgui";
 import { d, c } from "../globals.js";
 import { palette } from "../palette.js";
 import { entityInspector } from "./entityInspector.js";
+import { EArray } from "../entities.js";
 
 export { selectEntity } from "./entityInspector.js";
 
@@ -9,7 +10,10 @@ export { selectEntity } from "./entityInspector.js";
 let initialization = false;
 
 let paletteShown = false;
-let entityInspectorShown = true;
+let entityInspectorShown = false;
+let soundsShown = false;
+
+let sounds = await import("../sfx.js");
 
 export const wantsMouse = () => initialization && ImGui.GetIO().WantCaptureMouse;
 
@@ -22,18 +26,24 @@ export function debug(passEncoder, entities, entitySize, overrides) {
         return;
     }
 
-        
-        
 	ImGuiImplWeb.BeginRender();
 
     if (ImGui.BeginMainMenuBar()) {
-
+        if (ImGui.MenuItem("Reset")) {
+            EArray.map((e, id) => {
+                if (id > 1) e[0] = 255;
+            });
+        }
         if (ImGui.BeginMenu("Windows")) {
+
             if (ImGui.MenuItem("Entity Inspector", "", entityInspectorShown)) {
                 entityInspectorShown = !entityInspectorShown;
             }
             if (ImGui.MenuItem("Palette", "", paletteShown)) {
                 paletteShown = !paletteShown;
+            }
+            if (ImGui.MenuItem("Sounds", "", soundsShown)) {
+                soundsShown = !soundsShown;
             }
             ImGui.EndMenu();
         }
@@ -58,6 +68,17 @@ export function debug(passEncoder, entities, entitySize, overrides) {
         ImGui.End();
     }
 
+
+    if (soundsShown) {
+        ImGui.Begin("Sounds");
+        for (let [name, sound] of Object.entries(sounds)) {
+            if (ImGui.Button(name)) {
+                sound();
+            }
+        }
+        ImGui.End();
+    }
+    
 
 
 	ImGuiImplWeb.EndRender(passEncoder);

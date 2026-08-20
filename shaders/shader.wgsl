@@ -136,7 +136,7 @@ fn vs_main(
     let up = camera_rotation[1];
     let entity = entities[entity_index];
     let entity_center = entity.pos;
-    out.scale = vec3<f32>(1.0f);
+    out.scale = entity.scale;
     // Rasterize the containment cube directly in world space. The fragment
     // shader still finds the real voxel hit, then supplies its true depth.
     let world_position = entity_center + rotation_matrix(entity.rot) * (pos * out.scale);

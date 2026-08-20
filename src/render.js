@@ -223,7 +223,7 @@ const pipeline = d.createRenderPipeline({
 		],
 	},
 	// The proxy is wound inward: from outside, keep only its back-facing shell.
-	"primitive": { "cullMode": "front" },
+	"primitive": { "cullMode": "back" },
 	"depthStencil": {
 		"format": "depth24plus",
 		"depthWriteEnabled": true,

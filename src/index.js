@@ -10,7 +10,7 @@ import {
 } from "./globals.js";
 import { render } from "./render.js";
 
-import { magic } from "./sfx.js";
+import { magic, gunshot } from "./sfx.js";
 
 Object.assign(c.style, {
 	position: "absolute",
@@ -33,13 +33,16 @@ $.addEventListener("keydown", (event) => {
 	if (
 		event.repeat ||
 		(!event.key.startsWith("Arrow") &&
-			!"wasdqerfg".includes(event.key.toLowerCase()) &&
+			!"wasdqerfgh".includes(event.key.toLowerCase()) &&
 			event.key !== "Shift")
 	)
 		return;
 
 	if (event.key === "g") {
 		magic();
+	}
+	if (event.key === "h") {
+		gunshot();
 	}
 	// window.x = magic();
 
