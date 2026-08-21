@@ -423,9 +423,9 @@ GPUComputePassEncoder.prototype.setBindGroup = function (id, bindGroup) {};
 /** @return {undefined} */
 GPUComputePassEncoder.prototype.setBindGroup = function (id, bindGroup) {};
 /** @return {undefined} */
-GPUComputePassEncoder.prototype.setPipeline = function () {};
+GPUComputePassEncoder.prototype.setPipeline = function (pipeline) {};
 /** @return {undefined} */
-GPUComputePassEncoder.prototype.dispatchWorkgroups = function () {};
+GPUComputePassEncoder.prototype.dispatchWorkgroups = function (count) {};
 /** @return {undefined} */
 GPUComputePassEncoder.prototype.dispatchWorkgroupsIndirect = function () {};
 /** @return {undefined} */

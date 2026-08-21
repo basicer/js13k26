@@ -147,7 +147,7 @@ const [shader, postShader, lightShader] = [
 let scaleDown = 0;
 function resizeCanvas() {
 	const bounds = c.getBoundingClientRect();
-	const pixelRatio = devicePixelRatio * (1 / 2 ** scaleDown);
+	const pixelRatio = devicePixelRatio * 2 ** -scaleDown;
 	const width = Math.max(1, Math.round(bounds.width * pixelRatio));
 	const height = Math.max(1, Math.round(bounds.height * pixelRatio));
 	if (
@@ -245,8 +245,8 @@ const lightPipeline = d.createComputePipeline({
 	"compute": { "module": lightShader, "entryPoint": "build_point_lights" },
 });
 const bloomSampler = d.createSampler({
-	magFilter: "linear",
-	minFilter: "linear",
+	"magFilter": "linear",
+	"minFilter": "linear",
 });
 
 const BG = (pipeline, id, ...array) =>

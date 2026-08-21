@@ -3,8 +3,9 @@ import path from "node:path";
 import { readdir, stat, readFile, writeFile } from "node:fs/promises";
 import { readFileSync, writeFileSync } from "node:fs";
 import { execFileSync } from "node:child_process";
-import { Input, InputType, Packer } from "roadroller";
+import { Packer } from "roadroller";
 import ClosureCompiler from "google-closure-compiler";
+import { assemble } from "./src/vvm-tools.js";
 
 import ect from "ect-bin";
 import advzip from "advzip-bin";
@@ -16,6 +17,7 @@ export default defineConfig(({ command, mode }) => {
 		base: "./",
 		plugins: [
 			dds(),
+			voxprog(),
 			shader(pack),
 			...(pack ? [closure(), roadroller(), zip()] : []),
 		],
@@ -46,6 +48,15 @@ var dds = () => ({
 			? `export default "${readFileSync(id).toString("base64")}";`
 			: undefined,
 });
+
+var voxprog = () => ({
+	name: "vite:voxprog",
+	load: (id) =>
+		/\.vp$/.test(id)
+			? `export default "${Buffer.from(assemble(readFileSync(id, "utf-8"))).toString("base64")}";`
+			: undefined,
+});
+
 
 var shader = (isBuild) => ({
 	name: "vite:shader",
@@ -195,6 +206,7 @@ var closure = () => ({
 
 		code = code.replace(/label`[^`]*`/g, "''");
 		code = code.replace(/"label": '',/g, "");
+		code = code.replace(/if \(DEBUG && false\);/g, "");
 
 		await writeFile(
 			tmpobj.name,
@@ -273,6 +285,7 @@ var zip = () => ({
 				Math.round((stats.size / 1024) * 100) / 100,
 				"KB",
 			);
+			console.log(13312 - stats.size, "bytes left");
 		} catch (err) {
 			console.log("ECT error", err);
 		}

@@ -34,6 +34,7 @@ export function entityInspector(overrides) {
 	const pointLight = [entity[1]];
 	const position = [entity[4], entity[5], entity[6]];
 	const rotation = [entity[8], entity[9], entity[10]];
+	const scale = [entity[12], entity[13], entity[14]];
 	let changed = false;
 	if (ImGui.InputInt("Kind", kind, 1, 10)) {
 		entity[0] = Math.max(0, Math.min(255, kind[0]));
@@ -49,6 +50,10 @@ export function entityInspector(overrides) {
 	}
 	if (ImGui.DragFloat3("Rotation (rad)", rotation, 0.01)) {
 		entity.set(rotation, 8);
+		changed = true;
+	}
+	if (ImGui.DragFloat3("Scale", scale, 0.01)) {
+		entity.set(scale, 12);
 		changed = true;
 	}
 	if (ImGui.Button("Clone")) {
