@@ -1,34 +1,8 @@
 import { GenArray, label, d, Q, c } from "./globals.js";
 import { vec3, vec3_add } from "./math.js";
 import { vec3_dist, dist_point_to_line_segment, point_in_aabb } from "./math.js";
-import { COMMAND_NAMES, OP_PUSHI, OP_STROKE, OP_VEC, OP_VLOAD, OP_VSTORE, OP_FLOAD, OP_FSTORE } from "./vvm-const.js";
+import { COMMAND_NAMES, OP_MIRROR, OP_PUSHI, OP_STROKE, OP_VEC, OP_VLOAD, OP_VSTORE, OP_FLOAD, OP_FSTORE } from "./vvm-const.js";
 const VOXEL_SIZE = 64;
-let projectorSize, projectorVoxels;
-let floorTileSize, floorTileVoxels;
-let floorTileS04Size, floorTileS04Voxels;
-
-if (DEBUG && import.meta.env.DEBUG) {
-	const [
-		{ ddsVolume },
-		{ default: projectorDds },
-		{ default: floorTileLr01Dds },
-		{ default: floorTileS04Dds },
-	] = await Promise.all([
-		import("./dds.js"),
-		import("../dds/Projector.dds.gz"),
-		import("../dds/FloorTile-LR01.dds"),
-		import("../dds/FloorTile-S04.dds"),
-	]);
-	const [projector, floorTile, floorTileS04] = await Promise.all([
-		ddsVolume(projectorDds, true),
-		ddsVolume(floorTileLr01Dds),
-		ddsVolume(floorTileS04Dds),
-	]);
-	({ size: projectorSize, voxels: projectorVoxels } = projector);
-	({ size: floorTileSize, voxels: floorTileVoxels } = floorTile);
-	({ size: floorTileS04Size, voxels: floorTileS04Voxels } = floorTileS04);
-}
-
 
 const tex = (name, size = [VOXEL_SIZE, VOXEL_SIZE, VOXEL_SIZE]) => {
     let t = d.createTexture({
@@ -42,22 +16,13 @@ const tex = (name, size = [VOXEL_SIZE, VOXEL_SIZE, VOXEL_SIZE]) => {
     return t;
 };
 
-const empty = tex("Empty");
-
-
-
-
 let buffers = new Map();
+const empty = tex("Empty");
 buffers.set(empty, new Float32Array(VOXEL_SIZE ** 3 * 4).fill(0));
 
-export var cube = tex("cube");
 
-
-export var cubes = GenArray(64, (i) => {
-    let t = tex(`cube ${i}`)
-    buffers.set(t, new Float32Array(VOXEL_SIZE ** 3 * 4).fill(i));
-    return t;
-});
+export var cube = tex(label`cube`);
+buffers.set(cube, new Float32Array(VOXEL_SIZE ** 3 * 4).fill(1));
 
 
 
@@ -80,10 +45,13 @@ for (let z = 0; z < VOXEL_SIZE; z++) {
 }
 buffers.set(sphere, sphereVoxels);
 
-export var voxT = GenArray(64, (i) => i % 10 == 7 ? sphere : cubes[i]);
+
+export var voxT = GenArray(256, () => empty);
+
+voxT[2] = cube;
+voxT[6] = sphere;
 
 export const flush = (texture) => {
-    console.log(texture);
     Q.writeTexture(
         { "texture": texture },
         buffers.get(texture),
@@ -95,15 +63,21 @@ export const flush = (texture) => {
     );
 };
 
+if (DEBUG && import.meta.env.DEBUG) {
+    let {ddsVolume} = await import("./dds.js");
 
-setTimeout(() => {
-    var projector = tex("projector", projectorSize);
-    if (projectorVoxels) buffers.set(projector, projectorVoxels);
-
-    voxT.map((texture, kind) => { if (kind == 2) voxT[kind] = projector; });
-    flush(projector);
-
-}, 2000);
+    [
+        "../dds/Projector.dds.gz",
+        "../dds/FloorTile-LR01.dds.gz",
+        "../dds/FloorTile-S04.dds.gz",
+    ].map(async (dds, i) => {
+        let {size, voxels} = await ddsVolume((await import(dds)).default, true);
+        var T = tex("projector", size);
+        if (voxels) buffers.set(T, voxels);
+        voxT.map((texture, kind) => { if (kind == i+3) voxT[kind] = T; });
+        flush(T);
+    });
+}
 
 
 /**
@@ -184,12 +158,25 @@ export function runByteCode(slot, bytecode) {
                 reg_float[cmd & 7] = val;
                 break;
             }
+            case OP_MIRROR:
+            {
+                let source = buffer.slice(), axis = cmd & 7;
+                MAP(0, (pos) => {
+                    let read = vec3(...pos);
+                    read[axis] = Math.min(read[axis], size[axis] - 1 - read[axis]);
+                    return source[((read[2] * size[1] + read[1]) * size[0] + read[0]) * 4];
+                });
+                break;
+            }
         }
-        console.log(cmd, {stack, reg_vec, reg_float});
+
     }
 
-    buffers.set(voxT[slot], buffer);
-    flush(voxT[slot]);
+
+    let result = tex(label`Worked`);
+    buffers.set(result, buffer);
+    flush(result);
+    voxT[slot] = result;
 }
 
 buffers.forEach((_, texture) => flush(texture));

@@ -1,13 +1,4 @@
-struct Entity {
-    kind: f32,
-    point_light: f32,
-    _2: f32,
-    _3: f32,
-    pos: vec3<f32>,
-    _7: f32,
-    rot: vec3<f32>,
-    _8: f32
-};
+#import "structs.wgsl"
 
 struct PointLight {
     position: vec3<f32>,
@@ -27,6 +18,21 @@ var<storage, read_write> point_lights: array<PointLight>;
 
 const MAX_POINT_LIGHTS = 32u;
 
+fn world_transform(index: u32) -> mat4x4<f32> {
+    let entity_scale = entities[index].scale;
+    var transform = local_transform(entities[index], vec3<f32>(entity_scale.x, entity_scale.y, entity_scale.z));
+    var parent = entities[index].parent;
+    var current = index;
+    for (var depth = 0u; depth < 5u && parent > 0.0f; depth++) {
+        let parent_index = u32(parent);
+        if (parent_index >= arrayLength(&entities) || parent_index == current) { break; }
+        transform = local_transform(entities[parent_index], vec3<f32>(1.0f)) * transform;
+        current = parent_index;
+        parent = entities[parent_index].parent;
+    }
+    return transform;
+}
+
 @compute @workgroup_size(64)
 fn build_point_lights(@builtin(global_invocation_id) id: vec3<u32>) {
     let entity_index = id.x;
@@ -37,6 +43,6 @@ fn build_point_lights(@builtin(global_invocation_id) id: vec3<u32>) {
 
     let light_index = atomicAdd(&point_light_counter.count, 1u);
     if (light_index < MAX_POINT_LIGHTS) {
-        point_lights[light_index] = PointLight(entity.pos, entity.point_light);
+        point_lights[light_index] = PointLight(world_transform(entity_index)[3].xyz, entity.point_light);
     }
 }

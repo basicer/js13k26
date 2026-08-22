@@ -365,7 +365,7 @@ export function render(t) {
 	pass.setPipeline(pipeline);
 	pass.setVertexBuffer(0, vertexBuffer);
 	pass.setIndexBuffer(indexBuffer, "uint16");
-	for (let i = 0; i < voxT.length; i++) {
+	for (let i = 1; i < voxT.length; i++) {
 		pass.setBindGroup(1, BG(pipeline, 1, voxT[i].createView()));
 		//pass.draw(vertices.length / 2); // 6 vertices
 		pass.drawIndexed(idx.length, ENTITY_COUNT, 0, 0, i << 16);

@@ -27,7 +27,7 @@ export function debug(passEncoder, entities, entitySize, overrides) {
     }
 
 	ImGuiImplWeb.BeginRender();
-
+    ImGui.PushFontFloat(null, 14);
     if (ImGui.BeginMainMenuBar()) {
         if (ImGui.MenuItem("Reset")) {
             EArray.map((e, id) => {
@@ -57,9 +57,21 @@ export function debug(passEncoder, entities, entitySize, overrides) {
 
     if (paletteShown) {
         ImGui.Begin("Palette");
-        let p = new Uint32Array(palette.buffer, 0, 256);
+        let p = new Uint8Array(palette.buffer, 0, 256);
+        const srgb = (x) =>
+            x <= 0.0031308
+            ? x * 12.92
+            : 1.055 * x ** (1 / 2.4) - 0.055;
+
         for (let i = 0; i < p.length; i++) {
-            let c = new ImVec4((p[i] >> 16 & 0xFF) / 255, (p[i] >> 8 & 0xFF) / 255, (p[i] & 0xFF) / 255, 1);
+            let o = i * 4;
+            let c = new ImVec4(
+                srgb(palette[o] / 255),
+                srgb(palette[o + 1] / 255),
+                srgb(palette[o + 2] / 255),
+                1,
+            );
+
             ImGui.ColorButton(`Color ${i}`, c, 0, new ImVec2(20, 20));
             if (i % 21 !== 0) {
                 ImGui.SameLine();
@@ -80,6 +92,6 @@ export function debug(passEncoder, entities, entitySize, overrides) {
     }
     
 
-
+    ImGui.PopFont();
 	ImGuiImplWeb.EndRender(passEncoder);
 }
