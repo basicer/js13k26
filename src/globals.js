@@ -10,7 +10,7 @@ export let $ = document,
 	/** @type {GPUAdapter} */
 	a = await navigator.gpu.requestAdapter(),
 	/** @type {GPUDevice} */
-	d = await a.requestDevice(),
+	d = await a.requestDevice( DEBUG ? {"requiredFeatures": ["timestamp-query"]} : {}),
 	Q = d.queue,
 	/** @type {GPUCanvasContext} */
 	G = c.getContext("webgpu", {

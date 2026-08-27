@@ -1,30 +1,36 @@
 import { GenArray, label, d, Q, c } from "./globals.js";
 import { vec3, vec3_add } from "./math.js";
-import { vec3_dist, dist_point_to_line_segment, point_in_aabb } from "./math.js";
-import { COMMAND_NAMES, OP_MIRROR, OP_PUSHI, OP_STROKE, OP_VEC, OP_VLOAD, OP_VSTORE, OP_FLOAD, OP_FSTORE } from "./vvm-const.js";
+import {
+	COMMAND_NAMES,
+	OP_MIRROR,
+	OP_PUSHI,
+	OP_STROKE,
+	OP_VEC,
+	OP_VLOAD,
+	OP_VSTORE,
+	OP_FLOAD,
+	OP_FSTORE,
+} from "./vvm-const.js";
 const VOXEL_SIZE = 64;
 
 const tex = (name, size = [VOXEL_SIZE, VOXEL_SIZE, VOXEL_SIZE]) => {
-    let t = d.createTexture({
-        "label": label`${name} voxel texture`,
-        "size": size,
-        "dimension": "3d",
-        "format": "rgba32float",
-        "usage": GPUTextureUsage.TEXTURE_BINDING | GPUTextureUsage.COPY_DST,
-    });
-    t.ROB_SIZE = size;;
-    return t;
+	let t = d.createTexture({
+		"label": label`${name} voxel texture`,
+		"size": size,
+		"dimension": "3d",
+		"format": "rgba32float",
+		"usage": GPUTextureUsage.TEXTURE_BINDING | GPUTextureUsage.COPY_DST,
+	});
+	t.ROB_SIZE = size;
+	return t;
 };
 
 let buffers = new Map();
 const empty = tex("Empty");
 buffers.set(empty, new Float32Array(VOXEL_SIZE ** 3 * 4).fill(0));
 
-
 export var cube = tex(label`cube`);
 buffers.set(cube, new Float32Array(VOXEL_SIZE ** 3 * 4).fill(1));
-
-
 
 const sphereCenter = (VOXEL_SIZE - 1) / 2;
 const sphereRadius = VOXEL_SIZE * 0.38;
@@ -32,19 +38,18 @@ const sphereRadius = VOXEL_SIZE * 0.38;
 export var sphere = tex("sphere");
 const sphereVoxels = new Float32Array(VOXEL_SIZE ** 3 * 4);
 for (let z = 0; z < VOXEL_SIZE; z++) {
-    for (let y = 0; y < VOXEL_SIZE; y++) {
-        for (let x = 0; x < VOXEL_SIZE; x++) {
-            const dx = x - sphereCenter;
-            const dy = y - sphereCenter;
-            const dz = z - sphereCenter;
-            if (dx * dx + dy * dy + dz * dz > sphereRadius * sphereRadius)
-                continue;
-            sphereVoxels[((z * VOXEL_SIZE + y) * VOXEL_SIZE + x) * 4] = 20;
-        }
-    }
+	for (let y = 0; y < VOXEL_SIZE; y++) {
+		for (let x = 0; x < VOXEL_SIZE; x++) {
+			const dx = x - sphereCenter;
+			const dy = y - sphereCenter;
+			const dz = z - sphereCenter;
+			if (dx * dx + dy * dy + dz * dz > sphereRadius * sphereRadius)
+				continue;
+			sphereVoxels[((z * VOXEL_SIZE + y) * VOXEL_SIZE + x) * 4] = 20;
+		}
+	}
 }
 buffers.set(sphere, sphereVoxels);
-
 
 export var voxT = GenArray(256, () => empty);
 
@@ -52,137 +57,188 @@ voxT[2] = cube;
 voxT[6] = sphere;
 
 export const flush = (texture) => {
-    Q.writeTexture(
-        { "texture": texture },
-        buffers.get(texture),
-        {
-            "bytesPerRow": texture.ROB_SIZE[0] * 4 * 4,
-            "rowsPerImage": texture.ROB_SIZE[1],
-        },
-        texture.ROB_SIZE
-    );
+	Q.writeTexture(
+		{ "texture": texture },
+		buffers.get(texture),
+		{
+			"bytesPerRow": texture.ROB_SIZE[0] * 4 * 4,
+			"rowsPerImage": texture.ROB_SIZE[1],
+		},
+		texture.ROB_SIZE,
+	);
 };
 
 if (DEBUG && import.meta.env.DEBUG) {
-    let {ddsVolume} = await import("./dds.js");
+	let { ddsVolume } = await import("./dds.js");
 
-    [
-        "../dds/Projector.dds.gz",
-        "../dds/FloorTile-LR01.dds.gz",
-        "../dds/FloorTile-S04.dds.gz",
-    ].map(async (dds, i) => {
-        let {size, voxels} = await ddsVolume((await import(dds)).default, true);
-        var T = tex("projector", size);
-        if (voxels) buffers.set(T, voxels);
-        voxT.map((texture, kind) => { if (kind == i+3) voxT[kind] = T; });
-        flush(T);
-    });
+	[
+		"../dds/Projector.dds.gz",
+		//"../dds/FloorTile-LR01.dds.gz",
+		//"../dds/FloorTile-S04.dds.gz",
+	].map(async (dds, i) => {
+		let { size, voxels } = await ddsVolume(
+			(await import(dds)).default,
+			true,
+		);
+		var T = tex("projector", size);
+		if (voxels) buffers.set(T, voxels);
+		voxT.map((texture, kind) => {
+			if (kind == i + 3) voxT[kind] = T;
+		});
+		flush(T);
+	});
 }
 
-
 /**
- * 
+ *
  * RESITERS:
  * FLOAT [ PALETTE, BRUSH, BRUSH_ARG ]
  * VEC   [ CURSOR, PREV_CURSOR ]
- * 
- * @param {*} slot 
- * @param {*} bytecode 
+ *
+ * @param {*} slot
+ * @param {*} bytecode
  */
 
 export function runByteCode(slot, bytecode) {
-    let pc = 0;
-    let size = vec3(VOXEL_SIZE, VOXEL_SIZE, VOXEL_SIZE);
-    let buffer = new Float32Array(VOXEL_SIZE ** 3 * 4).fill(0);
-    
-    let reg_vec = GenArray(8, () => vec3());
-    reg_vec[7] = vec3_add(size, vec3(-1, -1, -1));
-    let reg_float = [1, 2, 5, 0, 0, 0, 0, 0];
-    let stack = [];
+	let pc = 0;
+	let size = vec3(VOXEL_SIZE, VOXEL_SIZE, VOXEL_SIZE);
+	let buffer = new Float32Array(VOXEL_SIZE ** 3 * 4).fill(0);
 
-    let MAP = (flags, fn) => {
-        for (let z = reg_vec[6][2]; z <= reg_vec[7][2]; z++) {
-            for (let y = reg_vec[6][1]; y <= reg_vec[7][1]; y++) {
-                for (let x = reg_vec[6][0]; x <= reg_vec[7][0]; x++) {
-                    let index = ((z * size[1] + y) * size[0] + x) * 4;
-                    buffer[index] = fn(vec3(x, y, z), buffer[index]);
-                }
-            }
-        }
-    }
+	let reg_vec = GenArray(8, () => vec3());
+	reg_vec[7] = vec3_add(size, vec3(-1, -1, -1));
+	let reg_float = [1, 2, 5, 0, 0, 0, 0, 0];
+	let stack = [];
 
-    while (pc < bytecode.length) {
-        let cmd = bytecode[pc++];
-        switch (cmd >> 3) {
-            case OP_STROKE:
-                MAP(0, (pos, value) => {
-                        return [
-                            () => vec3_dist(pos, reg_vec[0]) - reg_float[2],
-                            () => point_in_aabb(pos, reg_vec[0], reg_vec[1]) ? -1 : 1,
-                            () => dist_point_to_line_segment(pos, reg_vec[0], reg_vec[1]) - reg_float[2] 
-                        ][reg_float[1]]() <= 0 ? reg_float[0] : value
-                });
-                break;
-            case OP_PUSHI:
-            {
-                GenArray(cmd & 7, () => stack.push(bytecode[pc++]));
-                break;
-            }
-            case OP_VEC:
-            {
-                let z = stack.pop(), y = stack.pop(), x = stack.pop();
-                stack.push(vec3(x, y, z));
-                break;
-            }
-            case OP_VLOAD:
-            {
-                let val = reg_vec[pc & 7];
-                stack.push(val);
-                break;
-            }
-            case OP_VSTORE:
-            { 
-                let val = stack.pop();
-                reg_vec[cmd & 7] = val;
-                break;
-            }
-            case OP_FLOAD:
-            {
-                let val = reg_float[cmd & 7];
-                stack.push(val);
-                break;
-            }
-            case OP_FSTORE:
-            {
-                let val = stack.pop();
-                reg_float[cmd & 7] = val;
-                break;
-            }
-            case OP_MIRROR:
-            {
-                let source = buffer.slice(), axis = cmd & 7;
-                MAP(0, (pos) => {
-                    let read = vec3(...pos);
-                    read[axis] = Math.min(read[axis], size[axis] - 1 - read[axis]);
-                    return source[((read[2] * size[1] + read[1]) * size[0] + read[0]) * 4];
-                });
-                break;
-            }
-        }
+	while (pc < bytecode.length) {
+		let cmd = bytecode[pc++];
+		switch (cmd >> 3) {
+			case OP_STROKE: {
+				let a = reg_vec[0], b = reg_vec[1], brush = reg_float[1], r = reg_float[2], lo = [], hi = [];
+				for (let i = 3; i--; ) {
+					let pad = brush == 1 ? 0 : r,
+						min = brush ? Math.min(a[i], b[i]) : a[i],
+						max = brush ? Math.max(a[i], b[i]) : a[i];
+					lo[i] = Math.max(reg_vec[6][i], Math.ceil(min - pad));
+					hi[i] = Math.min(reg_vec[7][i], Math.floor(max + pad));
+				}
+				let abx = b[0] - a[0], aby = b[1] - a[1], abz = b[2] - a[2], rr = r * r,
+					length = abx * abx + aby * aby + abz * abz || 1;
+				for (let z = lo[2]; z <= hi[2]; z++) for (let y = lo[1]; y <= hi[1]; y++) for (let x = lo[0]; x <= hi[0]; x++) {
+					let dx = x - a[0], dy = y - a[1], dz = z - a[2], hit = brush == 1;
+					if (brush == 0) hit = dx * dx + dy * dy + dz * dz <= rr;
+                    if (brush == 1) hit = true;
+					if (brush == 2) {
+						let t = Math.max(0, Math.min(1, (dx * abx + dy * aby + dz * abz) / length));
+						dx -= abx * t; dy -= aby * t; dz -= abz * t;
+						hit = dx * dx + dy * dy + dz * dz <= rr;
+					}
+					if (hit) buffer[((z * size[1] + y) * size[0] + x) * 4] = reg_float[0];
+				}
+				break;
+			}
+			case OP_PUSHI: {
+				GenArray(cmd & 7, () => stack.push(bytecode[pc++]));
+				break;
+			}
+			case OP_VEC: {
+				let z = stack.pop(),
+					y = stack.pop(),
+					x = stack.pop();
+				stack.push(vec3(x, y, z));
+				break;
+			}
+			case OP_VLOAD: {
+				let val = reg_vec[pc & 7];
+				stack.push(val);
+				break;
+			}
+			case OP_VSTORE: {
+				let val = stack.pop();
+				reg_vec[cmd & 7] = val;
+				break;
+			}
+			case OP_FLOAD: {
+				let val = reg_float[cmd & 7];
+				stack.push(val);
+				break;
+			}
+			case OP_FSTORE: {
+				let val = stack.pop();
+				reg_float[cmd & 7] = val;
+				break;
+			}
+			case OP_MIRROR: {
+				let axis = cmd & 7, lo = [...reg_vec[6]], hi = reg_vec[7];
+				lo[axis] = Math.max(lo[axis], size[axis] / 2);
+				for (let z = lo[2]; z <= hi[2]; z++) for (let y = lo[1]; y <= hi[1]; y++) for (let x = lo[0]; x <= hi[0]; x++) {
+					let sx = x, sy = y, sz = z;
+					if (!axis) sx = size[0] - 1 - x;
+					else if (axis == 1) sy = size[1] - 1 - y;
+					else sz = size[2] - 1 - z;
+					buffer[((z * size[1] + y) * size[0] + x) * 4] = buffer[((sz * size[1] + sy) * size[0] + sx) * 4];
+				}
+				break;
+			}
+		}
+	}
 
-    }
-
-
-    let result = tex(label`Worked`);
-    buffers.set(result, buffer);
-    flush(result);
-    voxT[slot] = result;
+	let result = tex(label`Worked`);
+	buffers.set(result, buffer);
+	flush(result);
+	voxT[slot] = result;
+	if (DEBUG && import.meta.env.DEBUG) return buffer;
 }
 
 buffers.forEach((_, texture) => flush(texture));
 
+import program1 from "../vox/marine.vp";
+import program2 from "../vox/unicorn.vp";
+import program3 from "../vox/floortile.vp";
 
-import program from "../vox/first.vp";
+let wait = (n) => new Promise((resolve) => setTimeout(resolve, n));
 
-setTimeout(() => { runByteCode(1, Uint8Array.fromBase64(program)); }, 10);
+let runCached = runByteCode;
+if (DEBUG && import.meta.env.DEBUG && false) {
+	let cache = await caches.open("vvm-1");
+	runCached = async (slot, bytecode) => {
+		let hash = [
+			...new Uint8Array(await crypto.subtle.digest("SHA-1", bytecode)),
+		]
+			.map((v) => v.toString(16).padStart(2, "0"))
+			.join("");
+		let hit = await cache.match("/.vvm/" + hash);
+		if (hit) {
+			let ids = new Uint8Array(await hit.arrayBuffer());
+			if (ids.length == VOXEL_SIZE ** 3) {
+				let buffer = new Float32Array(ids.length * 4);
+				for (let i = ids.length; i--; ) buffer[i * 4] = ids[i];
+				let result = tex(label`Worked`);
+				buffers.set(result, buffer);
+				flush(result);
+				voxT[slot] = result;
+				console.log("VVM cache hit", slot, hash);
+				return buffer;
+			}
+		}
 
+		let buffer = runByteCode(slot, bytecode);
+		let ids = new Uint8Array(VOXEL_SIZE ** 3);
+		for (let i = ids.length; i--; ) ids[i] = buffer[i * 4];
+		await cache.put("/.vvm/" + hash, new Response(ids));
+		console.log("VVM cache miss", slot, hash);
+		return buffer;
+	};
+}
+
+setTimeout(async () => {
+    await wait(1);
+    console.log("Running bytecode...", Uint8Array.fromBase64(program1).byteLength, "bytes");
+    await runCached(1, Uint8Array.fromBase64(program1));
+    await wait(1);
+    console.log("Running bytecode...", Uint8Array.fromBase64(program2).byteLength, "bytes");
+    await runCached(2, Uint8Array.fromBase64(program2));
+    await wait(1);
+    console.log("Running bytecode...", Uint8Array.fromBase64(program3).byteLength, "bytes");
+    await runCached(5, Uint8Array.fromBase64(program3));
+
+}, 1);

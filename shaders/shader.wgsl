@@ -4,12 +4,11 @@ struct VertexOutput {
     @builtin(position) clip_position: vec4<f32>,
     @location(0) @interpolate(flat) idx: u32,
     @location(1) world_position: vec3<f32>,
-    @location(2) scale: vec3<f32>,
 };
 
 struct FragmentOutput {
     @location(0) color: vec4<f32>,
-    @location(1) entity_index: u32,
+    @location(1) pick: vec2<u32>,
     @builtin(frag_depth) depth: f32,
 };
 
@@ -49,8 +48,7 @@ var<storage, read> point_lights: array<PointLight>;
 const MAX_POINT_LIGHTS = 32u;
 
 fn world_transform(index: u32) -> mat4x4<f32> {
-    let entity_scale = entities[index].scale;
-    var transform = local_transform(entities[index], vec3<f32>(entity_scale.x, entity_scale.y, entity_scale.z));
+    var transform = local_transform(entities[index], entities[index].scale);
     var parent = entities[index].parent;
     var current = index;
     for (var depth = 0u; depth < 5u && parent > 0.0f; depth++) {
@@ -63,26 +61,8 @@ fn world_transform(index: u32) -> mat4x4<f32> {
     return transform;
 }
 
-fn inverse_matrix(matrix: mat3x3<f32>) -> mat3x3<f32> {
-    let inverse_determinant = 1.0f / dot(matrix[0], cross(matrix[1], matrix[2]));
-    let row_0 = cross(matrix[1], matrix[2]) * inverse_determinant;
-    let row_1 = cross(matrix[2], matrix[0]) * inverse_determinant;
-    let row_2 = cross(matrix[0], matrix[1]) * inverse_determinant;
-    return mat3x3<f32>(
-        vec3<f32>(row_0.x, row_1.x, row_2.x),
-        vec3<f32>(row_0.y, row_1.y, row_2.y),
-        vec3<f32>(row_0.z, row_1.z, row_2.z),
-    );
-}
-
 fn fresnel_schlick(cos_theta: f32, f0: vec3<f32>) -> vec3<f32> {
     return f0 + (vec3<f32>(1.0f) - f0) * pow(1.0f - cos_theta, 5.0f);
-}
-
-fn distribution_ggx(n_dot_h: f32, roughness: f32) -> f32 {
-    let a2 = pow(roughness, 4.0f);
-    let denominator = n_dot_h * n_dot_h * (a2 - 1.0f) + 1.0f;
-    return a2 / max(3.14159265f * denominator * denominator, 0.0001f);
 }
 
 fn geometry_schlick_ggx(n_dot_v: f32, roughness: f32) -> f32 {
@@ -100,14 +80,16 @@ fn shade_pbr(base_color: vec3<f32>, normal: vec3<f32>, view: vec3<f32>, roughnes
     let h_dot_v = max(dot(half_vector, view), 0.0f);
     let f0 = mix(vec3<f32>(0.04f), base_color, metalness);
     let fresnel = fresnel_schlick(h_dot_v, f0);
-    let specular = distribution_ggx(n_dot_h, perceptual_roughness) *
+    let a2 = pow(perceptual_roughness, 4.0f);
+    let denominator = n_dot_h * n_dot_h * (a2 - 1.0f) + 1.0f;
+    let specular = a2 / max(3.14159265f * denominator * denominator, 0.0001f) *
         geometry_schlick_ggx(n_dot_v, perceptual_roughness) * geometry_schlick_ggx(n_dot_l, perceptual_roughness) * fresnel /
         max(4.0f * n_dot_v * n_dot_l, 0.0001f);
     let diffuse = (vec3<f32>(1.0f) - fresnel) * (1.0f - metalness) * base_color / 3.14159265f;
-    let ambient = base_color * (0.22f + 0.18f * max(normal.y, 0.0f)) * (1.0f - metalness) * ao;
+    let ambient = base_color * (0.025f + 0.025f * max(normal.y, 0.0f)) * (1.0f - metalness) * ao;
     let reflection = reflect(-view, normal);
-    let sky = mix(vec3<f32>(0.06f, 0.04f, 0.03f), vec3<f32>(1.4f, 1.8f, 2.4f), reflection.y * 0.5f + 0.5f);
-    let environment_specular = sky * fresnel_schlick(n_dot_v, f0) * mix(0.15f, 0.9f, metalness) * (1.0f - perceptual_roughness * 0.45f);
+    let sky = mix(vec3<f32>(0.005f, 0.003f, 0.002f), vec3<f32>(0.12f, 0.16f, 0.22f), reflection.y * 0.5f + 0.5f);
+    let environment_specular = sky * fresnel_schlick(n_dot_v, f0) * mix(0.04f, 0.25f, metalness) * (1.0f - perceptual_roughness * 0.45f);
     var point_lighting = vec3<f32>(0.0f);
     for (var i = 0u; i < MAX_POINT_LIGHTS; i++) {
         let light = point_lights[i];
@@ -118,7 +100,7 @@ fn shade_pbr(base_color: vec3<f32>, normal: vec3<f32>, view: vec3<f32>, roughnes
         let irradiance = max(dot(normal, light_direction), 0.0f) * light.intensity / (1.0f + distance_squared);
         point_lighting += base_color * irradiance;
     }
-    return ambient + environment_specular + (diffuse + specular) * n_dot_l * vec3<f32>(4.0f) + point_lighting;
+    return ambient + environment_specular + (diffuse + specular) * n_dot_l * vec3<f32>(0.25f) + point_lighting;
 }
 
 @vertex
@@ -144,11 +126,6 @@ fn vs_main(
     let right = normalize(camera_transform[0].xyz);
     let up = normalize(camera_transform[1].xyz);
     let entity_transform = world_transform(entity_index);
-    out.scale = vec3<f32>(
-        length(entity_transform[0].xyz),
-        length(entity_transform[1].xyz),
-        length(entity_transform[2].xyz),
-    );
     // Rasterize the containment cube directly in world space. The fragment
     // shader still finds the real voxel hit, then supplies its true depth.
     let world_position = (entity_transform * vec4<f32>(pos, 1.0f)).xyz;
@@ -221,7 +198,7 @@ fn fs_main(in: VertexOutput) -> FragmentOutput {
     let camera_transform = world_transform(0u);
     let camera_position = camera_transform[3].xyz;
     let camera_direction = -normalize(camera_transform[2].xyz);
-    let scale = in.scale;
+    let scale = abs(e.scale);
     let volume_size = vec3<i32>(textureDimensions(vox));
     let repeats = select(
         select(
@@ -234,7 +211,11 @@ fn fs_main(in: VertexOutput) -> FragmentOutput {
     );
     let entity_transform = world_transform(in.idx);
     let linear_transform = mat3x3<f32>(entity_transform[0].xyz, entity_transform[1].xyz, entity_transform[2].xyz);
-    let inverse_entity_transform = inverse_matrix(linear_transform);
+    let inverse_entity_transform = transpose(mat3x3<f32>(
+        cross(linear_transform[1], linear_transform[2]),
+        cross(linear_transform[2], linear_transform[0]),
+        cross(linear_transform[0], linear_transform[1]),
+    )) * (1.0f / dot(linear_transform[0], cross(linear_transform[1], linear_transform[2])));
 
     let world_ray = normalize(in.world_position - camera_position);
     let ray_origin = inverse_entity_transform * (camera_position - entity_transform[3].xyz) + vec3<f32>(0.5f);
@@ -266,7 +247,7 @@ fn fs_main(in: VertexOutput) -> FragmentOutput {
     let world_normal = normalize(transpose(inverse_entity_transform) * hit.normal);
     return FragmentOutput(
         vec4<f32>(shade_pbr(color.rgb, world_normal, -world_ray, surface.g, surface.r, hit.distance * world_ray + camera_position, ao), color.a),
-        in.idx,
+        vec2<u32>(in.idx, u32(material)),
         depth,
     );
 }

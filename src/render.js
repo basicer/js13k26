@@ -63,7 +63,7 @@ if (DEBUG && import.meta.env.DEBUG) {
 		c.addEventListener("pointerdown", async (event) => {
 			if (event.button !== 0 || module.wantsMouse()) return;
 			const bounds = c.getBoundingClientRect();
-			const index = await pickEntity(
+			const [index] = await pickEntity(
 				((event.clientX - bounds.left) * c.width) / bounds.width,
 				((event.clientY - bounds.top) * c.height) / bounds.height,
 			);
@@ -181,7 +181,7 @@ function resizeCanvas() {
 	entityIndexTexture = d.createTexture({
 		"label": label`Entity index texture`,
 		"size": [width, height],
-		"format": "r32uint",
+		"format": "rg32uint",
 		"usage": GPUTextureUsage.RENDER_ATTACHMENT | GPUTextureUsage.COPY_SRC,
 	});
 	entityIndexView = entityIndexTexture.createView();
@@ -218,7 +218,7 @@ const pipeline = d.createRenderPipeline({
 				"format": "rgba16float",
 			},
 			{
-				"format": "r32uint",
+				"format": "rg32uint",
 			},
 		],
 	},
@@ -275,6 +275,7 @@ const lightBindGroup = BG(
 );
 
 export function render(t) {
+	if (DEBUG && debugModule) debugModule.stats.begin();
 	const now = performance.now();
 	const deltaTime = (now - lastFrameTime) / 1000;
 	lastFrameTime = now;
@@ -331,13 +332,15 @@ export function render(t) {
 	Q.writeBuffer(pointLightBuffer, 0, emptyPointLights);
 
 	const e = d.createCommandEncoder();
-	const lightPass = e.beginComputePass();
+	const lightPass = e.beginComputePass({
+		"timestampWrites": (DEBUG && debugModule) ? debugModule.stats.getTimestampWrites("compute") : undefined,
+	});
 	lightPass.setPipeline(lightPipeline);
 	lightPass.setBindGroup(0, lightBindGroup);
 	lightPass.dispatchWorkgroups(Math.ceil(ENTITY_COUNT / 64));
-	lightPass.end();
+	lightPass.end();;
 
-	const GRAPHICS_PASS_DESCRIPTOR = {
+	let pass = e.beginRenderPass({
 		"colorAttachments": [
 			{
 				"view": sceneView,
@@ -347,7 +350,7 @@ export function render(t) {
 			},
 			{
 				"view": entityIndexView,
-				"clearValue": [0xffffffff, 0, 0, 0],
+				"clearValue": [0xffffffff, 0xffffffff, 0, 0],
 				"loadOp": "clear",
 				"storeOp": "store",
 			},
@@ -358,9 +361,8 @@ export function render(t) {
 			"depthLoadOp": "clear",
 			"depthStoreOp": "store",
 		},
-	};
-
-	let pass = e.beginRenderPass(GRAPHICS_PASS_DESCRIPTOR);
+		"timestampWrites": (DEBUG && debugModule) ? debugModule.stats.getTimestampWrites("graphics") : undefined,
+	});
 	pass.setBindGroup(0, renderBindGroup);
 	pass.setPipeline(pipeline);
 	pass.setVertexBuffer(0, vertexBuffer);
@@ -381,6 +383,7 @@ export function render(t) {
 				"storeOp": "store",
 			},
 		],
+		"timestampWrites": (DEBUG && debugModule) ? debugModule.stats.getTimestampWrites("bloom") : undefined,
 	});
 	bloomPass.setPipeline(bloomPipeline);
 	bloomPass.setBindGroup(0, BG(bloomPipeline, 0, sceneView, bloomSampler));
@@ -410,13 +413,10 @@ export function render(t) {
 		debugPass.end();
 	}
 
+	if (DEBUG && debugModule) debugModule.stats.end(e);
 	Q.submit([e.finish()]);
 
-	if (DEBUG) {
-		let x = document.getElementById("fps");
-		if (x)
-			x.textContent = `FPS: ${Math.floor(1 / deltaTime)} | Time: ${Math.floor(performance.now() - now)}ms`;
-	}
+	if (DEBUG && debugModule) debugModule.stats.update();
 }
 
 export async function pickEntity(x, y) {
@@ -436,8 +436,8 @@ export async function pickEntity(x, y) {
 	);
 	Q.submit([encoder.finish()]);
 	await readback.mapAsync(GPUMapMode.READ);
-	const index = new Uint32Array(readback.getMappedRange())[0];
+	const hit = new Uint32Array(readback.getMappedRange()).slice(0, 2);
 	readback.unmap();
 	readback.destroy();
-	return index === 0xffffffff ? -1 : index;
+	return hit[0] === 0xffffffff ? [-1, -1] : hit;
 }

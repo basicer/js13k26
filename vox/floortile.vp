@@ -1,0 +1,80 @@
+// Procedural 64x4 S04 floor tile. Decorative strokes are top-layer only.
+
+// Solid dark industrial slab.
+1 FSTORE:1
+104 FSTORE:0
+0 0 0 VEC VSTORE:0
+63 3 63 VEC VSTORE:1
+STROKE
+
+// Restrict the remaining work to the exposed top voxel layer.
+0 3 0 VEC VSTORE:6
+63 3 63 VEC VSTORE:7
+
+// Neutral charcoal outer lip, dark recess and concrete panel field.
+158 FSTORE:0
+0 3 0 VEC VSTORE:0
+63 3 63 VEC VSTORE:1
+STROKE
+157 FSTORE:0
+3 3 3 VEC VSTORE:0
+60 3 60 VEC VSTORE:1
+STROKE
+160 FSTORE:0
+5 3 5 VEC VSTORE:0
+58 3 58 VEC VSTORE:1
+STROKE
+
+// Deep center seams split the surface into four panels.
+157 FSTORE:0
+31 3 5 VEC VSTORE:0
+32 3 58 VEC VSTORE:1
+STROKE
+5 3 31 VEC VSTORE:0
+58 3 32 VEC VSTORE:1
+STROKE
+
+
+// Subtle grime and diagonal abrasion inside one panel.
+2 FSTORE:1
+1 FSTORE:2
+159 FSTORE:0
+11 3 12 VEC VSTORE:0
+25 3 26 VEC VSTORE:1
+STROKE
+15 3 9 VEC VSTORE:0
+29 3 23 VEC VSTORE:1
+STROKE
+10 3 23 VEC VSTORE:0
+17 3 30 VEC VSTORE:1
+STROKE
+
+163 FSTORE:0
+12 3 27 VEC VSTORE:0
+20 3 20 VEC VSTORE:1
+STROKE
+22 3 14 VEC VSTORE:0
+28 3 9 VEC VSTORE:1
+STROKE
+
+// Recessed chips and steel fasteners.
+0 FSTORE:1
+1 FSTORE:2
+158 FSTORE:0
+14 3 16 VEC VSTORE:0
+STROKE
+24 3 27 VEC VSTORE:0
+STROKE
+27 3 13 VEC VSTORE:0
+STROKE
+178 FSTORE:0
+4 3 4 VEC VSTORE:0
+STROKE
+4 3 31 VEC VSTORE:0
+STROKE
+31 3 4 VEC VSTORE:0
+STROKE
+
+// Copy the detailed lower-left quarter across X and Z.
+MIRROR:0
+MIRROR:2

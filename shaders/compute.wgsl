@@ -19,8 +19,7 @@ var<storage, read_write> point_lights: array<PointLight>;
 const MAX_POINT_LIGHTS = 32u;
 
 fn world_transform(index: u32) -> mat4x4<f32> {
-    let entity_scale = entities[index].scale;
-    var transform = local_transform(entities[index], vec3<f32>(entity_scale.x, entity_scale.y, entity_scale.z));
+    var transform = local_transform(entities[index], entities[index].scale);
     var parent = entities[index].parent;
     var current = index;
     for (var depth = 0u; depth < 5u && parent > 0.0f; depth++) {

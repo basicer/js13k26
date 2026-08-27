@@ -61,22 +61,6 @@ $.addEventListener("keyup", (event) => {
 	heldKeys.delete(event.key.toLowerCase());
 });
 
-if (DEBUG) {
-	let x = document.createElement("div");
-	x.id = "fps";
-	Object.assign(x.style, {
-		position: "absolute",
-		top: 0,
-		right: 0,
-		color: "white",
-		backgroundColor: "rgba(0, 0, 0, 0.5)",
-		fontFamily: "monospace",
-		fontSize: "24px",
-		padding: "2px",
-	});
-	document.body.appendChild(x);
-}
-
 let step = async (dt) => {
 	render(dt);
 	requestAnimationFrame(step);

@@ -2,9 +2,19 @@ import { ImGui, ImGuiImplWeb, ImVec2, ImVec4 } from "@mori2003/jsimgui";
 import { d, c } from "../globals.js";
 import { palette } from "../palette.js";
 import { entityInspector } from "./entityInspector.js";
-import { EArray } from "../entities.js";
+import { EArray, spawn } from "../entities.js";
 
 export { selectEntity } from "./entityInspector.js";
+import Stats from 'stats-gl';
+
+export let stats = new Stats({ trackGPU: true, trackCPT: true });
+document.body.appendChild(stats.dom);
+stats.dom.style.position = 'absolute';
+stats.dom.style.top = '29px';
+stats.dom.style.left = '';
+stats.dom.style.right = '0px';
+stats.dom.style.width = '360px';
+stats.init(d);
 
 
 let initialization = false;
@@ -29,11 +39,25 @@ export function debug(passEncoder, entities, entitySize, overrides) {
 	ImGuiImplWeb.BeginRender();
     ImGui.PushFontFloat(null, 14);
     if (ImGui.BeginMainMenuBar()) {
-        if (ImGui.MenuItem("Reset")) {
-            EArray.map((e, id) => {
-                if (id > 1) e[0] = 255;
-            });
+
+        if (ImGui.BeginMenu("Scene")) {
+            if (ImGui.MenuItem("Reset")) {
+                EArray.map((e, id) => { if (id > 1) e[0] = 255; });
+            }
+            if (ImGui.MenuItem("Spheres")) {
+                EArray.map((e, id) => { if (id > 1) e[0] = 255; });
+                for (let i = 1; i < 256; i++) {
+                    let e = spawn(6);
+                    
+                    e[4] = Math.floor(i / 16);
+                    e[5] = 0;
+                    e[6] = i % 16;
+                    if (i > 5) e[19] = i;
+                }
+            }
+            ImGui.EndMenu();
         }
+
         if (ImGui.BeginMenu("Windows")) {
 
             if (ImGui.MenuItem("Entity Inspector", "", entityInspectorShown)) {
@@ -69,11 +93,11 @@ export function debug(passEncoder, entities, entitySize, overrides) {
                 srgb(palette[o] / 255),
                 srgb(palette[o + 1] / 255),
                 srgb(palette[o + 2] / 255),
-                1,
+                palette[o + 3] / 255,
             );
 
             ImGui.ColorButton(`Color ${i}`, c, 0, new ImVec2(20, 20));
-            if (i % 21 !== 0) {
+            if (i % 8 !== 0) {
                 ImGui.SameLine();
             }
         }

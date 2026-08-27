@@ -31,6 +31,7 @@
 		"quoteProps": "preserve"
 	},
 	"dependencies": {
-		"@mori2003/jsimgui": "^0.14.0"
+		"@mori2003/jsimgui": "^0.14.0",
+		"stats-gl": "^4.2.3"
 	}
 }

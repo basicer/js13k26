@@ -57,7 +57,6 @@ var voxprog = () => ({
 			: undefined,
 });
 
-
 var shader = (isBuild) => ({
 	name: "vite:shader",
 	transform: (code, id) => {
@@ -238,9 +237,8 @@ var DEBUG = true;
 				console.warn(stdErr);
 				if (exitCode === 0) {
 					stdOut = stdOut.replace(/\bconst\b/g, "let");
-					stdOut = stdOut.replace(/^\(async\(\)=>{/g, "");
-					stdOut = stdOut.replace(/}\)\(\);export{};\s*$/g, "");
-					resolve({ code: stdOut });
+					stdOut = stdOut.replace(/export{};\s*$/g, "");
+					resolve({ code: stdOut, map: null });
 				} else {
 					reject(new Error(stdErr));
 				}
