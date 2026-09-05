@@ -3,15 +3,34 @@ import { spawn } from "./entities.js";
 const solids = [];
 const ground = -30 / 64;
 
-function block(x, z, width, height, depth, material = 0, bottom = ground, solid = true) {
+function block(
+	x,
+	z,
+	width,
+	height,
+	depth,
+	material = 0,
+	bottom = ground,
+	solid = true,
+) {
 	const entity = spawn(7);
 	if (!entity) return;
 	entity.set([x, bottom + height / 2, z], 4);
 	entity.set([width, height, depth], 12);
 	// Whole panels meet both ends of every block; approximately two world units each.
-	entity.set([width, height, depth].map(size => Math.max(1, Math.round(size / 2))), 16);
+	entity.set(
+		[width, height, depth].map((size) => Math.max(1, Math.round(size / 2))),
+		16,
+	);
 	entity[19] = material;
-	if (solid) solids.push([x - width / 2, x + width / 2, z - depth / 2, z + depth / 2, bottom + height]);
+	if (solid)
+		solids.push([
+			x - width / 2,
+			x + width / 2,
+			z - depth / 2,
+			z + depth / 2,
+			bottom + height,
+		]);
 }
 
 // Open-roof yard with broad lanes between metallic bulkheads and cargo cover.
@@ -19,28 +38,47 @@ for (const side of [-1, 1]) {
 	block(side * 15.5, 0, 1, 2.8, 32);
 	block(0, side * 15.5, 30, 2.8, 1);
 }
-for (const [x, z, width, depth] of [[-6, -5, 5, 1], [5, -5, 1, 5], [-6, 2, 1, 4], [1, 8, 5, 1]]) {
+for (const [x, z, width, depth] of [
+	[-6, -5, 5, 1],
+	[5, -5, 1, 5],
+	[-6, 2, 1, 4],
+	[1, 8, 5, 1],
+]) {
 	block(x, z, width, 1.9, depth);
 	block(x, z, width + 0.08, 0.12, depth + 0.08, 248, ground + 1.9, false);
 }
-for (const [x, z] of [[5, 5], [9, 0], [-10, 9]]) {
+for (const [x, z] of [
+	[5, 5],
+	[9, 0],
+	[-10, 9],
+]) {
 	block(x, z, 2.5, 1.8, 2.5);
 	block(x, z, 2.6, 0.12, 2.6, 101, ground + 1.8, false);
 	block(x + 0.3, z + 0.2, 1.5, 1, 1.5, 0, ground + 1.92);
 }
 
 export function canStand(x, z, radius = 0.45) {
-	return Math.abs(x) <= 15 - radius && Math.abs(z) <= 15 - radius
-		&& !solids.some(([left, right, back, front]) =>
-			x > left - radius && x < right + radius && z > back - radius && z < front + radius);
+	return (
+		Math.abs(x) <= 15 - radius &&
+		Math.abs(z) <= 15 - radius &&
+		!solids.some(
+			([left, right, back, front]) =>
+				x > left - radius &&
+				x < right + radius &&
+				z > back - radius &&
+				z < front + radius,
+		)
+	);
 }
 
 export function moveActor(entity, dx, dz) {
 	// Small steps prevent tunneling; separate axes let actors slide along walls.
 	const steps = Math.max(1, Math.ceil(Math.hypot(dx, dz) / 0.2));
 	for (let i = 0; i < steps; i++) {
-		if (canStand(entity[4] + dx / steps, entity[6])) entity[4] += dx / steps;
-		if (canStand(entity[4], entity[6] + dz / steps)) entity[6] += dz / steps;
+		if (canStand(entity[4] + dx / steps, entity[6]))
+			entity[4] += dx / steps;
+		if (canStand(entity[4], entity[6] + dz / steps))
+			entity[6] += dz / steps;
 	}
 }
 
@@ -51,12 +89,18 @@ export function clearShot(x, z, targetX, targetZ) {
 export function shotFraction(x, z, targetX, targetZ, y = 1.25, targetY = y) {
 	// Intersect the shot segment against each solid box, including its height.
 	return solids.reduce((nearest, [left, right, back, front, top]) => {
-		let near = 0, far = 1;
-		for (const [origin, direction, min, max] of [[x, targetX - x, left, right], [z, targetZ - z, back, front], [y, targetY - y, ground, top]]) {
+		let near = 0,
+			far = 1;
+		for (const [origin, direction, min, max] of [
+			[x, targetX - x, left, right],
+			[z, targetZ - z, back, front],
+			[y, targetY - y, ground, top],
+		]) {
 			if (Math.abs(direction) < 0.00001) {
 				if (origin < min || origin > max) return nearest;
 			} else {
-				const a = (min - origin) / direction, b = (max - origin) / direction;
+				const a = (min - origin) / direction,
+					b = (max - origin) / direction;
 				near = Math.max(near, Math.min(a, b));
 				far = Math.min(far, Math.max(a, b));
 				if (near > far) return nearest;

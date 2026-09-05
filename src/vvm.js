@@ -43,10 +43,11 @@ export var sphere = tex("sphere");
 const sphereVoxels = new Float32Array(VOXEL_SIZE ** 3 * 4);
 // Walk the flat texture once; recover the three voxel coordinates.
 for (let i = 0; i < VOXEL_SIZE ** 3; i++) {
-	const dx = i % VOXEL_SIZE - sphereCenter;
-	const dy = (i / VOXEL_SIZE | 0) % VOXEL_SIZE - sphereCenter;
-	const dz = (i / VOXEL_SIZE ** 2 | 0) - sphereCenter;
-	if (dx * dx + dy * dy + dz * dz <= sphereRadius * sphereRadius) sphereVoxels[i * 4] = 20;
+	const dx = (i % VOXEL_SIZE) - sphereCenter;
+	const dy = (((i / VOXEL_SIZE) | 0) % VOXEL_SIZE) - sphereCenter;
+	const dz = ((i / VOXEL_SIZE ** 2) | 0) - sphereCenter;
+	if (dx * dx + dy * dy + dz * dz <= sphereRadius * sphereRadius)
+		sphereVoxels[i * 4] = 20;
 }
 buffers.set(sphere, sphereVoxels);
 
@@ -114,7 +115,8 @@ export function runByteCode(bytecode, parameter = () => 0) {
 		switch (cmd >> 3) {
 			case OP_JUMPIF: {
 				// Signed 11-bit byte offset, relative to the end of this instruction.
-				const offset = (((cmd & 7) << 8 | bytecode[pc++]) << 21) >> 21;
+				const offset =
+					((((cmd & 7) << 8) | bytecode[pc++]) << 21) >> 21;
 				if (stack.pop() !== 0) pc += offset;
 				break;
 			}
@@ -214,9 +216,14 @@ export function runByteCode(bytecode, parameter = () => 0) {
 			case OP_MIRROR: {
 				const flip = cmd >> 3 === OP_FLIP;
 				const axis = cmd & 7;
-				const a = reg_vec[flip ? 0 : 6], b = reg_vec[flip ? 1 : 7];
-				const lo = flip ? a.map((v, i) => Math.ceil(Math.min(v, b[i]))) : [...a];
-				const hi = flip ? a.map((v, i) => Math.floor(Math.max(v, b[i]))) : b;
+				const a = reg_vec[flip ? 0 : 6],
+					b = reg_vec[flip ? 1 : 7];
+				const lo = flip
+					? a.map((v, i) => Math.ceil(Math.min(v, b[i])))
+					: [...a];
+				const hi = flip
+					? a.map((v, i) => Math.floor(Math.max(v, b[i])))
+					: b;
 				const sum = flip ? lo[axis] + hi[axis] : size[axis] - 1;
 				lo[axis] = Math.max(lo[axis], Math.floor(sum / 2) + 1);
 				for (let z = lo[2]; z <= hi[2]; z++)
@@ -225,11 +232,18 @@ export function runByteCode(bytecode, parameter = () => 0) {
 							const sx = axis === 0 ? sum - x : x;
 							const sy = axis === 1 ? sum - y : y;
 							const sz = axis === 2 ? sum - z : z;
-							const target = ((z * size[1] + y) * size[0] + x) * 4;
-							const source = ((sz * size[1] + sy) * size[0] + sx) * 4;
-							for (let channel = 0; channel < (flip ? 4 : 1); channel++) {
+							const target =
+								((z * size[1] + y) * size[0] + x) * 4;
+							const source =
+								((sz * size[1] + sy) * size[0] + sx) * 4;
+							for (
+								let channel = 0;
+								channel < (flip ? 4 : 1);
+								channel++
+							) {
 								const value = buffer[target + channel];
-								buffer[target + channel] = buffer[source + channel];
+								buffer[target + channel] =
+									buffer[source + channel];
 								if (flip) buffer[source + channel] = value;
 							}
 						}
@@ -258,8 +272,10 @@ let wait = (n) => new Promise((resolve) => setTimeout(resolve, n));
 
 // Discover P0 usage through actual LOADP calls, not by scanning payload bytes.
 export function buildVoxelVariants(bytecode, run, parameter = () => 0) {
-	let usesP0 = false, p0 = 0;
-	const load = index => index === 0 ? (usesP0 = true, p0) : parameter(index);
+	let usesP0 = false,
+		p0 = 0;
+	const load = (index) =>
+		index === 0 ? ((usesP0 = true), p0) : parameter(index);
 	const first = run(bytecode, load);
 	p0 = 1;
 	return [first, usesP0 ? run(bytecode, load) : first];
@@ -268,18 +284,30 @@ export function buildVoxelVariants(bytecode, run, parameter = () => 0) {
 // Publish both variants together, then retire each old texture only once.
 export function buildModel(slot, bytecode, parameter = () => 0) {
 	// Release builds load each model once; texture retirement is editor-only.
-	if (!DEBUG) return voxT[slot] = buildVoxelVariants(bytecode, runByteCode, parameter);
+	if (!DEBUG)
+		return (voxT[slot] = buildVoxelVariants(
+			bytecode,
+			runByteCode,
+			parameter,
+		));
 	const previous = voxT[slot];
 	const created = [];
 	let variants;
 	try {
-		variants = buildVoxelVariants(bytecode, (code, load) => {
-			const texture = runByteCode(code, load);
-			created.push(texture);
-			return texture;
-		}, parameter);
+		variants = buildVoxelVariants(
+			bytecode,
+			(code, load) => {
+				const texture = runByteCode(code, load);
+				created.push(texture);
+				return texture;
+			},
+			parameter,
+		);
 	} catch (error) {
-		for (const texture of created) { buffers.delete(texture); texture.destroy(); }
+		for (const texture of created) {
+			buffers.delete(texture);
+			texture.destroy();
+		}
 		throw error;
 	}
 	voxT[slot] = variants;
@@ -309,10 +337,15 @@ export function buildModel(slot, bytecode, parameter = () => 0) {
 		buildModel(slot, Uint8Array.fromBase64(program));
 	}
 	if (DEBUG && import.meta.env.DEBUG) {
-		const { registerVoxelProgram } = await import("./debug/voxelPrograms.js");
+		const { registerVoxelProgram } =
+			await import("./debug/voxelPrograms.js");
 		for (const [slot, , source] of models) {
 			registerVoxelProgram(slot, source, (bytecode, parameters) => {
-				return buildModel(slot, bytecode, index => parameters[index] ?? 0);
+				return buildModel(
+					slot,
+					bytecode,
+					(index) => parameters[index] ?? 0,
+				);
 			});
 		}
 	}

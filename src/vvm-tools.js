@@ -64,7 +64,10 @@ export function assemble(code) {
 	for (const { at, label } of jumps) {
 		if (!labels.has(label)) throw Error(`Undefined label: ${label}`);
 		const offset = labels.get(label) - (at + 2);
-		if (offset < -1024 || offset > 1023) throw Error(`Jump to ${label} out of range: ${offset} bytes (expected -1024 to 1023).`);
+		if (offset < -1024 || offset > 1023)
+			throw Error(
+				`Jump to ${label} out of range: ${offset} bytes (expected -1024 to 1023).`,
+			);
 		const encoded = offset & 2047;
 		bytecode[at] |= encoded >> 8;
 		bytecode[at + 1] = encoded & 255;

@@ -31,8 +31,7 @@ import {
 
 let lastFrameTime = performance.now();
 let simulationTime = lastFrameTime / 1000;
-
-
+let pendingSimulationTime = 0;
 
 let debugModule;
 export const wantsKeyboard = () => debugModule?.wantsKeyboard();
@@ -54,8 +53,8 @@ if (DEBUG && import.meta.env.DEBUG) {
 			if (!bounds.width || !bounds.height) return;
 			try {
 				const [index] = await pickEntity(
-					(event.clientX - bounds.left) * c.width / bounds.width,
-					(event.clientY - bounds.top) * c.height / bounds.height,
+					((event.clientX - bounds.left) * c.width) / bounds.width,
+					((event.clientY - bounds.top) * c.height) / bounds.height,
 				);
 				if (isPaused() && index >= 0) module.selectEntity(index);
 			} catch (error) {
@@ -108,17 +107,19 @@ var entityBuffer = d.createBuffer({
 	"usage": GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_SRC,
 });
 
-const entityReadback = d.createBuffer({
-	"size": entities.byteLength,
-	"usage": GPUBufferUsage.COPY_DST | GPUBufferUsage.MAP_READ,
-});
+const entityReadbacks = GenArray(3, () => ({
+	"buffer": d.createBuffer({
+		"size": entities.byteLength,
+		"usage": GPUBufferUsage.COPY_DST | GPUBufferUsage.MAP_READ,
+	}),
+	"busy": false,
+}));
 
 const pointLightBuffer = d.createBuffer({
 	"label": label`Point lights`,
 	"size": 32 * 32,
 	"usage": GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST,
 });
-
 
 const renderState = new Float32Array(4);
 const renderStateBuffer = d.createBuffer({
@@ -210,7 +211,7 @@ function resizeCanvas() {
 
 if (window.ResizeObserver) new ResizeObserver(resizeCanvas).observe(c);
 
-$.addEventListener("resize", resizeCanvas);
+// $.addEventListener("resize", resizeCanvas);
 resizeCanvas();
 
 const pipeline = d.createRenderPipeline({
@@ -238,7 +239,10 @@ const pipeline = d.createRenderPipeline({
 			{
 				"format": "rgba16float",
 				"blend": {
-					"color": { "srcFactor": "src-alpha", "dstFactor": "one-minus-src-alpha" },
+					"color": {
+						"srcFactor": "src-alpha",
+						"dstFactor": "one-minus-src-alpha",
+					},
 					"alpha": { "dstFactor": "one-minus-src-alpha" },
 				},
 			},
@@ -279,12 +283,22 @@ const BG = (pipeline, id, ...array) =>
 		"layout": pipeline.getBindGroupLayout(id),
 		"entries": array.map((resource, binding) => ({
 			"binding": binding,
-			"resource": resource instanceof GPUBuffer ? { "buffer": resource } : resource,
+			"resource":
+				resource instanceof GPUBuffer
+					? { "buffer": resource }
+					: resource,
 		})),
 	});
 
-const simulationBindGroup = BG(simulationPipeline, 0, renderStateBuffer, entityInputBuffer, entityBuffer, pointLightBuffer, pointLightCounterBuffer);
-
+const simulationBindGroup = BG(
+	simulationPipeline,
+	0,
+	renderStateBuffer,
+	entityInputBuffer,
+	entityBuffer,
+	pointLightBuffer,
+	pointLightCounterBuffer,
+);
 
 const renderBindGroup = BG(
 	pipeline,
@@ -304,29 +318,50 @@ export async function render(t) {
 	if (!isPaused()) {
 		updateGame(deltaTime, isFlying());
 		simulationTime += deltaTime;
+		pendingSimulationTime += deltaTime;
 	}
 
 	const time = simulationTime;
 
+	const readback = entityReadbacks.find((readback) => !readback.busy);
+	if (readback) {
+		renderState.set([
+			time,
+			c.width / c.height,
+			cameraFov,
+			pendingSimulationTime,
+		]);
+		Q.writeBuffer(renderStateBuffer, 0, renderState);
+		const submitted = entities.slice();
+		Q.writeBuffer(entityInputBuffer, 0, submitted);
+		const simulation = d.createCommandEncoder();
+		simulation.clearBuffer(pointLightCounterBuffer);
+		simulation.clearBuffer(pointLightBuffer);
+		const simulationPass = simulation.beginComputePass();
+		simulationPass.setPipeline(simulationPipeline);
+		simulationPass.setBindGroup(0, simulationBindGroup);
 
-	renderState.set([time, c.width / c.height, cameraFov, isPaused() ? 0 : deltaTime]);
-	Q.writeBuffer(renderStateBuffer, 0, renderState);
-	const submitted = entities.slice();
-	Q.writeBuffer(entityInputBuffer, 0, submitted);
-	const simulation = d.createCommandEncoder();
-	simulation.clearBuffer(pointLightCounterBuffer);
-	simulation.clearBuffer(pointLightBuffer);
-	const simulationPass = simulation.beginComputePass();
-	simulationPass.setPipeline(simulationPipeline);
-	simulationPass.setBindGroup(0, simulationBindGroup);
-
-	simulationPass.dispatchWorkgroups(Math.ceil(ENTITY_COUNT / 64));
-	simulationPass.end();
-	simulation.copyBufferToBuffer(entityBuffer, 0, entityReadback, 0, entities.byteLength);
-	Q.submit([simulation.finish()]);
-	await entityReadback.mapAsync(GPUMapMode.READ);
-	mergeEntityFrame(submitted, new Float32Array(entityReadback.getMappedRange()));
-	entityReadback.unmap();
+		simulationPass.dispatchWorkgroups(Math.ceil(ENTITY_COUNT / 64));
+		simulationPass.end();
+		simulation.copyBufferToBuffer(
+			entityBuffer,
+			0,
+			readback.buffer,
+			0,
+			entities.byteLength,
+		);
+		Q.submit([simulation.finish()]);
+		readback.busy = true;
+		pendingSimulationTime = 0;
+		readback.buffer.mapAsync(GPUMapMode.READ).then(() => {
+			mergeEntityFrame(
+				submitted,
+				new Float32Array(readback.buffer.getMappedRange()),
+			);
+			readback.buffer.unmap();
+			readback.busy = false;
+		});
+	}
 
 	let canvasTexture = G.getCurrentTexture();
 	let target = canvasTexture.createView({ format: canvasSrgbFormat });
@@ -353,14 +388,20 @@ export async function render(t) {
 			"depthLoadOp": "clear",
 			"depthStoreOp": "store",
 		},
-		"timestampWrites": (DEBUG && debugModule) ? debugModule.stats.getTimestampWrites("graphics") : undefined,
+		"timestampWrites":
+			DEBUG && debugModule
+				? debugModule.stats.getTimestampWrites("graphics")
+				: undefined,
 	});
 	pass.setBindGroup(0, renderBindGroup);
 	pass.setPipeline(pipeline);
 	pass.setVertexBuffer(0, vertexBuffer);
 	pass.setIndexBuffer(indexBuffer, "uint16");
 	for (let i = 1; i < 128; i++) {
-		pass.setBindGroup(1, BG(pipeline, 1, ...voxT[i].map(texture => texture.createView())));
+		pass.setBindGroup(
+			1,
+			BG(pipeline, 1, ...voxT[i].map((texture) => texture.createView())),
+		);
 		//pass.draw(vertices.length / 2); // 6 vertices
 		pass.drawIndexed(idx.length, ENTITY_COUNT, 0, 0, i << 16);
 	}
@@ -374,7 +415,10 @@ export async function render(t) {
 				"storeOp": "store",
 			},
 		],
-		"timestampWrites": (DEBUG && debugModule) ? debugModule.stats.getTimestampWrites("bloom") : undefined,
+		"timestampWrites":
+			DEBUG && debugModule
+				? debugModule.stats.getTimestampWrites("bloom")
+				: undefined,
 	});
 	bloomPass.setPipeline(bloomPipeline);
 	bloomPass.setBindGroup(0, BG(bloomPipeline, 0, sceneView, bloomSampler));

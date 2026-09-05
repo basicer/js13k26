@@ -64,9 +64,8 @@ var zzfxm = () => ({
 		code = code.replace(/[{][^}]*[}]/gm, "{}");
 		console.log(code);
 		return `export default ${code};`;
-	}
+	},
 });
-
 
 var voxprog = (development) => {
 	let root;
@@ -101,7 +100,9 @@ var shader = (isBuild) => ({
 		try {
 			if (isBuild) code = minifyWgsl(code);
 		} catch (cause) {
-			throw new Error(`Unable to minify shader ${id}: ${cause.message}`, { cause });
+			throw new Error(`Unable to minify shader ${id}: ${cause.message}`, {
+				cause,
+			});
 		}
 		return { code: `export default ${JSON.stringify(code)};`, map: null };
 	},
@@ -132,25 +133,48 @@ var roadroller = () => ({
 			maxMemoryMB: 128,
 			modelRecipBaseCount: 10,
 			numAbbreviations: 0,
-			sparseSelectors: [0,1,2,3,6,7,8,10,13,25,28,50,112,161,163,173,182,192,197,241,243,254,390,490],
+			sparseSelectors: [
+				0, 1, 2, 3, 6, 7, 8, 10, 13, 25, 28, 50, 112, 161, 163, 173,
+				182, 192, 197, 241, 243, 254, 390, 490,
+			],
 			precision: 14,
 			recipLearningRate: 940,
 			// The packed release owns its single page; game code has its own wrapper.
 			allowFreeVars: true,
 		});
 		// Reuse the tuned model for deterministic, fast builds; opt in to retuning.
-		if (process.env.REPACK) console.log("Roadroller parameters", JSON.stringify((await packer.optimize(2)).best));
+		if (process.env.REPACK)
+			console.log(
+				"Roadroller parameters",
+				JSON.stringify((await packer.optimize(2)).best),
+			);
 		const { firstLine, secondLine } = packer.makeDecoder();
 		const code = `${firstLine}\n${secondLine}`;
-		if (/<\/script/i.test(code)) throw Error("Unsafe packed script terminator");
+		if (/<\/script/i.test(code))
+			throw Error("Unsafe packed script terminator");
 		// Decode without running the game and verify the executable syntax tree.
 		let decoded;
 		// Local bindings avoid Node VM's slow global proxy during validation.
 		const validationCode = `(function(){var ${"abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ".split("").join(",")};${code}})()`;
-		vm.runInNewContext(validationCode, { eval: value => { decoded = value; } }, { timeout: 10000 });
-		const canonical = source => JSON.stringify(parseAst(source), (key, value) =>
-			["start", "end", "raw", "loc", "range"].includes(key) ? undefined : value);
-		if (typeof decoded !== "string" || canonical(decoded) !== canonical(data)) {
+		vm.runInNewContext(
+			validationCode,
+			{
+				eval: (value) => {
+					decoded = value;
+				},
+			},
+			{ timeout: 10000 },
+		);
+		const canonical = (source) =>
+			JSON.stringify(parseAst(source), (key, value) =>
+				["start", "end", "raw", "loc", "range"].includes(key)
+					? undefined
+					: value,
+			);
+		if (
+			typeof decoded !== "string" ||
+			canonical(decoded) !== canonical(data)
+		) {
 			throw Error("Packed game failed its code round-trip check");
 		}
 
@@ -270,7 +294,10 @@ var zip = () => ({
 				"KB",
 			);
 			console.log(13312 - stats.size, "bytes left");
-			if (stats.size > 13312) throw new Error(`Release exceeds 13 KiB by ${stats.size - 13312} bytes`);
+			if (stats.size > 13312)
+				throw new Error(
+					`Release exceeds 13 KiB by ${stats.size - 13312} bytes`,
+				);
 		} catch (err) {
 			throw err;
 		}

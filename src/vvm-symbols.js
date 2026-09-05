@@ -111,7 +111,8 @@ export function resolveVoxelConstants(source) {
 			return line.replace(/\/\/.*$/, "").replace(/\S+/g, (token) => {
 				if (jumpTarget) {
 					jumpTarget = false;
-					if (!/^[A-Za-z_][A-Za-z_0-9]*$/.test(token)) fail(`Invalid jump label: ${token}`);
+					if (!/^[A-Za-z_][A-Za-z_0-9]*$/.test(token))
+						fail(`Invalid jump label: ${token}`);
 					return token;
 				}
 				if (/^[A-Za-z_][A-Za-z_0-9]*:$/.test(token)) return token;

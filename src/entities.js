@@ -23,7 +23,10 @@ export const cameraRotation = cameraEntity.subarray(8, 11);
 export const entityOverrides = new Map();
 
 export const EArray = GenArray(ENTITY_COUNT, (i) => {
-	let arr = entities.subarray(i * ENTITY_DATA_SIZE, (i + 1) * ENTITY_DATA_SIZE);
+	let arr = entities.subarray(
+		i * ENTITY_DATA_SIZE,
+		(i + 1) * ENTITY_DATA_SIZE,
+	);
 	arr.id = i;
 	return arr;
 });
@@ -48,13 +51,12 @@ export const spawn = (kind) => {
 	e[12] = e[13] = e[14] = 1;
 	e[16] = e[17] = e[18] = -2;
 	return e;
-}
-
+};
 
 const floor = spawn(5);
-floor[5] = -32/64;
+floor[5] = -32 / 64;
 floor[12] = 32;
-floor[13] = 4/64;
+floor[13] = 4 / 64;
 floor[14] = 32;
 
 let light = spawn(6);

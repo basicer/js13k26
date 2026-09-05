@@ -3,7 +3,8 @@ if (import.meta.env.DEBUG) {
 }
 
 // 56% more magnification than the original 60-degree view (1.3 * 1.2).
-export const cameraFov = Math.atan(Math.tan(Math.PI / 6) / 1.56) * 360 / Math.PI;
+export const cameraFov =
+	(Math.atan(Math.tan(Math.PI / 6) / 1.56) * 360) / Math.PI;
 
 export let $ = document,
 	c = DEBUG
@@ -12,7 +13,9 @@ export let $ = document,
 	/** @type {GPUAdapter} */
 	a = await navigator.gpu.requestAdapter(),
 	/** @type {GPUDevice} */
-	d = await a.requestDevice( DEBUG ? {"requiredFeatures": ["timestamp-query"]} : {}),
+	d = await a.requestDevice(
+		DEBUG ? { "requiredFeatures": ["timestamp-query"] } : {},
+	),
 	Q = d.queue,
 	/** @type {GPUCanvasContext} */
 	G = c.getContext("webgpu", {

@@ -92,43 +92,41 @@ test("GPU readback publishes movement and expiry but preserves concurrent CPU ed
 	assert.equal(vm.runInContext("spawn(7).id === dying.id", context), true);
 });
 
-test("simulation dispatch finishes and merges readback before drawing; pause sends zero dt", async () => {
+test("simulation readback does not block rendering and preserves concurrent edits", async () => {
 	const source = readFileSync(new URL("../src/render.js", import.meta.url), "utf8");
 	const entitySource = readFileSync(new URL("../src/entities.js", import.meta.url), "utf8");
-	for (const paused of [false, true]) {
-		const calls = [];
-		let finishReadback, uploaded;
-		const context = vm.createContext({ GenArray: (n, fn) => Array.from({ length: n }, (_, i) => fn(i)) });
-		vm.runInContext(entitySource.replace(/^import .*;\r?\n/gm, "").replaceAll("export ", ""), context);
-		const result = new Float32Array(vm.runInContext("entities.length", context));
-		const readback = {
-			mapAsync: () => new Promise(resolve => { finishReadback = resolve; calls.push("map"); }),
-			getMappedRange: () => result.buffer,
-			unmap: () => calls.push("unmap"),
-		};
-		Object.assign(context, {
-			time: 1, deltaTime: .05, c: { width: 800, height: 600 }, cameraFov: 60,
-			isPaused: () => paused, renderState: new Float32Array(4), renderStateBuffer: {},
-			entityInputBuffer: {}, pointLightCounterBuffer: {}, pointLightBuffer: {}, entityBuffer: {}, entityReadback: readback, simulationPipeline: {}, simulationBindGroup: {},
-			GPUMapMode: { READ: 1 },
-			Q: { writeBuffer: (_, offset, data) => { uploaded = data; }, submit: () => calls.push("submit") },
-			d: { createCommandEncoder: () => ({
-				clearBuffer: () => calls.push("clear"),
-				beginComputePass: () => ({ setPipeline() {}, setBindGroup() {},
-					dispatchWorkgroups: n => { assert.equal(n, 30); calls.push("dispatch"); }, end() {} }),
-				copyBufferToBuffer: () => calls.push("copy"), finish() {},
-			}) },
-		});
-		const operation = vm.runInContext(`(async () => {
-			${source.slice(source.indexOf("\trenderState.set("), source.indexOf("\tlet canvasTexture ="))}
-		})()`, context);
-		assert.deepEqual(calls, ["clear", "clear", "dispatch", "copy", "submit", "map"]);
-		assert.ok(Math.abs(context.renderState[3] - (paused ? 0 : .05)) < 1e-8);
-		result.set(uploaded);
-		vm.runInContext("EArray[1][4] = 123", context);
-		finishReadback();
-		await operation;
-		assert.equal(calls.at(-1), "unmap");
-		assert.equal(vm.runInContext("EArray[1][4]", context), 123);
-	}
+	const calls = [];
+	let finishReadback, uploaded;
+	const context = vm.createContext({ GenArray: (n, fn) => Array.from({ length: n }, (_, i) => fn(i)) });
+	vm.runInContext(entitySource.replace(/^import .*;\r?\n/gm, "").replaceAll("export ", ""), context);
+	const result = new Float32Array(vm.runInContext("entities.length", context));
+	const readback = {
+		mapAsync: () => new Promise(resolve => { finishReadback = resolve; calls.push("map"); }),
+		getMappedRange: () => result.buffer,
+		unmap: () => calls.push("unmap"),
+	};
+	Object.assign(context, {
+		time: 1, c: { width: 800, height: 600 }, cameraFov: 60,
+		pendingSimulationTime: .05, renderState: new Float32Array(4), renderStateBuffer: {},
+		entityInputBuffer: {}, pointLightCounterBuffer: {}, pointLightBuffer: {}, entityBuffer: {}, entityReadbacks: [{ buffer: readback, busy: false }], simulationPipeline: {}, simulationBindGroup: {},
+		GPUMapMode: { READ: 1 },
+		Q: { writeBuffer: (_, offset, data) => { uploaded = data; }, submit: () => calls.push("submit") },
+		d: { createCommandEncoder: () => ({
+			clearBuffer: () => calls.push("clear"),
+			beginComputePass: () => ({ setPipeline() {}, setBindGroup() {},
+				dispatchWorkgroups: n => { assert.equal(n, 30); calls.push("dispatch"); }, end() {} }),
+			copyBufferToBuffer: () => calls.push("copy"), finish() {},
+		}) },
+	});
+	vm.runInContext(source.slice(source.indexOf("\tconst readback ="), source.indexOf("\n\tlet canvasTexture =")), context);
+	assert.deepEqual(calls, ["clear", "clear", "dispatch", "copy", "submit", "map"]);
+	assert.ok(Math.abs(context.renderState[3] - .05) < 1e-8);
+	assert.equal(context.entityReadbacks[0].busy, true);
+	result.set(uploaded);
+	vm.runInContext("EArray[1][4] = 123", context);
+	finishReadback();
+	await Promise.resolve();
+	assert.equal(calls.at(-1), "unmap");
+	assert.equal(context.entityReadbacks[0].busy, false);
+	assert.equal(vm.runInContext("EArray[1][4]", context), 123);
 });

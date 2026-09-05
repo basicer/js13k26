@@ -9,7 +9,11 @@ import {
 	canvasSrgbFormat,
 } from "./globals.js";
 import { render, wantsKeyboard, isFlying, isPaused } from "./render.js";
-import { reloadMarineGun, selectMarineWeapon, toggleMarineFlashlight } from "./game.js";
+import {
+	reloadMarineGun,
+	selectMarineWeapon,
+	toggleMarineFlashlight,
+} from "./game.js";
 
 import * as sound from "./sfx.js";
 import { zzfxX } from "../vendor/zzfx.js";
@@ -20,7 +24,6 @@ Object.assign(c.style, {
 	left: 0,
 	width: "100%",
 	height: "100%",
-	imageRendering: "pixelated",
 });
 
 G.configure({
@@ -31,7 +34,8 @@ G.configure({
 
 if (DEBUG) console.log("HI");
 
-const gameKey = key => key.startsWith("arrow") || "wasdqerfgh".includes(key) || key === "shift";
+const gameKey = (key) =>
+	key.startsWith("arrow") || "wasdqerfgh".includes(key) || key === "shift";
 
 $.addEventListener("keydown", (event) => {
 	const key = event.key.toLowerCase();
@@ -40,23 +44,17 @@ $.addEventListener("keydown", (event) => {
 		return;
 	}
 	if (/^[123]$/.test(key)) {
-		if (!event.repeat && !isPaused() && !isFlying()) selectMarineWeapon(Number(key));
+		if (!event.repeat && !isPaused() && !isFlying())
+			selectMarineWeapon(Number(key));
 		event.preventDefault();
 		return;
 	}
-	if (event.repeat || !gameKey(key))
-		return;
+	if (event.repeat || !gameKey(key)) return;
 
-	// Sound audition keys belong to the debug build.
-	if (DEBUG && event.key === "g") {
-		sound.magic();
+	if (!isPaused() && !isFlying()) {
+		if (key === "r") reloadMarineGun();
+		if (key === "f") toggleMarineFlashlight();
 	}
-	if (DEBUG && event.key === "h") {
-		sound.gunshot();
-	}
-	if (!isPaused() && !isFlying() && key === "r") reloadMarineGun();
-	if (!isPaused() && !isFlying() && key === "f") toggleMarineFlashlight();
-	// window.x = magic();
 
 	event.preventDefault();
 	heldKeys.add(key);
@@ -68,8 +66,7 @@ $.addEventListener("keyup", (event) => {
 		heldKeys.delete(key);
 		return;
 	}
-	if (!gameKey(key))
-		return;
+	if (!gameKey(key)) return;
 	event.preventDefault();
 	heldKeys.delete(key);
 });
@@ -80,7 +77,6 @@ let step = async (dt) => {
 };
 if (DEBUG) console.log("Starting render loop");
 step(performance.now());
-
 
 // Queue the track once; browsers that block autoplay resume on first input.
 if (!DEBUG) sound.music1()["loop"] = true;
