@@ -2,7 +2,7 @@ import { GenArray } from "./globals.js";
 
 export const ENTITY_DATA_SIZE = 28; // (in floats)
 // Types 128–253 are transparent aliases of type & 127; 254/255 remain reserved.
-// Slot 3 is dissolve (0 = intact, 1 = fully affected), matching Entity in structs.wgsl.
+// Slot 3 is dissolve (0 = intact, 1 = fully affected), matching Entity in common.wgsl.
 // Slot 7 is transparency (0 = opaque, 1 = invisible); spawn resets both to zero.
 // Slot 11 is dissolve palette (0 = remove chunks, otherwise replace their material).
 // Slot 15 selects voxel model variant 0 or 1.

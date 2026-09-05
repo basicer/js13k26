@@ -19,7 +19,7 @@ const [marineLegs, marineBody, marineArms, marineGun] = marineParts;
 marineLegs[2] = marineBody[2] = player.id;
 marineArms[2] = marineBody.id;
 marineGun[2] = marineArms.id;
-marineGun[1] = 12;
+marineGun[1] = 8.4;
 marineGun[24] = Math.PI / 6; // 30-degree flashlight cone along the gun's +Z.
 
 for (const part of marineParts) {
@@ -86,7 +86,7 @@ function temporarySphere(x, y, z, scale, material, light, lifetime, velocity, tr
 }
 
 export function toggleMarineFlashlight() {
-	marineGun[1] = marineGun[1] ? 0 : 12;
+	marineGun[1] = marineGun[1] ? 0 : 8.4;
 	sound.emptyClick();
 }
 

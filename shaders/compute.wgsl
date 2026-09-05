@@ -1,31 +1,18 @@
-#import "structs.wgsl"
+// Read a fixed input snapshot; write each result once. Parent light transforms
+// predict the same step from that snapshot, independent of workgroup ordering.
+@group(0) @binding(2) var<storage, read_write> mutable_entities: array<Entity>;
+@group(0) @binding(3) var<storage, read_write> mutable_lights: array<SpotLight>;
+@group(0) @binding(4) var<storage, read_write> light_count: atomic<u32>;
 
-struct PointLightCounter {
-    count: atomic<u32>,
-};
-
-@group(0) @binding(0)
-var<storage, read_write> entities: array<Entity>;
-@group(0) @binding(1)
-var<storage, read_write> point_light_counter: PointLightCounter;
-@group(0) @binding(2)
-var<storage, read_write> point_lights: array<SpotLight>;
-
-@group(0) @binding(3)
-var<uniform> frame: vec4<f32>;
-
-@compute @workgroup_size(64)
-fn update_entities(@builtin(global_invocation_id) id: vec3<u32>) {
-    if (id.x >= arrayLength(&entities) || frame.w == 0.0f) { return; }
-    var entity = entities[id.x];
-    if (entity.kind == 255.0f) { return; }
-    let dt = frame.w;
+fn step_entity(input: Entity, dt: f32) -> Entity {
+    var entity = input;
+    if (entity.kind == 255.0f || dt == 0.0f) { return entity; }
     if (entity.ttl != 0x7f800000u) {
         let ttl = bitcast<f32>(entity.ttl) - dt;
         if (ttl < 0.0f) {
-            entities[id.x] = Entity();
-            entities[id.x].kind = 255.0f;
-            return;
+            entity = Entity();
+            entity.kind = 255.0f;
+            return entity;
         }
         entity.ttl = bitcast<u32>(ttl);
     }
@@ -39,38 +26,20 @@ fn update_entities(@builtin(global_invocation_id) id: vec3<u32>) {
             entity.velocity.y = 0.0f;
         }
     }
-    entities[id.x] = entity;
-}
-
-const MAX_POINT_LIGHTS = 32u;
-
-fn world_transform(index: u32) -> mat4x4<f32> {
-    var transform = local_transform(entities[index], entities[index].scale);
-    var parent = entities[index].parent;
-    var current = index;
-    for (var depth = 0u; depth < 5u && parent > 0.0f; depth++) {
-        let parent_index = u32(parent);
-        if (parent_index >= arrayLength(&entities) || parent_index == current) { break; }
-        transform = local_transform(entities[parent_index], entities[parent_index].scale) * transform;
-        current = parent_index;
-        parent = entities[parent_index].parent;
-    }
-    return transform;
+    return entity;
 }
 
 @compute @workgroup_size(64)
-fn build_point_lights(@builtin(global_invocation_id) id: vec3<u32>) {
-    let entity_index = id.x;
-    if (entity_index >= arrayLength(&entities)) { return; }
-
-    let entity = entities[entity_index];
+fn update_entities(@builtin(global_invocation_id) id: vec3<u32>) {
+    if (id.x >= arrayLength(&entities)) { return; }
+    let entity = step_entity(entities[id.x], render_state.dt);
+    mutable_entities[id.x] = entity;
     if (entity.kind == 255.0f || entity.point_light <= 0.0f) { return; }
-
-    let light_index = atomicAdd(&point_light_counter.count, 1u);
-    if (light_index < MAX_POINT_LIGHTS) {
-        let transform = world_transform(entity_index);
+    let index = atomicAdd(&light_count, 1u);
+    if (index < MAX_POINT_LIGHTS) {
+        let transform = world_transform(id.x, render_state.dt);
         let axis = transform[2].xyz;
-        point_lights[light_index] = SpotLight(transform[3].xyz, entity.point_light,
+        mutable_lights[index] = SpotLight(transform[3].xyz, entity.point_light,
             axis / max(length(axis), 0.000001f), cos(clamp(entity.light_angle, 0.0f, 6.283185307f) * 0.5f));
     }
 }

@@ -33,24 +33,12 @@ if (!strings.some(text => text.includes("fn vs_main("))) {
 	strings.length = 0;
 	walk(parseAst(decoded));
 }
-for (const [file, entrypoint] of [
-	["shader", "vs_main"],
-	["post", "vs_post"],
-	["compute", "build_point_lights"],
-]) {
-	const found = strings.filter((text) => text.includes(`fn ${entrypoint}(`));
-	assert.equal(found.length, 1, `Expected one bundled ${file} shader`);
-	const source = fs
-		.readFileSync(
-			new URL(`../shaders/${file}.wgsl`, import.meta.url),
-			"utf8",
-		)
-		.replace(/^#import "([^"]*)".*$/gm, (_, name) =>
-			fs.readFileSync(
-				new URL(`../shaders/${name}`, import.meta.url),
-				"utf8",
-			),
-		);
-	checkShader(source, found[0]);
-	console.log(`${file}: bundled shader matches original compiler output`);
-}
+const found = strings.filter(text => text.includes('fn vs_main('));
+assert.equal(found.length, 1, 'Expected one bundled unified shader');
+for (const entry of ['vs_main', 'fs_main', 'vs_post', 'fs_post', 'update_entities'])
+  assert.ok(found[0].includes('fn ' + entry + '('), 'Missing entry point: ' + entry);
+const source = fs.readFileSync(new URL('../shaders/shader.wgsl', import.meta.url), 'utf8')
+  .replace(/^#import "([^"]*)".*$/gm, (_, name) =>
+    fs.readFileSync(new URL(`../shaders/${name}`, import.meta.url), 'utf8'));
+checkShader(source, found[0]);
+console.log('Unified shader: all five entry points match original compiler output');

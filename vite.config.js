@@ -99,18 +99,7 @@ var shader = (isBuild) => ({
 		});
 
 		try {
-			if (isBuild) {
-				// Give shared structs and transforms identical names in both shaders.
-				const files = ["shader.wgsl", "compute.wgsl"];
-				const index = files.indexOf(path.basename(id));
-				if (index < 0) code = minifyWgsl(code);
-				else {
-					const separator = "const SHADER_BOUNDARY=0;";
-					const sources = files.map(file => readFileSync(path.resolve(path.dirname(id), file), "utf8")
-						.replace(/^#import "([^"]*)".*$/gm, (_, file) => readFileSync(path.resolve(path.dirname(id), file), "utf8")));
-					code = minifyWgsl(sources.join(separator), { preserveNames: ["SHADER_BOUNDARY"] }).split(separator)[index];
-				}
-			}
+			if (isBuild) code = minifyWgsl(code);
 		} catch (cause) {
 			throw new Error(`Unable to minify shader ${id}: ${cause.message}`, { cause });
 		}

@@ -1,3 +1,4 @@
+// Postprocess: 0=scene texture, 1=sampler.
 struct PostOutput {
     @builtin(position) clip_position: vec4<f32>,
 };

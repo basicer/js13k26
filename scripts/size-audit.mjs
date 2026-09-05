@@ -77,7 +77,7 @@ for (const n of functions.filter(n => text(n).includes('.every(') && text(n).inc
 for (const n of nodes.filter(n => n.type === 'TemplateLiteral' || n.type === 'Literal')) {
   const s = text(n);
   if (s.includes('@vertex') || s.includes('@compute')) {
-    tag(n.start, n.end, s.includes('vs_main') ? 'Shader: voxel renderer' : s.includes('vs_post') ? 'Shader: postprocess' : 'Shader: entity/light compute');
+    tag(n.start, n.end, s.includes('vs_main') && s.includes('vs_post') ? 'Shader: unified' : s.includes('vs_main') ? 'Shader: voxel renderer' : s.includes('vs_post') ? 'Shader: postprocess' : 'Shader: entity/light compute');
   }
 }
 for (const name of ['marine-legs', 'marine-body', 'marine-arms', 'marine-gun', 'unicorn', 'floortile', 'walltile']) {

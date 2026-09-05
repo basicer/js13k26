@@ -6,7 +6,7 @@ import { fixtures } from "./wgsl-minify.fixtures.js";
 
 import { checkShader as check } from "./wgsl-compiler-check.js";
 
-for (const name of ["shader", "post", "compute"]) {
+for (const name of ["shader"]) {
 	test(`${name}: unchanged compiler output`, () => {
 		const source = fs
 			.readFileSync(

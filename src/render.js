@@ -10,8 +10,6 @@ import {
 	label,
 } from "./globals.js";
 import shaderCode from "../shaders/shader.wgsl";
-import computeShaderCode from "../shaders/compute.wgsl";
-import postShaderCode from "../shaders/post.wgsl";
 import { palette } from "./palette.js";
 import {
 	entities,
@@ -34,7 +32,7 @@ import {
 let lastFrameTime = performance.now();
 let simulationTime = lastFrameTime / 1000;
 
-const MAX_POINT_LIGHTS = 32;
+
 
 let debugModule;
 export const wantsKeyboard = () => debugModule?.wantsKeyboard();
@@ -96,10 +94,18 @@ const vertices = new Float32Array(
 	GenArray(24, (i) => (((i / 3) >> (i % 3)) & 1) * 2 - 1),
 );
 
+const entityInputBuffer = d.createBuffer({
+	"size": entities.byteLength,
+	"usage": GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST,
+});
+const pointLightCounterBuffer = d.createBuffer({
+	"size": 4,
+	"usage": GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST,
+});
 var entityBuffer = d.createBuffer({
 	"label": label`Entities`,
 	"size": entities.byteLength,
-	"usage": GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST | GPUBufferUsage.COPY_SRC,
+	"usage": GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_SRC,
 });
 
 const entityReadback = d.createBuffer({
@@ -107,17 +113,12 @@ const entityReadback = d.createBuffer({
 	"usage": GPUBufferUsage.COPY_DST | GPUBufferUsage.MAP_READ,
 });
 
-const pointLightCounterBuffer = d.createBuffer({
-	"label": label`Point light counter`,
-	"size": 4,
-	"usage": GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST,
-});
 const pointLightBuffer = d.createBuffer({
 	"label": label`Point lights`,
-	"size": MAX_POINT_LIGHTS * 32,
+	"size": 32 * 32,
 	"usage": GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST,
 });
-const emptyPointLights = new Float32Array(MAX_POINT_LIGHTS * 8);
+
 
 const renderState = new Float32Array(4);
 const renderStateBuffer = d.createBuffer({
@@ -162,11 +163,7 @@ let idx = Uint16Array.from("013032467475051045237276026064157173", Number);
 Q.writeBuffer(vertexBuffer, /*bufferOffset=*/ 0, vertices);
 Q.writeBuffer(indexBuffer, /*bufferOffset=*/ 0, idx);
 
-const [shader, postShader, lightShader] = [
-	shaderCode,
-	postShaderCode,
-	computeShaderCode,
-].map((code) => d.createShaderModule({ "code": code }));
+const shader = d.createShaderModule({ "code": shaderCode });
 
 let scaleDown = 0;
 function resizeCanvas() {
@@ -220,6 +217,7 @@ const pipeline = d.createRenderPipeline({
 	"layout": "auto",
 	"vertex": {
 		"module": shader,
+		"entryPoint": "vs_main",
 		"buffers": [
 			{
 				"arrayStride": 12,
@@ -235,6 +233,7 @@ const pipeline = d.createRenderPipeline({
 	},
 	"fragment": {
 		"module": shader,
+		"entryPoint": "fs_main",
 		"targets": [
 			{
 				"format": "rgba16float",
@@ -259,19 +258,16 @@ const pipeline = d.createRenderPipeline({
 
 const bloomPipeline = d.createRenderPipeline({
 	"layout": "auto",
-	"vertex": { "module": postShader },
+	"vertex": { "module": shader, "entryPoint": "vs_post" },
 	"fragment": {
-		"module": postShader,
+		"module": shader,
+		"entryPoint": "fs_post",
 		"targets": [{ "format": canvasSrgbFormat }],
 	},
 });
 const simulationPipeline = d.createComputePipeline({
 	"layout": "auto",
-	"compute": { "module": lightShader, "entryPoint": "update_entities" },
-});
-const lightPipeline = d.createComputePipeline({
-	"layout": "auto",
-	"compute": { "module": lightShader, "entryPoint": "build_point_lights" },
+	"compute": { "module": shader },
 });
 const bloomSampler = d.createSampler({
 	"magFilter": "linear",
@@ -287,13 +283,7 @@ const BG = (pipeline, id, ...array) =>
 		})),
 	});
 
-const simulationBindGroup = d.createBindGroup({
-	"layout": simulationPipeline.getBindGroupLayout(0),
-	"entries": [
-		{ "binding": 0, "resource": { "buffer": entityBuffer } },
-		{ "binding": 3, "resource": { "buffer": renderStateBuffer } },
-	],
-});
+const simulationBindGroup = BG(simulationPipeline, 0, renderStateBuffer, entityInputBuffer, entityBuffer, pointLightBuffer, pointLightCounterBuffer);
 
 
 const renderBindGroup = BG(
@@ -304,14 +294,6 @@ const renderBindGroup = BG(
 	paletteTexture.createView(),
 	pointLightBuffer,
 );
-const lightBindGroup = BG(
-	lightPipeline,
-	0,
-	entityBuffer,
-	pointLightCounterBuffer,
-	pointLightBuffer,
-);
-
 export async function render(t) {
 	if (DEBUG && debugModule) debugModule.stats.begin();
 	const now = performance.now();
@@ -330,8 +312,10 @@ export async function render(t) {
 	renderState.set([time, c.width / c.height, cameraFov, isPaused() ? 0 : deltaTime]);
 	Q.writeBuffer(renderStateBuffer, 0, renderState);
 	const submitted = entities.slice();
-	Q.writeBuffer(entityBuffer, 0, submitted);
+	Q.writeBuffer(entityInputBuffer, 0, submitted);
 	const simulation = d.createCommandEncoder();
+	simulation.clearBuffer(pointLightCounterBuffer);
+	simulation.clearBuffer(pointLightBuffer);
 	const simulationPass = simulation.beginComputePass();
 	simulationPass.setPipeline(simulationPipeline);
 	simulationPass.setBindGroup(0, simulationBindGroup);
@@ -346,17 +330,8 @@ export async function render(t) {
 
 	let canvasTexture = G.getCurrentTexture();
 	let target = canvasTexture.createView({ format: canvasSrgbFormat });
-	Q.writeBuffer(pointLightCounterBuffer, 0, new Uint32Array(1));
-	Q.writeBuffer(pointLightBuffer, 0, emptyPointLights);
 
 	const e = d.createCommandEncoder();
-	const lightPass = e.beginComputePass((DEBUG && debugModule) ? {
-		"timestampWrites": debugModule.stats.getTimestampWrites("compute"),
-	} : {});
-	lightPass.setPipeline(lightPipeline);
-	lightPass.setBindGroup(0, lightBindGroup);
-	lightPass.dispatchWorkgroups(Math.ceil(ENTITY_COUNT / 64));
-	lightPass.end();;
 
 	let pass = e.beginRenderPass({
 		"colorAttachments": [

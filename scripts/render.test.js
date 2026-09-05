@@ -109,10 +109,11 @@ test("simulation dispatch finishes and merges readback before drawing; pause sen
 		Object.assign(context, {
 			time: 1, deltaTime: .05, c: { width: 800, height: 600 }, cameraFov: 60,
 			isPaused: () => paused, renderState: new Float32Array(4), renderStateBuffer: {},
-			entityBuffer: {}, entityReadback: readback, simulationPipeline: {}, simulationBindGroup: {},
+			entityInputBuffer: {}, pointLightCounterBuffer: {}, pointLightBuffer: {}, entityBuffer: {}, entityReadback: readback, simulationPipeline: {}, simulationBindGroup: {},
 			GPUMapMode: { READ: 1 },
 			Q: { writeBuffer: (_, offset, data) => { uploaded = data; }, submit: () => calls.push("submit") },
 			d: { createCommandEncoder: () => ({
+				clearBuffer: () => calls.push("clear"),
 				beginComputePass: () => ({ setPipeline() {}, setBindGroup() {},
 					dispatchWorkgroups: n => { assert.equal(n, 30); calls.push("dispatch"); }, end() {} }),
 				copyBufferToBuffer: () => calls.push("copy"), finish() {},
@@ -121,7 +122,7 @@ test("simulation dispatch finishes and merges readback before drawing; pause sen
 		const operation = vm.runInContext(`(async () => {
 			${source.slice(source.indexOf("\trenderState.set("), source.indexOf("\tlet canvasTexture ="))}
 		})()`, context);
-		assert.deepEqual(calls, ["dispatch", "copy", "submit", "map"]);
+		assert.deepEqual(calls, ["clear", "clear", "dispatch", "copy", "submit", "map"]);
 		assert.ok(Math.abs(context.renderState[3] - (paused ? 0 : .05)) < 1e-8);
 		result.set(uploaded);
 		vm.runInContext("EArray[1][4] = 123", context);
