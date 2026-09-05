@@ -1,8 +1,14 @@
-import { COMMAND_NAMES, OP_PUSHI } from "./vvm-const.js";
+import {
+	COMMAND_NAMES,
+	OP_PUSHI,
+	OP_VEC,
+	OP_VSTORE,
+	OP_VSTORE3,
+} from "./vvm-const.js";
+import { resolveVoxelConstants } from "./vvm-symbols.js";
 
 export function assemble(code) {
-	code = code.replace(/\/\/.*$/gim, "");
-	console.log("assembling", code);
+	code = resolveVoxelConstants(code);
 	let cmds = code.trim().split(/\s+/);
 	let bytecode = [];
 	for (let i = 0; i < cmds.length; i++) {
@@ -23,9 +29,21 @@ export function assemble(code) {
 			i--;
 			continue;
 		} else {
-			bytecode.push(
-				(COMMAND_NAMES[parts[0].toLowerCase()] << 3) | parts[1],
-			);
+			let op = COMMAND_NAMES[parts[0].toLowerCase()],
+				arg = Number(parts[1] || 0);
+			// Fuse at the token level so literal payload bytes can never match opcodes.
+			const next = cmds[i + 1]?.split(":");
+			if (
+				op === OP_VEC &&
+				arg === 0 &&
+				next &&
+				COMMAND_NAMES[next[0].toLowerCase()] === OP_VSTORE
+			) {
+				op = OP_VSTORE3;
+				arg = Number(next[1] || 0);
+				i++;
+			}
+			bytecode.push((op << 3) | arg);
 		}
 	}
 	let result = Uint8Array.from(bytecode);

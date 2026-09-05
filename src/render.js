@@ -29,6 +29,7 @@ let lastFrameTime = performance.now();
 const MAX_POINT_LIGHTS = 32;
 
 let debugModule;
+export const wantsKeyboard = () => debugModule?.wantsKeyboard();
 let cameraDragPointerId = null;
 
 if (DEBUG && import.meta.env.DEBUG) {

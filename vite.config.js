@@ -1,11 +1,12 @@
 import { defineConfig } from "vite";
 import path from "node:path";
 import { readdir, stat, readFile, writeFile } from "node:fs/promises";
-import { readFileSync, writeFileSync } from "node:fs";
+import { readFileSync } from "node:fs";
 import { execFileSync } from "node:child_process";
 import { Packer } from "roadroller";
 import ClosureCompiler from "google-closure-compiler";
 import { assemble } from "./src/vvm-tools.js";
+import { minifyWgsl } from "./scripts/wgsl-minify.js";
 
 import ect from "ect-bin";
 import advzip from "advzip-bin";
@@ -17,7 +18,8 @@ export default defineConfig(({ command, mode }) => {
 		base: "./",
 		plugins: [
 			dds(),
-			voxprog(),
+			zzfxm(),
+			voxprog(mode === "development"),
 			shader(pack),
 			...(pack ? [closure(), roadroller(), zip()] : []),
 		],
@@ -49,55 +51,52 @@ var dds = () => ({
 			: undefined,
 });
 
-var voxprog = () => ({
-	name: "vite:voxprog",
-	load: (id) =>
-		/\.vp$/.test(id)
-			? `export default "${Buffer.from(assemble(readFileSync(id, "utf-8"))).toString("base64")}";`
-			: undefined,
+var zzfxm = () => ({
+	name: "vite:zzfxm",
+	load: (id) => {
+		if (!/\.zzfxm$/.test(id)) return undefined;
+		let code = readFileSync(id).toString("utf-8");
+		code = code.replace(/[{][^}]*[}]/gm, "{}");
+		console.log(code);
+		return `export default ${code};`;
+	}
 });
+
+
+var voxprog = (development) => {
+	let root;
+	return {
+		name: "vite:voxprog",
+		configResolved(config) {
+			root = config.root;
+		},
+		load(id) {
+			if (!/\.vp$/.test(id)) return;
+			const source = readFileSync(id, "utf8");
+			const file = path.relative(root, id).replaceAll("\\", "/");
+			const metadata = development
+				? JSON.stringify({ file, source })
+				: "undefined";
+			return `export default "${Buffer.from(assemble(source)).toString("base64")}"; export const debugSource = ${metadata};`;
+		},
+	};
+};
 
 var shader = (isBuild) => ({
 	name: "vite:shader",
 	transform: (code, id) => {
 		if (!id.endsWith(".wgsl")) return;
 
-		/*
-		code = code.replace(/^#import "([^"]*)".*$/gm, (str) => {
-			return '${await import("./' + str + '").then(m => m.default)}';
-		}); 
-		*/
-
 		code = code.replace(/^#import "([^"]*)".*$/gm, (_, str) => {
 			return readFileSync(path.resolve(path.dirname(id), str), "utf-8");
 		});
 
-		if (!isBuild) {
-			code = code.replace(/^\s*\/\/.*$/gm, ""); // remove comments
-			code = code.replace(/^\s*$/gm, ""); // remove empty lines
-			code = code.replace(/^\s+/gm, ""); // remove leading whitespace
-			code = code
-				.replace(/\\/g, "\\\\")
-				.replace(/`/g, "\\`")
-				.replace(/\$\{/g, "\\${");
-			return {
-				code: `export default \`${code}\`;`,
-				map: null,
-			};
-		} else {
-			writeFileSync("./tmp.wgsl", code);
-			const result = execFileSync("wgsl-minifier", [
-				"--force",
-				"./tmp.wgsl",
-				"./tmp.out.wgsl",
-			]);
-			console.log(result.toString());
-			code = readFileSync("./tmp.out.wgsl", "utf-8");
-			return {
-				code: `export default \`${code}\`;`,
-				map: null,
-			};
+		try {
+			if (isBuild) code = minifyWgsl(code);
+		} catch (cause) {
+			throw new Error(`Unable to minify shader ${id}: ${cause.message}`, { cause });
 		}
+		return { code: `export default ${JSON.stringify(code)};`, map: null };
 	},
 });
 
@@ -236,7 +235,6 @@ var DEBUG = true;
 			compiler.run((exitCode, stdOut, stdErr) => {
 				console.warn(stdErr);
 				if (exitCode === 0) {
-					stdOut = stdOut.replace(/\bconst\b/g, "let");
 					stdOut = stdOut.replace(/export{};\s*$/g, "");
 					resolve({ code: stdOut, map: null });
 				} else {

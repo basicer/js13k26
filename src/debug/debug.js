@@ -1,8 +1,10 @@
 import { ImGui, ImGuiImplWeb, ImVec2, ImVec4 } from "@mori2003/jsimgui";
-import { d, c } from "../globals.js";
+import { d, c, heldKeys } from "../globals.js";
 import { palette } from "../palette.js";
 import { entityInspector } from "./entityInspector.js";
+import { voxelEditor, voxelEditorOpen } from "./voxelEditor.js";
 import { EArray, spawn } from "../entities.js";
+import { debugPanel, saveDebugPanels, loadDebugLayout, saveDebugLayout } from "./settings.js";
 
 export { selectEntity } from "./entityInspector.js";
 import Stats from 'stats-gl';
@@ -18,25 +20,42 @@ stats.init(d);
 
 
 let initialization = false;
+let initializationStarted = false;
 
-let paletteShown = false;
-let entityInspectorShown = false;
-let soundsShown = false;
+const paletteShown = debugPanel("palette");
+const entityInspectorShown = debugPanel("entities");
+const soundsShown = debugPanel("sounds");
+
+ImGuiImplWeb.SetLoadIniSettingsFn(loadDebugLayout);
+ImGuiImplWeb.SetSaveIniSettingsFn(saveDebugLayout);
+const saveSettings = () => {
+    saveDebugPanels();
+    if (initialization) saveDebugLayout(ImGui.SaveIniSettingsToMemory());
+};
+window.addEventListener("pagehide", saveSettings);
+document.addEventListener("visibilitychange", () => {
+    if (document.visibilityState === "hidden") saveSettings();
+});
 
 let sounds = await import("../sfx.js");
 
 export const wantsMouse = () => initialization && ImGui.GetIO().WantCaptureMouse;
+export const wantsKeyboard = () => initialization && ImGui.GetIO().WantCaptureKeyboard;
 
 export function debug(passEncoder, entities, entitySize, overrides) {
     if (!initialization) {
+        if (initializationStarted) return;
+        initializationStarted = true;
         ImGuiImplWeb.Init({ canvas: c, device: d, backend: "webgpu" }).then(() => {
             ImGui.StyleColorsDark();
+            ImGui.GetIO().IniSavingRate = 1;
             initialization = true;
         });
         return;
     }
 
 	ImGuiImplWeb.BeginRender();
+    if (wantsKeyboard()) heldKeys.clear();
     ImGui.PushFontFloat(null, 14);
     if (ImGui.BeginMainMenuBar()) {
 
@@ -60,14 +79,17 @@ export function debug(passEncoder, entities, entitySize, overrides) {
 
         if (ImGui.BeginMenu("Windows")) {
 
-            if (ImGui.MenuItem("Entity Inspector", "", entityInspectorShown)) {
-                entityInspectorShown = !entityInspectorShown;
+            if (ImGui.MenuItem("Entity Inspector", "", entityInspectorShown[0])) {
+                entityInspectorShown[0] = !entityInspectorShown[0];
             }
-            if (ImGui.MenuItem("Palette", "", paletteShown)) {
-                paletteShown = !paletteShown;
+            if (ImGui.MenuItem("Palette", "", paletteShown[0])) {
+                paletteShown[0] = !paletteShown[0];
             }
-            if (ImGui.MenuItem("Sounds", "", soundsShown)) {
-                soundsShown = !soundsShown;
+            if (ImGui.MenuItem("Voxel programs", "", voxelEditorOpen[0])) {
+                voxelEditorOpen[0] = !voxelEditorOpen[0];
+            }
+            if (ImGui.MenuItem("Sounds", "", soundsShown[0])) {
+                soundsShown[0] = !soundsShown[0];
             }
             ImGui.EndMenu();
         }
@@ -75,12 +97,14 @@ export function debug(passEncoder, entities, entitySize, overrides) {
         ImGui.EndMainMenuBar();
     }
 
-	if (entityInspectorShown) {
-        entityInspector(overrides);
+	if (entityInspectorShown[0]) {
+        entityInspector(overrides, entityInspectorShown);
     }
 
-    if (paletteShown) {
-        ImGui.Begin("Palette");
+    voxelEditor();
+
+    if (paletteShown[0]) {
+        if (ImGui.Begin("Palette", paletteShown)) {
         let p = new Uint8Array(palette.buffer, 0, 256);
         const srgb = (x) =>
             x <= 0.0031308
@@ -101,16 +125,19 @@ export function debug(passEncoder, entities, entitySize, overrides) {
                 ImGui.SameLine();
             }
         }
+        }
         ImGui.End();
     }
 
 
-    if (soundsShown) {
-        ImGui.Begin("Sounds");
+    if (soundsShown[0]) {
+        if (ImGui.Begin("Sounds", soundsShown)) {
         for (let [name, sound] of Object.entries(sounds)) {
             if (ImGui.Button(name)) {
-                sound();
+                window.playing?.stop();
+                window.playing = sound();
             }
+        }
         }
         ImGui.End();
     }
@@ -118,4 +145,5 @@ export function debug(passEncoder, entities, entitySize, overrides) {
 
     ImGui.PopFont();
 	ImGuiImplWeb.EndRender(passEncoder);
+    saveDebugPanels();
 }

@@ -6,13 +6,15 @@ export const OP_STROKE = 1,
 	OP_FSTORE = 6,
 	OP_PUSHI = 7,
 	OP_MIRROR = 8,
-	OP_FLIP = 9;
+	OP_FLIP = 9,
+	OP_VSTORE3 = 10;
 
 export const COMMAND_NAMES = {
 	"stroke": OP_STROKE,
 	"vec": OP_VEC,
 	"vload": OP_VLOAD,
 	"vstore": OP_VSTORE,
+	"vstore3": OP_VSTORE3,
 	"fload": OP_FLOAD,
 	"fstore": OP_FSTORE,
 	"pushi": OP_PUSHI,

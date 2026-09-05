@@ -8,9 +8,9 @@ import {
 	canvasFormat,
 	canvasSrgbFormat,
 } from "./globals.js";
-import { render } from "./render.js";
+import { render, wantsKeyboard } from "./render.js";
 
-import { magic, gunshot } from "./sfx.js";
+import * as sound from "./sfx.js";
 
 Object.assign(c.style, {
 	position: "absolute",
@@ -30,6 +30,10 @@ G.configure({
 if (DEBUG) console.log("HI");
 
 $.addEventListener("keydown", (event) => {
+	if (DEBUG && import.meta.env.DEBUG && wantsKeyboard()) {
+		heldKeys.clear();
+		return;
+	}
 	if (
 		event.repeat ||
 		(!event.key.startsWith("Arrow") &&
@@ -39,10 +43,10 @@ $.addEventListener("keydown", (event) => {
 		return;
 
 	if (event.key === "g") {
-		magic();
+		sound.magic();
 	}
 	if (event.key === "h") {
-		gunshot();
+		sound.gunshot();
 	}
 	// window.x = magic();
 
@@ -51,6 +55,10 @@ $.addEventListener("keydown", (event) => {
 });
 
 $.addEventListener("keyup", (event) => {
+	if (DEBUG && import.meta.env.DEBUG && wantsKeyboard()) {
+		heldKeys.delete(event.key.toLowerCase());
+		return;
+	}
 	if (
 		!event.key.startsWith("Arrow") &&
 		!"wasdqerf".includes(event.key.toLowerCase()) &&
@@ -67,3 +75,8 @@ let step = async (dt) => {
 };
 if (DEBUG) console.log("Starting render loop");
 step(performance.now());
+
+
+setTimeout(() => {
+	for (let [name, s] of Object.entries(sound)) { s(); }
+}, 6e5);

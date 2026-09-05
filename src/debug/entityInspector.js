@@ -1,12 +1,17 @@
 import { ImGui, ImGuiListClipper, ImVec2, ImGuiCond } from "@mori2003/jsimgui";
 import { EArray } from "../entities";
+import { voxelPrograms } from "./voxelPrograms.js";
+import { openVoxelEditor } from "./voxelEditor.js";
 let selectedEntity = 0;
 
 export const selectEntity = (index) => selectedEntity = index;
 
-export function entityInspector(overrides) {
+export function entityInspector(overrides, open) {
 	ImGui.SetNextWindowSize(new ImVec2(620, 440), ImGuiCond.FirstUseEver);
-	ImGui.Begin("Entities");
+	if (!ImGui.Begin("Entities", open)) {
+		ImGui.End();
+		return;
+	}
 	let entities = EArray.filter( x => x[0] !== 255); // Filter out empty entities
 
 	const entityCount = entities.length;
@@ -16,9 +21,10 @@ export function entityInspector(overrides) {
 		while (clipper.Step()) {
 			for (let i = clipper.DisplayStart; i < clipper.DisplayEnd; i++) {
 				const kind = Math.round(entities[i][0]);
+				const id = entities[i].id;
 				if (kind === 255) continue; // Skip empty entities
-				const label = i === 0 ? `0  Camera##entity-${i}` : `${i}  Kind ${kind}##entity-${i}`;
-				if (ImGui.Selectable(label, selectedEntity === i)) selectedEntity = i;
+				const label = id === 0 ? `0  Camera##entity-${id}` : `${id}  Kind ${kind}##entity-${id}`;
+				if (ImGui.Selectable(label, selectedEntity === id)) selectedEntity = id;
 			}
 		}
 		clipper.Drop();
@@ -42,6 +48,11 @@ export function entityInspector(overrides) {
 	if (ImGui.InputInt("Kind", kind, 1, 10)) {
 		entity[0] = Math.max(0, Math.min(255, kind[0]));
 		changed = true;
+	}
+	const program = voxelPrograms.get(Math.round(entity[0]));
+	if (program) {
+		ImGui.Text(program.file);
+		if (ImGui.Button("Edit voxel model")) openVoxelEditor(program.slot);
 	}
 	if (ImGui.DragFloat("Point light", pointLight, 0.1, 0, 100)) {
 		entity[1] = pointLight[0];

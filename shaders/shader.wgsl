@@ -70,12 +70,13 @@ fn geometry_schlick_ggx(n_dot_v: f32, roughness: f32) -> f32 {
     return n_dot_v / max(n_dot_v * (1.0f - k) + k, 0.0001f);
 }
 
-fn shade_pbr(base_color: vec3<f32>, normal: vec3<f32>, view: vec3<f32>, roughness: f32, metalness: f32, world_position: vec3<f32>, ao: f32) -> vec3<f32> {
+// Shared BRDF for directional and point lights, including the incident cosine.
+fn direct_lighting(base_color: vec3<f32>, normal: vec3<f32>, view: vec3<f32>, roughness: f32, metalness: f32, light_direction: vec3<f32>) -> vec3<f32> {
     let perceptual_roughness = max(roughness, 0.045f);
-    let light_direction = normalize(vec3<f32>(-0.4f, 0.8f, -0.5f));
-    let half_vector = normalize(view + light_direction);
     let n_dot_l = max(dot(normal, light_direction), 0.0f);
     let n_dot_v = max(dot(normal, view), 0.0f);
+    if (n_dot_l <= 0.0f || n_dot_v <= 0.0f) { return vec3<f32>(0.0f); }
+    let half_vector = normalize(view + light_direction);
     let n_dot_h = max(dot(normal, half_vector), 0.0f);
     let h_dot_v = max(dot(half_vector, view), 0.0f);
     let f0 = mix(vec3<f32>(0.04f), base_color, metalness);
@@ -86,6 +87,13 @@ fn shade_pbr(base_color: vec3<f32>, normal: vec3<f32>, view: vec3<f32>, roughnes
         geometry_schlick_ggx(n_dot_v, perceptual_roughness) * geometry_schlick_ggx(n_dot_l, perceptual_roughness) * fresnel /
         max(4.0f * n_dot_v * n_dot_l, 0.0001f);
     let diffuse = (vec3<f32>(1.0f) - fresnel) * (1.0f - metalness) * base_color / 3.14159265f;
+    return (diffuse + specular) * n_dot_l;
+}
+
+fn shade_pbr(base_color: vec3<f32>, normal: vec3<f32>, view: vec3<f32>, roughness: f32, metalness: f32, world_position: vec3<f32>, ao: f32) -> vec3<f32> {
+    let perceptual_roughness = max(roughness, 0.045f);
+    let n_dot_v = max(dot(normal, view), 0.0f);
+    let f0 = mix(vec3<f32>(0.04f), base_color, metalness);
     let ambient = base_color * (0.025f + 0.025f * max(normal.y, 0.0f)) * (1.0f - metalness) * ao;
     let reflection = reflect(-view, normal);
     let sky = mix(vec3<f32>(0.005f, 0.003f, 0.002f), vec3<f32>(0.12f, 0.16f, 0.22f), reflection.y * 0.5f + 0.5f);
@@ -95,12 +103,14 @@ fn shade_pbr(base_color: vec3<f32>, normal: vec3<f32>, view: vec3<f32>, roughnes
         let light = point_lights[i];
         if (light.intensity <= 0.0f) { continue; }
         let to_light = light.position - world_position;
-        let distance_squared = max(dot(to_light, to_light), 0.001f);
+        let distance_squared = dot(to_light, to_light);
+        if (distance_squared <= 0.000001f) { continue; }
         let light_direction = to_light * inverseSqrt(distance_squared);
-        let irradiance = max(dot(normal, light_direction), 0.0f) * light.intensity / (1.0f + distance_squared);
-        point_lighting += base_color * irradiance;
+        let radiance = light.intensity / (1.0f + distance_squared);
+        point_lighting += direct_lighting(base_color, normal, view, roughness, metalness, light_direction) * radiance;
     }
-    return ambient + environment_specular + (diffuse + specular) * n_dot_l * vec3<f32>(0.25f) + point_lighting;
+    let directional_lighting = direct_lighting(base_color, normal, view, roughness, metalness, normalize(vec3<f32>(-0.4f, 0.8f, -0.5f))) * 0.25f;
+    return ambient + environment_specular + directional_lighting + point_lighting;
 }
 
 @vertex

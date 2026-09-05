@@ -8,6 +8,7 @@ import {
 	OP_VEC,
 	OP_VLOAD,
 	OP_VSTORE,
+	OP_VSTORE3,
 	OP_FLOAD,
 	OP_FSTORE,
 } from "./vvm-const.js";
@@ -113,6 +114,7 @@ export function runByteCode(slot, bytecode) {
 		let cmd = bytecode[pc++];
 		switch (cmd >> 3) {
 			case OP_STROKE: {
+				// Flags: 1 paints occupied cells only; 2 swaps endpoints after drawing.
 				let a = reg_vec[0], b = reg_vec[1], brush = reg_float[1], r = reg_float[2], lo = [], hi = [];
 				for (let i = 3; i--; ) {
 					let pad = brush == 1 ? 0 : r,
@@ -132,7 +134,12 @@ export function runByteCode(slot, bytecode) {
 						dx -= abx * t; dy -= aby * t; dz -= abz * t;
 						hit = dx * dx + dy * dy + dz * dz <= rr;
 					}
-					if (hit) buffer[((z * size[1] + y) * size[0] + x) * 4] = reg_float[0];
+					let index = ((z * size[1] + y) * size[0] + x) * 4;
+					if (hit && (!(cmd & 1) || buffer[index])) buffer[index] = reg_float[0];
+				}
+				if (cmd & 2) {
+					reg_vec[0] = b;
+					reg_vec[1] = a;
 				}
 				break;
 			}
@@ -140,15 +147,18 @@ export function runByteCode(slot, bytecode) {
 				GenArray(cmd & 7, () => stack.push(bytecode[pc++]));
 				break;
 			}
-			case OP_VEC: {
+			case OP_VEC:
+			case OP_VSTORE3: {
 				let z = stack.pop(),
 					y = stack.pop(),
 					x = stack.pop();
-				stack.push(vec3(x, y, z));
+				let v = vec3(x, y, z);
+				if (cmd >> 3 === OP_VEC) stack.push(v);
+				else reg_vec[cmd & 7] = v;
 				break;
 			}
 			case OP_VLOAD: {
-				let val = reg_vec[pc & 7];
+				let val = reg_vec[cmd & 7];
 				stack.push(val);
 				break;
 			}
@@ -191,9 +201,9 @@ export function runByteCode(slot, bytecode) {
 
 buffers.forEach((_, texture) => flush(texture));
 
-import program1 from "../vox/marine.vp";
-import program2 from "../vox/unicorn.vp";
-import program3 from "../vox/floortile.vp";
+import program1, { debugSource as source1 } from "../vox/marine.vp";
+import program2, { debugSource as source2 } from "../vox/unicorn.vp";
+import program3, { debugSource as source3 } from "../vox/floortile.vp";
 
 let wait = (n) => new Promise((resolve) => setTimeout(resolve, n));
 
@@ -231,14 +241,50 @@ if (DEBUG && import.meta.env.DEBUG && false) {
 }
 
 setTimeout(async () => {
-    await wait(1);
-    console.log("Running bytecode...", Uint8Array.fromBase64(program1).byteLength, "bytes");
-    await runCached(1, Uint8Array.fromBase64(program1));
-    await wait(1);
-    console.log("Running bytecode...", Uint8Array.fromBase64(program2).byteLength, "bytes");
-    await runCached(2, Uint8Array.fromBase64(program2));
-    await wait(1);
-    console.log("Running bytecode...", Uint8Array.fromBase64(program3).byteLength, "bytes");
-    await runCached(5, Uint8Array.fromBase64(program3));
+	await wait(1);
+	if (DEBUG) console.log(
+		"Running bytecode...",
+		Uint8Array.fromBase64(program1).byteLength,
+		"bytes",
+	);
+	await runCached(1, Uint8Array.fromBase64(program1));
+	await wait(1);
+	if (DEBUG) console.log(
+		"Running bytecode...",
+		Uint8Array.fromBase64(program2).byteLength,
+		"bytes",
+	);
+	await runCached(2, Uint8Array.fromBase64(program2));
+	await wait(1);
+	if (DEBUG) console.log(
+		"Running bytecode...",
+		Uint8Array.fromBase64(program3).byteLength,
+		"bytes",
+	);
+	await runCached(5, Uint8Array.fromBase64(program3));
 
+	if (DEBUG && import.meta.env.DEBUG) {
+		const { registerVoxelProgram } =
+			await import("./debug/voxelPrograms.js");
+		for (const [slot, source] of [
+			[1, source1],
+			[2, source2],
+			[5, source3],
+		]) {
+			registerVoxelProgram(slot, source, (bytecode) => {
+				const previous = voxT[slot];
+				const buffer = runByteCode(slot, bytecode);
+				// Preview runs between frames; retire its old CPU/GPU volume after submission.
+				if (
+					previous !== empty &&
+					previous !== cube &&
+					previous !== sphere
+				) {
+					buffers.delete(previous);
+					Q.onSubmittedWorkDone().then(() => previous.destroy());
+				}
+				return buffer;
+			});
+		}
+	}
 }, 1);

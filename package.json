@@ -9,7 +9,9 @@
 		"native:mac": "python3 build_macos.py",
 		"serve": "vite preview",
 		"format": "prettier --write src/*.js *.js *.json",
-		"test": "echo \"Error: no test specified\" && exit 1",
+		"test": "node --test scripts/wgsl-minify.test.js",
+		"test:shaders": "node --test scripts/wgsl-minify.test.js scripts/wgsl-minify.integration.test.js",
+		"test:shaders:bundle": "node scripts/check-shader-bundle.mjs",
 		"postinstall": "patch-package"
 	},
 	"author": "Rob Blanckaert",
