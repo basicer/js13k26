@@ -25,7 +25,7 @@ fn world_transform(index: u32) -> mat4x4<f32> {
     for (var depth = 0u; depth < 5u && parent > 0.0f; depth++) {
         let parent_index = u32(parent);
         if (parent_index >= arrayLength(&entities) || parent_index == current) { break; }
-        transform = local_transform(entities[parent_index], vec3<f32>(1.0f)) * transform;
+        transform = local_transform(entities[parent_index], entities[parent_index].scale) * transform;
         current = parent_index;
         parent = entities[parent_index].parent;
     }

@@ -8,7 +8,7 @@ struct Entity {
     rot: vec3<f32>,
     dissolvePalette: f32,
     scale: vec3<f32>,
-    _15: f32,
+    modelVariant: f32,
     tile: vec3<f32>,
     matOverride: f32,
 };

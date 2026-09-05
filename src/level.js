@@ -48,12 +48,11 @@ export function clearShot(x, z, targetX, targetZ) {
 	return shotFraction(x, z, targetX, targetZ) === 1;
 }
 
-export function shotFraction(x, z, targetX, targetZ) {
-	// Intersect the shot segment with each block at muzzle height.
+export function shotFraction(x, z, targetX, targetZ, y = 1.25, targetY = y) {
+	// Intersect the shot segment against each solid box, including its height.
 	return solids.reduce((nearest, [left, right, back, front, top]) => {
-		if (top < 1.25) return nearest;
 		let near = 0, far = 1;
-		for (const [origin, direction, min, max] of [[x, targetX - x, left, right], [z, targetZ - z, back, front]]) {
+		for (const [origin, direction, min, max] of [[x, targetX - x, left, right], [z, targetZ - z, back, front], [y, targetY - y, ground, top]]) {
 			if (Math.abs(direction) < 0.00001) {
 				if (origin < min || origin > max) return nearest;
 			} else {

@@ -8,8 +8,8 @@ import {
 	canvasFormat,
 	canvasSrgbFormat,
 } from "./globals.js";
-import { render, wantsKeyboard } from "./render.js";
-import { reloadMarineGun } from "./game.js";
+import { render, wantsKeyboard, isFlying, isPaused } from "./render.js";
+import { reloadMarineGun, selectMarineWeapon } from "./game.js";
 
 import * as sound from "./sfx.js";
 import { zzfxX } from "../vendor/zzfx.js";
@@ -31,45 +31,46 @@ G.configure({
 
 if (DEBUG) console.log("HI");
 
+const gameKey = key => key.startsWith("arrow") || "wasdqerfgh".includes(key) || key === "shift";
+
 $.addEventListener("keydown", (event) => {
+	const key = event.key.toLowerCase();
 	if (DEBUG && import.meta.env.DEBUG && wantsKeyboard()) {
 		heldKeys.clear();
 		return;
 	}
-	if (
-		event.repeat ||
-		(!event.key.startsWith("Arrow") &&
-			!"wasdqerfgh".includes(event.key.toLowerCase()) &&
-			event.key !== "Shift")
-	)
+	if (/^[123]$/.test(key)) {
+		if (!event.repeat && !isPaused() && !isFlying()) selectMarineWeapon(Number(key));
+		event.preventDefault();
+		return;
+	}
+	if (event.repeat || !gameKey(key))
 		return;
 
-	if (event.key === "g") {
+	// Sound audition keys belong to the debug build.
+	if (DEBUG && event.key === "g") {
 		sound.magic();
 	}
-	if (event.key === "h") {
+	if (DEBUG && event.key === "h") {
 		sound.gunshot();
 	}
-	if (event.key.toLowerCase() === "r") reloadMarineGun();
+	if (!isPaused() && !isFlying() && key === "r") reloadMarineGun();
 	// window.x = magic();
 
 	event.preventDefault();
-	heldKeys.add(event.key.toLowerCase());
+	heldKeys.add(key);
 });
 
 $.addEventListener("keyup", (event) => {
+	const key = event.key.toLowerCase();
 	if (DEBUG && import.meta.env.DEBUG && wantsKeyboard()) {
-		heldKeys.delete(event.key.toLowerCase());
+		heldKeys.delete(key);
 		return;
 	}
-	if (
-		!event.key.startsWith("Arrow") &&
-		!"wasdqerf".includes(event.key.toLowerCase()) &&
-		event.key !== "Shift"
-	)
+	if (!gameKey(key))
 		return;
 	event.preventDefault();
-	heldKeys.delete(event.key.toLowerCase());
+	heldKeys.delete(key);
 });
 
 let step = async (dt) => {
@@ -81,7 +82,7 @@ step(performance.now());
 
 
 // Queue the track once; browsers that block autoplay resume on first input.
-sound.music1()["loop"] = true;
+if (!DEBUG) sound.music1()["loop"] = true;
 for (const event of ["pointerdown", "keydown"]) {
 	$.addEventListener(event, () => zzfxX.resume(), { once: true });
 }

@@ -1,66 +1,45 @@
 import { zzfx, zzfxP, zzfxM, zzfxR, zzfxV } from "../vendor/zzfx.js";
+import reloadTrack from "./music/reload.zzfxm";
+import hurtTrack from "./music/hurt.zzfxm";
 
 let hurtSamples;
 export let hurt = () => {
-	if (!hurtSamples) {
-		hurtSamples = new Float32Array(0.32 * zzfxR | 0);
-		// Low vocal harmonics shaped into an "oo", followed by an unvoiced "f".
-		const harmonics = Array.from({ length: 18 }, (_, i) => {
-			const frequency = (i + 1) * 120;
-			return (0.9 * Math.exp(-(((frequency - 330) / 110) ** 2))
-				+ 0.5 * Math.exp(-(((frequency - 850) / 180) ** 2))
-				+ (i === 0 ? 0.4 : 0)) / Math.sqrt(i + 1);
-		});
-		let phase = 0, breathLow = 0;
-		for (let i = 0; i < hurtSamples.length; i++) {
-			const t = i / zzfxR;
-			phase += 2 * Math.PI * (135 - 35 * Math.min(t / 0.23, 1)) / zzfxR;
-			let voice = 0;
-			for (let h = 0; h < harmonics.length; h++) voice += harmonics[h] * Math.sin(phase * (h + 1));
-			const vowel = Math.min(t / 0.009, 1) * Math.max(0, 1 - t / 0.23) ** 0.65;
-			const noise = Math.random() * 2 - 1;
-			breathLow += 0.3 * (noise - breathLow);
-			const breath = Math.max(0, Math.min((t - 0.15) / 0.045, 1))
-				* Math.max(0, (0.32 - t) / 0.125);
-			hurtSamples[i] = (voice * vowel + (noise - breathLow) * breath * 0.28) * zzfxV * 2;
-		}
-	}
-	return zzfxP(hurtSamples);
+	if (!hurtSamples) hurtSamples = zzfxM(...hurtTrack);
+	return zzfxP(...hurtSamples);
 };
 
-let reloadSamples;
-export let reload = () => {
-	if (!reloadSamples) {
-		reloadSamples = new Float32Array(1.12 * zzfxR | 0);
-		// Filtered friction and short, damped impacts: no pitched sweeps.
-		// Time, duration, gain, noise cutoff, body frequency, impact weight.
-		[
-			[0,    0.045, 0.85, 1500, 240, 0.6], // Latch clack.
-			[0.07, 0.15,  0.75,  850, 160, 0.1], // Magazine scrape.
-			[0.19, 0.04,  0.45, 1100, 210, 0.4],
-			[0.48, 0.13,  0.85,  950, 180, 0.1], // Slide magazine in.
-			[0.60, 0.09,  1.8,  1200, 125, 1.0], // Palm slap / seat.
-			[0.64, 0.035, 0.55, 1700, 310, 0.3], // Catch settles.
-			[0.85, 0.10,  0.95, 1100, 190, 0.2], // Bolt drawn back.
-			[0.99, 0.10,  1.5,  1600, 165, 0.8], // Bolt closes.
-		].forEach(([time, duration, gain, cutoff, frequency, weight]) => {
-			let offset = time * zzfxR | 0;
-			let low = 0, smooth = 0;
-			let filter = 1 - Math.exp(-2 * Math.PI * cutoff / zzfxR);
-			for (let i = 0; i < duration * zzfxR; i++) {
-				let t = i / zzfxR, progress = t / duration;
-				low += filter * (Math.random() * 2 - 1 - low);
-				smooth += filter * (low - smooth);
-				let body = (Math.sin(2 * Math.PI * frequency * t)
-					+ 0.35 * Math.sin(2 * Math.PI * frequency * 1.73 * t))
-					* Math.exp(-t / 0.012) * weight;
-				let envelope = Math.min(t / 0.002, 1)
-					* (1 - progress) ** 2 * Math.exp(-progress * 2);
-				reloadSamples[offset + i] += (smooth * 2 + body) * envelope * gain * zzfxV;
-			}
-		});
+const reloadSamples = {};
+export let reload = (seconds = 1.15) => {
+	if (!reloadSamples[seconds]) {
+		const instruments = reloadTrack[0].map(instrument => [...instrument]);
+		// Stretch magazine friction, while clacks retain their pitch and snap.
+		for (const index of [1, 4]) {
+			instruments[index][4] *= seconds / 1.15;
+			instruments[index][5] *= seconds / 1.15;
+		}
+		const steps = reloadTrack[1][0][0].length - 2;
+		reloadSamples[seconds] = zzfxM(instruments, reloadTrack[1], reloadTrack[2], 15 * steps / seconds);
 	}
-	return zzfxP(reloadSamples);
+	return zzfxP(...reloadSamples[seconds]);
+};
+
+let shotgunPumpSamples;
+export let shotgunPump = () => {
+	if (!shotgunPumpSamples) {
+		shotgunPumpSamples = new Float32Array(0.22 * zzfxR | 0);
+		// Sharp rearward "chick", then a heavier forward locking "chunk".
+		for (const [offset, duration, frequency, gain] of [[0, 0.065, 420, 1.2], [0.11, 0.1, 145, 2]]) {
+			let low = 0;
+			for (let i = 0; i < duration * zzfxR; i++) {
+				const t = i / zzfxR;
+				low += 0.25 * (Math.random() * 2 - 1 - low);
+				const body = Math.sin(2 * Math.PI * frequency * t) * Math.exp(-t * 65);
+				const envelope = Math.min(t / 0.001, 1) * (1 - t / duration) ** 2;
+				shotgunPumpSamples[(offset * zzfxR | 0) + i] = (low + body * 0.7) * envelope * gain * zzfxV;
+			}
+		}
+	}
+	return zzfxP(shotgunPumpSamples);
 };
 
 /**
@@ -77,8 +56,7 @@ export let magic = zzfx([,,539,0,0.04,0.29,1,1.92,,,567,0.02,0.02,,,,0.04,]),
 	spaceholder4 = zzfx([2,,267,,0.04,0.04,1,0.4,,,,,,,,,0.2,0.68,0.09,]),
 	spaceholder5 = zzfx([1.1,,262,0.01,0.02,0.07,3,1.8,,,,,,0.2,,,0.38,0.8,0.03,0.43,-739,]),
 	spaceholder6 = zzfx([,,240,0.01,0.35,0.05,1,2.2,-35,,,,,,,0.1,,0.74,0.06,0.33,]),
-	spaceholder7 = zzfx([0.4,,161,0.36,,0.21,3,2.7,,23,,,,,,,,0.8,0.01,,998,]),
-	spaceholder8 = zzfx([,,163,0.34,,0.15,,0.1,-46,-47,,,,,,,,0.88,0.05,0.14,]);
+	spaceholder7 = zzfx([0.4,,161,0.36,,0.21,3,2.7,,23,,,,,,,,0.8,0.01,,998,]);
 
 	
 import music1_js from "./music/Main Title.zzfxm";

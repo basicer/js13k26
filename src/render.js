@@ -31,20 +31,37 @@ import {
 } from "./game.js";
 
 let lastFrameTime = performance.now();
+let simulationTime = lastFrameTime / 1000;
 
 const MAX_POINT_LIGHTS = 32;
 
 let debugModule;
 export const wantsKeyboard = () => debugModule?.wantsKeyboard();
+export const isFlying = () => debugModule?.isFlying() ?? false;
+export const isPaused = () => debugModule?.isPaused() ?? false;
 
 if (DEBUG && import.meta.env.DEBUG) {
 	import("./debug/debug.js").then((module) => {
 		debugModule = module;
-		c.addEventListener("pointerdown", (event) => {
+		c.addEventListener("pointerdown", async (event) => {
 			if (event.button !== 0 || module.wantsMouse()) return;
-			setMarineTrigger(true);
-			fireMarineGun();
-			c.setPointerCapture(event.pointerId);
+			if (!isPaused()) {
+				setMarineTrigger(true);
+				fireMarineGun();
+				c.setPointerCapture(event.pointerId);
+				return;
+			}
+			const bounds = c.getBoundingClientRect();
+			if (!bounds.width || !bounds.height) return;
+			try {
+				const [index] = await pickEntity(
+					(event.clientX - bounds.left) * c.width / bounds.width,
+					(event.clientY - bounds.top) * c.height / bounds.height,
+				);
+				if (isPaused() && index >= 0) module.selectEntity(index);
+			} catch (error) {
+				console.error("Entity selection failed", error);
+			}
 		});
 	});
 }
@@ -63,6 +80,7 @@ for (const eventName of ["pointerup", "pointercancel", "lostpointercapture"]) {
 }
 
 c.addEventListener("pointermove", (event) => {
+	if (isPaused() || isFlying()) return;
 	const bounds = c.getBoundingClientRect();
 	aimMarineAtCursor(
 		event.clientX - bounds.left,
@@ -192,7 +210,7 @@ if (window.ResizeObserver) new ResizeObserver(resizeCanvas).observe(c);
 $.addEventListener("resize", resizeCanvas);
 resizeCanvas();
 
-const pipelineDescriptor = {
+const pipeline = d.createRenderPipeline({
 	"layout": "auto",
 	"vertex": {
 		"module": shader,
@@ -216,6 +234,10 @@ const pipelineDescriptor = {
 		"targets": [
 			{
 				"format": "rgba16float",
+				"blend": {
+					"color": { "srcFactor": "src-alpha", "dstFactor": "one-minus-src-alpha" },
+					"alpha": { "srcFactor": "one", "dstFactor": "one-minus-src-alpha" },
+				},
 			},
 			{
 				"format": "rg32uint",
@@ -229,24 +251,6 @@ const pipelineDescriptor = {
 		"depthWriteEnabled": true,
 		"depthCompare": "less",
 	},
-};
-const pipeline = d.createRenderPipeline(pipelineDescriptor);
-const transparentPipeline = d.createRenderPipeline({
-	...pipelineDescriptor,
-	"fragment": {
-		...pipelineDescriptor.fragment,
-		"targets": [
-			{
-				"format": "rgba16float",
-				"blend": {
-					"color": { "srcFactor": "src-alpha", "dstFactor": "one-minus-src-alpha" },
-					"alpha": { "srcFactor": "one", "dstFactor": "one-minus-src-alpha" },
-				},
-			},
-			{ "format": "rg32uint" },
-		],
-	},
-	"depthStencil": { ...pipelineDescriptor.depthStencil, "depthWriteEnabled": false },
 });
 
 const bloomPipeline = d.createRenderPipeline({
@@ -291,10 +295,6 @@ const lightBindGroup = BG(
 	pointLightCounterBuffer,
 	pointLightBuffer,
 );
-const transparentBindGroup = BG(
-	transparentPipeline, 0, renderStateBuffer, entityBuffer,
-	paletteTexture.createView(), pointLightBuffer,
-);
 
 export function render(t) {
 	if (DEBUG && debugModule) debugModule.stats.begin();
@@ -303,9 +303,12 @@ export function render(t) {
 	lastFrameTime = now;
 
 	debugModule?.updateCamera(deltaTime);
-	updateGame(deltaTime);
+	if (!isPaused()) {
+		updateGame(deltaTime, isFlying());
+		simulationTime += deltaTime;
+	}
 
-	const time = now / 1000;
+	const time = simulationTime;
 	let canvasTexture = G.getCurrentTexture();
 	let target = canvasTexture.createView({ format: canvasSrgbFormat });
 
@@ -351,23 +354,22 @@ export function render(t) {
 	pass.setPipeline(pipeline);
 	pass.setVertexBuffer(0, vertexBuffer);
 	pass.setIndexBuffer(indexBuffer, "uint16");
-	for (let i = 1; i < voxT.length; i++) {
-		pass.setBindGroup(1, BG(pipeline, 1, voxT[i].createView()));
+	for (let i = 1; i < 128; i++) {
+		pass.setBindGroup(1, BG(pipeline, 1, ...voxT[i].map(texture => texture.createView())));
 		//pass.draw(vertices.length / 2); // 6 vertices
 		pass.drawIndexed(idx.length, ENTITY_COUNT, 0, 0, i << 16);
 	}
-	// Blend far-to-near after opaque geometry, without writing particle depth.
+	// High type IDs reuse the low type's model and follow the opaque scene.
+	// Keep them far-to-near so nearer particles don't hide layers behind them.
 	const forward = [Math.sin(cameraRotation[1]) * Math.cos(cameraRotation[0]),
 		Math.sin(cameraRotation[0]), -Math.cos(cameraRotation[1]) * Math.cos(cameraRotation[0])];
 	const viewDepth = entity => cameraPosition.reduce((sum, value, axis) =>
 		sum + (entity[4 + axis] - value) * forward[axis], 0);
-	const transparent = EArray.filter(entity => entity.id > 0 && entity[0] > 0 && entity[0] < 255 && entity[7] > 0 && entity[7] < 1)
+	const transparent = EArray.filter(entity => entity[0] >= 128 && entity[0] < 254 && entity[7] < 1)
 		.sort((a, b) => viewDepth(b) - viewDepth(a));
-	pass.setPipeline(transparentPipeline);
-	pass.setBindGroup(0, transparentBindGroup);
 	for (const entity of transparent) {
-		pass.setBindGroup(1, BG(transparentPipeline, 1, voxT[entity[0]].createView()));
-		pass.drawIndexed(idx.length, 1, 0, 0, 2147483648 + (entity[0] << 16) + entity.id);
+		pass.setBindGroup(1, BG(pipeline, 1, ...voxT[entity[0] & 127].map(texture => texture.createView())));
+		pass.drawIndexed(idx.length, 1, 0, 0, (entity[0] << 16) + entity.id);
 	}
 	pass.end();
 
@@ -417,7 +419,7 @@ export function render(t) {
 }
 
 export async function pickEntity(x, y) {
-	if (!entityIndexTexture) return -1;
+	if (!entityIndexTexture) return [-1, -1];
 	const pixelX = Math.max(0, Math.min(c.width - 1, Math.floor(x)));
 	const pixelY = Math.max(0, Math.min(c.height - 1, Math.floor(y)));
 	const readback = d.createBuffer({

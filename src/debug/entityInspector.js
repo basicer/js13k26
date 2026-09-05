@@ -3,6 +3,7 @@ import { EArray } from "../entities";
 import { voxelPrograms } from "./voxelPrograms.js";
 import { openVoxelEditor } from "./voxelEditor.js";
 let selectedEntity = 0;
+const marinePartNames = { 1: "Marine", 8: "Marine legs", 9: "Marine body", 10: "Marine arms", 11: "Marine gun" };
 
 export const selectEntity = (index) => selectedEntity = index;
 
@@ -23,7 +24,7 @@ export function entityInspector(overrides, open) {
 				const kind = Math.round(entities[i][0]);
 				const id = entities[i].id;
 				if (kind === 255) continue; // Skip empty entities
-				const label = id === 0 ? `0  Camera##entity-${id}` : `${id}  Kind ${kind}##entity-${id}`;
+				const label = id === 0 ? `0  Camera##entity-${id}` : `${id}  ${marinePartNames[kind] || `Kind ${kind}`}##entity-${id}`;
 				if (ImGui.Selectable(label, selectedEntity === id)) selectedEntity = id;
 			}
 		}
@@ -47,15 +48,20 @@ export function entityInspector(overrides, open) {
 	const scale = [entity[12], entity[13], entity[14]];
 	const tiling = [entity[16], entity[17], entity[18]];
 	const matOverride = [Math.round(entity[19])];
+	const modelVariant = [entity[15] >= 0.5];
 	let changed = false;
 	if (ImGui.InputInt("Kind", kind, 1, 10)) {
 		entity[0] = Math.max(0, Math.min(255, kind[0]));
 		changed = true;
 	}
-	const program = voxelPrograms.get(Math.round(entity[0]));
+	const program = voxelPrograms.get(Math.round(entity[0]) & 127);
 	if (program) {
 		ImGui.Text(program.file);
 		if (ImGui.Button("Edit voxel model")) openVoxelEditor(program.slot);
+	}
+	if (ImGui.Checkbox("Model variant 1", modelVariant)) {
+		entity[15] = Number(modelVariant[0]);
+		changed = true;
 	}
 	if (ImGui.DragFloat("Point light", pointLight, 0.1, 0, 100)) {
 		entity[1] = pointLight[0];
@@ -75,6 +81,9 @@ export function entityInspector(overrides, open) {
 	}
 	if (ImGui.SliderFloat("Transparency", transparency, 0, 1)) {
 		entity[7] = Math.max(0, Math.min(1, transparency[0]));
+		if (entity[0] > 0 && entity[0] < 254) {
+			entity[0] = (entity[0] & 127) + (entity[7] > 0 ? 128 : 0);
+		}
 		changed = true;
 	}
 	if (ImGui.DragFloat3("Position", position, 0.05)) {

@@ -6,6 +6,7 @@ import {
 } from "@mori2003/jsimgui";
 import {
 	voxelPrograms,
+	voxelParameterIndices,
 	queueVoxelPreview,
 	resetVoxelProgram,
 	storeVoxelDraft,
@@ -68,6 +69,22 @@ export function voxelEditor() {
 				ImGui.TextWrapped(
 					"Drafts autosave locally. Save downloads .vp; Reset restores the bundled model.",
 				);
+				const parameterIndices = voxelParameterIndices(program.text[0]);
+				if (parameterIndices.includes(0)) ImGui.TextWrapped("P0 builds model variants 0 and 1. Select a variant in the entity inspector.");
+				if (parameterIndices.some(index => index !== 0)) {
+					ImGui.Separator();
+					ImGui.Text("Preview parameters");
+					for (const index of parameterIndices) {
+						if (index === 0) continue;
+						if (
+							ImGui.InputFloat(
+								`Parameter ${index}##parameter-${program.slot}-${index}`,
+								program.parameters[index],
+							)
+						)
+							queueVoxelPreview(program);
+					}
+				}
 				ImGui.Separator();
 				if (ImGui.CollapsingHeader("Assembler constants")) {
 					ImGui.InputText("Filter##constants", constantFilter, 128);

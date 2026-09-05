@@ -1,4 +1,4 @@
-// Unicorn, 64^3. Author the left half; MIRROR supplies the right.
+// Unicorn, 64^3. Mirror the shared body, then draw opposite leg poses.
 // STROKE:PAINT colors existing cells; :SWAP advances a path; :PAINT|SWAP does both.
 // Connected paths keep the last endpoint in START and supply the next point in END.
 // Rounded barrel and haunches, with a lighter shoulder.
@@ -16,46 +16,6 @@ STROKE
 MAT_WHITE FSTORE:MATERIAL
 31 32 37 VEC VSTORE:START
 31 35 40 VEC VSTORE:END
-STROKE
-
-// Hind legs: rounded thigh, angled hock, slim cannon.
-4 FSTORE:RADIUS
-MAT_COOL_WHITE FSTORE:MATERIAL
-26 29 23 VEC VSTORE:START
-25 23 25 VEC VSTORE:END
-STROKE:SWAP
-3 FSTORE:RADIUS
-25 17 21 VEC VSTORE:END
-STROKE:SWAP
-2 FSTORE:RADIUS
-25 8 23 VEC VSTORE:END
-STROKE
-
-// Forelegs emerge from the shoulder, leaving daylight under the belly.
-3 FSTORE:RADIUS
-MAT_WHITE FSTORE:MATERIAL
-25 29 39 VEC VSTORE:START
-25 20 41 VEC VSTORE:END
-STROKE:SWAP
-2 FSTORE:RADIUS
-25 8 41 VEC VSTORE:END
-STROKE
-
-// Lavender hooves and pale coronets.
-BOX FSTORE:BRUSH
-MAT_LAVENDER FSTORE:MATERIAL
-22 5 21 VEC VSTORE:START
-28 8 27 VEC VSTORE:END
-STROKE
-22 5 39 VEC VSTORE:START
-28 8 45 VEC VSTORE:END
-STROKE
-MAT_COOL_WHITE FSTORE:MATERIAL
-23 9 22 VEC VSTORE:START
-27 10 25 VEC VSTORE:END
-STROKE
-23 9 40 VEC VSTORE:START
-27 10 43 VEC VSTORE:END
 STROKE
 
 // Arched neck narrows into the poll; the muzzle slopes forward.
@@ -189,3 +149,90 @@ STROKE:PAINT
 STROKE:PAINT
 
 MIRROR:X
+
+// Stack schedule: exit second pass, second pose, exit first pass, first pose.
+// Parameter 0 swaps standing/stride between the left and right sides.
+LOADP:0 JUMPIF phase_one
+1 0 0 1
+1 JUMPIF leg_pose
+phase_one:
+1 1 0 0
+leg_pose:
+JUMPIF stride
+// Coordinates are stacked in reverse draw order for the shared routine.
+27 10 43
+23 9 40
+27 10 25
+23 9 22
+28 8 45
+22 5 39
+28 8 27
+22 5 21
+25 8 41
+25 20 41
+25 8 23
+25 17 21
+1 JUMPIF draw_legs
+stride:
+27 15 48
+23 14 45
+27 10 21
+23 9 18
+28 13 50
+22 10 44
+28 8 23
+22 5 17
+25 13 46
+25 20 44
+25 8 19
+25 17 19
+draw_legs:
+CAPSULE FSTORE:BRUSH
+// Hind legs: rounded thigh, angled hock, slim cannon.
+4 FSTORE:RADIUS
+MAT_COOL_WHITE FSTORE:MATERIAL
+26 29 23 VEC VSTORE:START
+25 23 25 VEC VSTORE:END
+STROKE:SWAP
+3 FSTORE:RADIUS
+VEC VSTORE:END
+STROKE:SWAP
+2 FSTORE:RADIUS
+VEC VSTORE:END
+STROKE
+
+// Forelegs emerge from the shoulder, leaving daylight under the belly.
+3 FSTORE:RADIUS
+MAT_WHITE FSTORE:MATERIAL
+25 29 39 VEC VSTORE:START
+VEC VSTORE:END
+STROKE:SWAP
+2 FSTORE:RADIUS
+VEC VSTORE:END
+STROKE
+
+// Lavender hooves and pale coronets.
+BOX FSTORE:BRUSH
+MAT_LAVENDER FSTORE:MATERIAL
+VEC VSTORE:START
+VEC VSTORE:END
+STROKE
+VEC VSTORE:START
+VEC VSTORE:END
+STROKE
+MAT_COOL_WHITE FSTORE:MATERIAL
+VEC VSTORE:START
+VEC VSTORE:END
+STROKE
+VEC VSTORE:START
+VEC VSTORE:END
+STROKE
+
+
+JUMPIF done
+// Move the first legs to the other side; the mirrored body stays unchanged.
+VLOAD:CLIP_MIN VSTORE:START
+VLOAD:CLIP_MAX VSTORE:END
+FLIP:X
+1 JUMPIF leg_pose
+done:

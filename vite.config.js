@@ -39,6 +39,9 @@ export default defineConfig(({ command, mode }) => {
 			},
 		},
 		resolve: {},
+		// Load the patched IMGUI backend directly so dependency caching cannot
+		// keep serving old keyboard handling after a patch-package update.
+		optimizeDeps: { exclude: ["@mori2003/jsimgui"] },
 		server: {
 			proxy: {},
 		},
@@ -73,7 +76,7 @@ var voxprog = (development) => {
 			root = config.root;
 		},
 		load(id) {
-			if (!/\.vp$/.test(id)) return;
+			if (!/\.(vp|vox)$/.test(id)) return;
 			const source = readFileSync(id, "utf8");
 			const file = path.relative(root, id).replaceAll("\\", "/");
 			const metadata = development

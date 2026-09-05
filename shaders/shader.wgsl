@@ -54,7 +54,7 @@ fn world_transform(index: u32) -> mat4x4<f32> {
     for (var depth = 0u; depth < 5u && parent > 0.0f; depth++) {
         let parent_index = u32(parent);
         if (parent_index >= arrayLength(&entities) || parent_index == current) { break; }
-        transform = local_transform(entities[parent_index], vec3<f32>(1.0f)) * transform;
+        transform = local_transform(entities[parent_index], entities[parent_index].scale) * transform;
         current = parent_index;
         parent = entities[parent_index].parent;
     }
@@ -119,16 +119,15 @@ fn vs_main(
     @location(0) pos: vec3<f32>
 ) -> VertexOutput {
     let entity_index = idx & 65535u;
-    let current_vox_kind = (idx >> 16u) & 255u;
-    let transparent_pass = (idx & 2147483648u) != 0u;
+    let current_vox_kind = idx >> 16u;
     var out: VertexOutput;
     out.idx = entity_index;
 
-    // This draw call has one voxel texture bound. Clip instances whose kind
+    // This draw call has a pair of voxel textures bound. Clip instances whose kind
     // belongs to a different texture before they reach rasterization.
     let entity_kind = u32(entities[entity_index].kind);
     let transparency = entities[entity_index].transparency;
-    if (entity_index == 0u || entity_kind == 255u || entity_kind != current_vox_kind || transparency >= 1.0f || (transparency > 0.0f) != transparent_pass) {
+    if (entity_index == 0u || entity_kind == 255u || entity_kind != current_vox_kind || transparency >= 1.0f) {
         out.clip_position = vec4<f32>(0.0f, 0.0f, 2.0f, 1.0f);
         return out;
     }
@@ -162,13 +161,15 @@ fn vs_main(
 }
 
 @group(1) @binding(0) var vox: texture_3d<f32>;
+@group(1) @binding(1) var vox1: texture_3d<f32>;
 
-fn voxel_at(cell: vec3<i32>, volume_size: vec3<i32>, grid_size: vec3<f32>) -> f32 {
+fn voxel_at(cell: vec3<i32>, volume_size: vec3<i32>, grid_size: vec3<f32>, variant: bool) -> f32 {
     if (any(cell < vec3<i32>(0)) || any(vec3<f32>(cell) >= grid_size)) { return 0.0f; }
+    if (variant) { return textureLoad(vox1, cell % volume_size, 0).x; }
     return textureLoad(vox, cell % volume_size, 0).x;
 }
 
-fn voxel_search(ray_origin: vec3<f32>, ray_direction: vec3<f32>, repeats: vec3<f32>) -> VoxelHit {
+fn voxel_search(ray_origin: vec3<f32>, ray_direction: vec3<f32>, repeats: vec3<f32>, variant: bool) -> VoxelHit {
     let safe_direction = select(ray_direction, vec3<f32>(0.000001f), abs(ray_direction) < vec3<f32>(0.000001f));
     let inverse_direction = 1.0f / safe_direction;
     let first_bounds = -ray_origin * inverse_direction;
@@ -191,7 +192,7 @@ fn voxel_search(ray_origin: vec3<f32>, ray_direction: vec3<f32>, repeats: vec3<f
     var normal = vec3<f32>(0.0f, 1.0f, 0.0f);
     let max_steps = u32(ceil(grid_size.x) + ceil(grid_size.y) + ceil(grid_size.z));
     for (var step_count = 0u; step_count < max_steps; step_count++) {
-        let material = voxel_at(cell, volume_size, grid_size);
+        let material = voxel_at(cell, volume_size, grid_size, variant);
         if (material > 0.0f) { return VoxelHit(distance, material, normal); }
         let smallest = side_distance < min(side_distance.yzx, side_distance.zxy);
         let mask = select(vec3<f32>(0.0f), vec3<f32>(1.0f), smallest);
@@ -217,6 +218,7 @@ fn dissolve_noise(chunk: vec3<u32>, entity_id: u32) -> f32 {
 @fragment
 fn fs_main(in: VertexOutput) -> FragmentOutput {
     let e = entities[in.idx];
+    let variant = e.modelVariant >= 0.5f;
     if (e.dissolve >= 1.0f && e.dissolvePalette <= 0.0f) { discard; }
     let camera_transform = world_transform(0u);
     let camera_position = camera_transform[3].xyz;
@@ -243,7 +245,7 @@ fn fs_main(in: VertexOutput) -> FragmentOutput {
     let world_ray = normalize(in.world_position - camera_position);
     let ray_origin = inverse_entity_transform * (camera_position - entity_transform[3].xyz) + vec3<f32>(0.5f);
     let ray_direction = inverse_entity_transform * world_ray;
-    let hit = voxel_search(ray_origin, ray_direction, repeats);
+    let hit = voxel_search(ray_origin, ray_direction, repeats, variant);
     if (hit.material == 0.0f) { discard; }
     let grid_size = vec3<f32>(volume_size) * repeats;
     let voxel_position = (ray_origin + ray_direction * (hit.distance + 0.0001f)) * grid_size;
@@ -260,20 +262,28 @@ fn fs_main(in: VertexOutput) -> FragmentOutput {
     let side_b = bitangent * corner;
     let outside = cell + normal;
     var ao = 1.0f - 0.18f * (
-        min(voxel_at(outside + side_a, volume_size, grid_size), 1.0f) +
-        min(voxel_at(outside + side_b, volume_size, grid_size), 1.0f) +
-        min(voxel_at(outside + side_a + side_b, volume_size, grid_size), 1.0f)
+        min(voxel_at(outside + side_a, volume_size, grid_size, variant), 1.0f) +
+        min(voxel_at(outside + side_b, volume_size, grid_size, variant), 1.0f) +
+        min(voxel_at(outside + side_a + side_b, volume_size, grid_size, variant), 1.0f)
     );
     
 
     let material = select(select(hit.material, e.matOverride, e.matOverride > 0.0f), clamp(e.dissolvePalette, 0.0f, 255.0f), dissolved);
-    let color = textureLoad(palette, vec2<u32>(u32(material), 0));
+    var color = textureLoad(palette, vec2<u32>(u32(material), 0));
+    if (material == 255.0f) {
+        // Smooth model-space bands, with a stable hue offset per entity.
+        let p = voxel_position * 0.08f;
+        let hue = fract(p.x + p.y * 0.7f + p.z * 0.5f +
+            0.3f * sin(p.x + p.z * 2.0f) + dissolve_noise(vec3<u32>(0u), in.idx));
+        let rainbow = clamp(abs(fract(vec3<f32>(hue) + vec3<f32>(0.0f, 0.6666667f, 0.3333333f)) * 6.0f - 3.0f) - 1.0f, vec3<f32>(0.0f), vec3<f32>(1.0f));
+        color = vec4<f32>(rainbow * rainbow, color.a);
+    }
     let surface = textureLoad(palette, vec2<u32>(u32(material), 1));
     let view_depth = hit.distance * dot(world_ray, camera_direction);
     let depth = clip_depth(view_depth) / view_depth;
     let world_normal = normalize(transpose(inverse_entity_transform) * hit.normal);
     return FragmentOutput(
-        vec4<f32>(shade_pbr(color.rgb, world_normal, -world_ray, surface.g, surface.r, hit.distance * world_ray + camera_position, ao), color.a * (1.0f - clamp(e.transparency, 0.0f, 1.0f))),
+        vec4<f32>(shade_pbr(color.rgb, world_normal, -world_ray, surface.g, surface.r, hit.distance * world_ray + camera_position, ao), select(1.0f, color.a * (1.0f - clamp(e.transparency, 0.0f, 1.0f)), e.kind >= 128.0f)),
         vec2<u32>(in.idx, u32(material)),
         depth,
     );

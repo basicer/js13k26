@@ -1,7 +1,26 @@
 import { compileVoxelSource } from "./voxelValidation.js";
-import { OP_PUSHI } from "../vvm-const.js";
+import { OP_PUSHI, OP_JUMPIF } from "../vvm-const.js";
+import { resolveVoxelConstants } from "../vvm-symbols.js";
 
 export const voxelPrograms = new Map();
+
+// Parameter declarations are implicit: every LOADP subopcode used by a program
+// becomes an editable preview value.
+export function voxelParameterIndices(source) {
+	try {
+		const indices = new Set();
+		let jumpTarget = false;
+		for (const token of resolveVoxelConstants(source).match(/\S+/g) || []) {
+			if (jumpTarget) { jumpTarget = false; continue; }
+			if (/^jumpif$/i.test(token)) { jumpTarget = true; continue; }
+			const match = /^loadp(?::([0-7]))?$/i.exec(token);
+			if (match) indices.add(Number(match[1] || 0));
+		}
+		return [...indices].sort((a, b) => a - b);
+	} catch {
+		return [];
+	}
+}
 
 // Each boundary ends a complete VM instruction, including its literal payload.
 export function voxelInstructionEnds(bytecode) {
@@ -9,6 +28,7 @@ export function voxelInstructionEnds(bytecode) {
 	for (let pc = 0; pc < bytecode.length;) {
 		const cmd = bytecode[pc++];
 		if (cmd >> 3 === OP_PUSHI) pc += cmd & 7;
+		if (cmd >> 3 === OP_JUMPIF) pc++;
 		if (pc > bytecode.length)
 			throw Error("Incomplete instruction payload.");
 		ends.push(pc);
@@ -31,6 +51,7 @@ export function registerVoxelProgram(slot, { file, source }, run) {
 		bytecode,
 		instructionEnds,
 		instructionLimit: [instructionEnds.length - 1],
+		parameters: Array.from({ length: 8 }, () => [0]),
 		message: "Ready",
 		error: false,
 		storageError: "",
@@ -58,11 +79,11 @@ export function storeVoxelDraft(program) {
 export function previewVoxelProgram(program) {
 	clearTimeout(program.timer);
 	try {
-		const source = program.text[0],
-			bytecode =
-				source === program.applied
-					? program.bytecode
-					: compileVoxelSource(source);
+		const source = program.text[0];
+		const parameters = program.parameters.map(([value]) => value);
+		const bytecode = compileVoxelSource(source, [0, ...parameters.slice(1)]);
+		// Both variants must be safe before replacing either preview texture.
+		compileVoxelSource(source, [1, ...parameters.slice(1)]);
 		const ends =
 			source === program.applied
 				? program.instructionEnds
@@ -79,7 +100,7 @@ export function previewVoxelProgram(program) {
 						),
 					);
 		const start = performance.now();
-		program.run(bytecode.subarray(0, ends[limit]));
+		program.run(bytecode.subarray(0, ends[limit]), parameters);
 		program.applied = source;
 		program.bytes = bytecode.length;
 		program.bytecode = bytecode;

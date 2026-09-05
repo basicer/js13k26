@@ -36,6 +36,8 @@ const constants = {
 	MAT_PERIWINKLE: 43,
 	MAT_PALE_GOLD: 41,
 	MAT_PEACH: 45,
+	MAT_BLOOD: 249,
+	MAT_RAINBOW: 255,
 };
 
 // Palette ramps from palette.js. Suffixes are zero-based shade indices.
@@ -74,7 +76,7 @@ for (const [name, start, count] of [
 	"LIME",
 	"BLACK",
 	"WHITE",
-	"PURE_RED",
+	"RAINBOW",
 ].forEach((name, i) => {
 	constants[`MAT_DEBUG_${name}`] = 241 + i;
 });
@@ -84,7 +86,8 @@ export const VOXEL_CONSTANTS = Object.freeze(constants);
 // Resolve both literal operands and instruction suffixes, preserving line numbers.
 // Flags can be combined without spaces: STROKE:PAINT|SWAP.
 export function resolveVoxelConstants(source) {
-	return source
+	let jumpTarget = false;
+	const result = source
 		.split(/\r?\n/)
 		.map((line, index) => {
 			const fail = (message) => {
@@ -106,6 +109,17 @@ export function resolveVoxelConstants(source) {
 					return value | n;
 				}, 0);
 			return line.replace(/\/\/.*$/, "").replace(/\S+/g, (token) => {
+				if (jumpTarget) {
+					jumpTarget = false;
+					if (!/^[A-Za-z_][A-Za-z_0-9]*$/.test(token)) fail(`Invalid jump label: ${token}`);
+					return token;
+				}
+				if (/^[A-Za-z_][A-Za-z_0-9]*:$/.test(token)) return token;
+				if (/^jumpif$/i.test(token)) {
+					jumpTarget = true;
+					return token;
+				}
+				if (/^jumpif:/i.test(token)) fail("Use JUMPIF <label>.");
 				const [name, arg, extra] = token.split(":");
 				if (
 					arg !== undefined ||
@@ -125,4 +139,6 @@ export function resolveVoxelConstants(source) {
 			});
 		})
 		.join("\n");
+	if (jumpTarget) throw Error("JUMPIF requires a label.");
+	return result;
 }

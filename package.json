@@ -10,6 +10,7 @@
 		"serve": "vite preview",
 		"format": "prettier --write src/*.js *.js *.json",
 		"test": "node --test scripts/wgsl-minify.test.js",
+		"test:vvm": "node --test scripts/vvm.test.js",
 		"test:shaders": "node --test scripts/wgsl-minify.test.js scripts/wgsl-minify.integration.test.js",
 		"test:shaders:bundle": "node scripts/check-shader-bundle.mjs",
 		"postinstall": "patch-package"
