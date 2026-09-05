@@ -3,16 +3,7 @@ import { spawn } from "./entities.js";
 const solids = [];
 const ground = -30 / 64;
 
-function block(
-	x,
-	z,
-	width,
-	height,
-	depth,
-	material = 0,
-	bottom = ground,
-	solid = true,
-) {
+function block(x, z, width, height, depth, material = 0, bottom = ground, solid = true) {
 	const entity = spawn(7);
 	if (!entity) return;
 	entity.set([x, bottom + height / 2, z], 4);
@@ -23,14 +14,7 @@ function block(
 		16,
 	);
 	entity[19] = material;
-	if (solid)
-		solids.push([
-			x - width / 2,
-			x + width / 2,
-			z - depth / 2,
-			z + depth / 2,
-			bottom + height,
-		]);
+	if (solid) solids.push([x - width / 2, x + width / 2, z - depth / 2, z + depth / 2, bottom + height]);
 }
 
 // Open-roof yard with broad lanes between metallic bulkheads and cargo cover.
@@ -63,10 +47,7 @@ export function canStand(x, z, radius = 0.45) {
 		Math.abs(z) <= 15 - radius &&
 		!solids.some(
 			([left, right, back, front]) =>
-				x > left - radius &&
-				x < right + radius &&
-				z > back - radius &&
-				z < front + radius,
+				x > left - radius && x < right + radius && z > back - radius && z < front + radius,
 		)
 	);
 }
@@ -75,10 +56,8 @@ export function moveActor(entity, dx, dz) {
 	// Small steps prevent tunneling; separate axes let actors slide along walls.
 	const steps = Math.max(1, Math.ceil(Math.hypot(dx, dz) / 0.2));
 	for (let i = 0; i < steps; i++) {
-		if (canStand(entity[4] + dx / steps, entity[6]))
-			entity[4] += dx / steps;
-		if (canStand(entity[4], entity[6] + dz / steps))
-			entity[6] += dz / steps;
+		if (canStand(entity[4] + dx / steps, entity[6])) entity[4] += dx / steps;
+		if (canStand(entity[4], entity[6] + dz / steps)) entity[6] += dz / steps;
 	}
 }
 

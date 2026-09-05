@@ -1,19 +1,6 @@
-import {
-	G,
-	Q,
-	d,
-	c,
-	$,
-	heldKeys,
-	canvasFormat,
-	canvasSrgbFormat,
-} from "./globals.js";
+import { G, Q, d, c, $, heldKeys, canvasFormat, canvasSrgbFormat } from "./globals.js";
 import { render, wantsKeyboard, isFlying, isPaused } from "./render.js";
-import {
-	reloadMarineGun,
-	selectMarineWeapon,
-	toggleMarineFlashlight,
-} from "./game.js";
+import { reloadMarineGun, selectMarineWeapon, toggleMarineFlashlight } from "./game.js";
 
 import * as sound from "./sfx.js";
 import { zzfxX } from "../vendor/zzfx.js";
@@ -34,8 +21,7 @@ G.configure({
 
 if (DEBUG) console.log("HI");
 
-const gameKey = (key) =>
-	key.startsWith("arrow") || "wasdqerfgh".includes(key) || key === "shift";
+const gameKey = (key) => key.startsWith("arrow") || "wasdqerfgh".includes(key) || key === "shift";
 
 $.addEventListener("keydown", (event) => {
 	const key = event.key.toLowerCase();
@@ -44,8 +30,7 @@ $.addEventListener("keydown", (event) => {
 		return;
 	}
 	if (/^[123]$/.test(key)) {
-		if (!event.repeat && !isPaused() && !isFlying())
-			selectMarineWeapon(Number(key));
+		if (!event.repeat && !isPaused() && !isFlying()) selectMarineWeapon(Number(key));
 		event.preventDefault();
 		return;
 	}

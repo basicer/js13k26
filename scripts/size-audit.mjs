@@ -97,7 +97,7 @@ function numericData(n) {
   throw Error(`Unexpected track data: ${n.type}`);
 }
 for (const name of ['reload', 'hurt']) {
-  const source = fs.readFileSync(`src/music/${name}.zzfxm`, 'utf8').replace(/[{][^}]*[}]/gm, '{}');
+  const source = fs.readFileSync(`music/${name}.zzfxm`, 'utf8').replace(/[{][^}]*[}]/gm, '{}');
   const expected = JSON.stringify(numericData(parseAst(`(${source})`).body[0].expression));
   const track = declarations.find(n => {
     if (n.init?.type !== 'ArrayExpression') return false;

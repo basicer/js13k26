@@ -177,4 +177,3 @@ fn fs_main(in: VertexOutput) -> FragmentOutput {
         depth,
     );
 }
-

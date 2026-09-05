@@ -13,9 +13,7 @@ export const ENTITY_DATA_SIZE = 28; // (in floats)
 // Kind 1 is the empty marine root; kinds 8–11 are legs, body, arms, and gun.
 export const ENTITY_COUNT = 1900;
 
-export const entities = new Float32Array(ENTITY_COUNT * ENTITY_DATA_SIZE).fill(
-	0,
-);
+export const entities = new Float32Array(ENTITY_COUNT * ENTITY_DATA_SIZE).fill(0);
 
 const cameraEntity = entities.subarray(0, ENTITY_DATA_SIZE);
 export const cameraPosition = cameraEntity.subarray(4, 7);
@@ -23,10 +21,7 @@ export const cameraRotation = cameraEntity.subarray(8, 11);
 export const entityOverrides = new Map();
 
 export const EArray = GenArray(ENTITY_COUNT, (i) => {
-	let arr = entities.subarray(
-		i * ENTITY_DATA_SIZE,
-		(i + 1) * ENTITY_DATA_SIZE,
-	);
+	let arr = entities.subarray(i * ENTITY_DATA_SIZE, (i + 1) * ENTITY_DATA_SIZE);
 	arr.id = i;
 	return arr;
 });

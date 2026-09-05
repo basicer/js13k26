@@ -3,7 +3,7 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { spawnSync } from "node:child_process";
-import { minifyWgsl } from "./wgsl-minify.js";
+import { minifyWgsl } from "./minify.js";
 
 export function checkShader(source, compact = minifyWgsl(source)) {
 	const scratch = fs.mkdtempSync(path.join(os.tmpdir(), "wgsl-test-"));

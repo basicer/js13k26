@@ -43,13 +43,13 @@ export function compileVoxelSource(source, parameters = []) {
 		}
 		if (/^-?\d+$/.test(token)) {
 			const n = Number(token);
-			if (n < 0 || n > 255)
-				fail("Literals must be integers from 0 to 255.");
+			if (n < -128 || n > 127)
+				fail("Literals must be signed 8-bit integers.");
 			stack.push(n);
 			continue;
 		}
 		const match =
-			/^(vec|vload|vstore|vstore3|fload|fstore|loadp|stroke|mirror|flip)(?::([0-7]))?$/i.exec(
+			/^(vec|vload|vstore|vstore3|fload|fstore|loadp|stroke|mirror|flip|size)(?::([0-7]))?$/i.exec(
 				token,
 			);
 		if (!match) fail(`Unknown instruction: ${token}`);
@@ -57,6 +57,7 @@ export function compileVoxelSource(source, parameters = []) {
 			arg = Number(match[2] || 0);
 		if (
 			(op === "vec" && arg !== 0) ||
+			(op === "size" && arg !== 0) ||
 			(op === "stroke" && arg > 3) ||
 			((op === "mirror" || op === "flip") && arg > 2)
 		)
@@ -69,6 +70,11 @@ export function compileVoxelSource(source, parameters = []) {
 				fail("Voxel coordinates must be between 0 and 63.");
 			if (op === "vec") stack.push([x, y, z]);
 			else vectors[arg] = [x, y, z];
+		} else if (op === "size") {
+			const size = pop(true);
+			if (size.some(n => n < 1 || n > 64))
+				fail("Model size must be between 1 and 64 voxels on each axis.");
+			vectors[7] = size.map(n => n - 1);
 		} else if (op === "vload") stack.push(vectors[arg]);
 		else if (op === "vstore") vectors[arg] = pop(true);
 		else if (op === "fload") stack.push(floats[arg]);

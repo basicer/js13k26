@@ -31,7 +31,7 @@ fn shade_pbr(base_color: vec3<f32>, normal: vec3<f32>, view: vec3<f32>, roughnes
     let perceptual_roughness = max(roughness, 0.045f);
     let n_dot_v = max(dot(normal, view), 0.0f);
     let f0 = mix(vec3<f32>(0.04f), base_color, metalness);
-    let ambient = base_color * (0.01875f + 0.01875f * max(normal.y, 0.0f)) * (1.0f - metalness) * ao;
+    let ambient = base_color * (0.015f + 0.015f * max(normal.y, 0.0f)) * (1.0f - metalness) * ao;
     let reflection = reflect(-view, normal);
     let sky = mix(vec3<f32>(0.005f, 0.003f, 0.002f), vec3<f32>(0.12f, 0.16f, 0.22f), reflection.y * 0.5f + 0.5f);
     let environment_specular = sky * fresnel_schlick(n_dot_v, f0) * mix(0.04f, 0.25f, metalness) * (1.0f - perceptual_roughness * 0.45f);

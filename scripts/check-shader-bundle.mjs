@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import fs from "node:fs";
 import vm from "node:vm";
 import { parseAst } from "rolldown/parseAst";
-import { checkShader } from "./wgsl-compiler-check.js";
+import { checkShader } from "../tools/wgsl-minify/src/compiler-check.js";
 
 const html = fs.readFileSync(
 	new URL("../dist/index.html", import.meta.url),

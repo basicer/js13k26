@@ -452,12 +452,7 @@ GPURenderPassEncoder.prototype.setIndexBuffer = function (buffer, format) {};
 /** @return {undefined} */
 GPURenderPassEncoder.prototype.setVertexBuffer = function (id, buffer) {};
 /** @return {undefined} */
-GPURenderPassEncoder.prototype.draw = function (
-	nVerticies,
-	instanceCount = 1,
-	firstVertex = 0,
-	firstInstance = 0,
-) {};
+GPURenderPassEncoder.prototype.draw = function (nVerticies, instanceCount = 1, firstVertex = 0, firstInstance = 0) {};
 /** @return {undefined} */
 GPURenderPassEncoder.prototype.drawIndexed = function (
 	indexCount,

@@ -96,23 +96,17 @@ export function resolveVoxelConstants(source) {
 			const literal = (expression) =>
 				expression.split("|").reduce((value, part) => {
 					const name = part.toUpperCase();
-					const n = /^\d+$/.test(part)
-						? Number(part)
-						: VOXEL_CONSTANTS[name];
-					if (
-						!Object.hasOwn(VOXEL_CONSTANTS, name) &&
-						!/^\d+$/.test(part)
-					)
-						fail(`Unknown constant: ${part}`);
-					if (!Number.isInteger(n) || n < 0 || n > 255)
+					const numeric = /^-?\d+$/.test(part);
+					const n = numeric ? Number(part) : VOXEL_CONSTANTS[name];
+					if (!Object.hasOwn(VOXEL_CONSTANTS, name) && !numeric) fail(`Unknown constant: ${part}`);
+					if (!Number.isInteger(n) || n < -128 || n > (numeric ? 127 : 255))
 						fail(`Literal out of range: ${part}`);
-					return value | n;
+					return value | (n > 127 ? n - 256 : n);
 				}, 0);
 			return line.replace(/\/\/.*$/, "").replace(/\S+/g, (token) => {
 				if (jumpTarget) {
 					jumpTarget = false;
-					if (!/^[A-Za-z_][A-Za-z_0-9]*$/.test(token))
-						fail(`Invalid jump label: ${token}`);
+					if (!/^[A-Za-z_][A-Za-z_0-9]*$/.test(token)) fail(`Invalid jump label: ${token}`);
 					return token;
 				}
 				if (/^[A-Za-z_][A-Za-z_0-9]*:$/.test(token)) return token;
@@ -122,14 +116,8 @@ export function resolveVoxelConstants(source) {
 				}
 				if (/^jumpif:/i.test(token)) fail("Use JUMPIF <label>.");
 				const [name, arg, extra] = token.split(":");
-				if (
-					arg !== undefined ||
-					Object.hasOwn(COMMAND_NAMES, name.toLowerCase())
-				) {
-					if (
-						!Object.hasOwn(COMMAND_NAMES, name.toLowerCase()) ||
-						extra !== undefined
-					)
+				if (arg !== undefined || Object.hasOwn(COMMAND_NAMES, name.toLowerCase())) {
+					if (!Object.hasOwn(COMMAND_NAMES, name.toLowerCase()) || extra !== undefined)
 						fail(`Unknown instruction: ${token}`);
 					if (arg === undefined) return name;
 					const value = literal(arg);

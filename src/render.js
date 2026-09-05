@@ -1,14 +1,4 @@
-import {
-	$,
-	d,
-	c,
-	Q,
-	G,
-	GenArray,
-	canvasSrgbFormat,
-	cameraFov,
-	label,
-} from "./globals.js";
+import { $, d, c, Q, G, GenArray, canvasSrgbFormat, cameraFov, label } from "./globals.js";
 import shaderCode from "../shaders/shader.wgsl";
 import { palette } from "./palette.js";
 import {
@@ -22,12 +12,7 @@ import {
 	cameraRotation,
 } from "./entities.js";
 import { voxT } from "./vvm.js";
-import {
-	aimMarineAtCursor,
-	fireMarineGun,
-	setMarineTrigger,
-	updateGame,
-} from "./game.js";
+import { aimMarineAtCursor, fireMarineGun, setMarineTrigger, updateGame } from "./game.js";
 
 let lastFrameTime = performance.now();
 let simulationTime = lastFrameTime / 1000;
@@ -80,18 +65,11 @@ for (const eventName of ["pointerup", "pointercancel", "lostpointercapture"]) {
 c.addEventListener("pointermove", (event) => {
 	if (isPaused() || isFlying()) return;
 	const bounds = c.getBoundingClientRect();
-	aimMarineAtCursor(
-		event.clientX - bounds.left,
-		event.clientY - bounds.top,
-		bounds.width,
-		bounds.height,
-	);
+	aimMarineAtCursor(event.clientX - bounds.left, event.clientY - bounds.top, bounds.width, bounds.height);
 });
 
 // Bit-packed -1/+1 cube vertices.
-const vertices = new Float32Array(
-	GenArray(24, (i) => (((i / 3) >> (i % 3)) & 1) * 2 - 1),
-);
+const vertices = new Float32Array(GenArray(24, (i) => (((i / 3) >> (i % 3)) & 1) * 2 - 1));
 
 const entityInputBuffer = d.createBuffer({
 	"size": entities.byteLength,
@@ -135,12 +113,7 @@ var paletteTexture = d.createTexture({
 	"usage": GPUTextureUsage.STORAGE_BINDING | GPUTextureUsage.COPY_DST,
 });
 
-Q.writeTexture(
-	{ "texture": paletteTexture },
-	palette,
-	{ "bytesPerRow": 1024 },
-	[256, 2],
-);
+Q.writeTexture({ "texture": paletteTexture }, palette, { "bytesPerRow": 1024 }, [256, 2]);
 
 let depthTexture;
 let sceneTexture;
@@ -172,14 +145,7 @@ function resizeCanvas() {
 	const pixelRatio = devicePixelRatio * 2 ** -scaleDown;
 	const width = Math.max(1, Math.round(bounds.width * pixelRatio));
 	const height = Math.max(1, Math.round(bounds.height * pixelRatio));
-	if (
-		c.width === width &&
-		c.height === height &&
-		depthTexture &&
-		sceneTexture &&
-		entityIndexTexture
-	)
-		return;
+	if (c.width === width && c.height === height && depthTexture && sceneTexture && entityIndexTexture) return;
 
 	c.width = width;
 	c.height = height;
@@ -195,8 +161,7 @@ function resizeCanvas() {
 		"size": [width, height],
 		// Keep lighting values above 1.0 until the final tone-mapping pass.
 		"format": "rgba16float",
-		"usage":
-			GPUTextureUsage.RENDER_ATTACHMENT | GPUTextureUsage.TEXTURE_BINDING,
+		"usage": GPUTextureUsage.RENDER_ATTACHMENT | GPUTextureUsage.TEXTURE_BINDING,
 	});
 	sceneView = sceneTexture.createView();
 	entityIndexTexture?.destroy();
@@ -283,10 +248,7 @@ const BG = (pipeline, id, ...array) =>
 		"layout": pipeline.getBindGroupLayout(id),
 		"entries": array.map((resource, binding) => ({
 			"binding": binding,
-			"resource":
-				resource instanceof GPUBuffer
-					? { "buffer": resource }
-					: resource,
+			"resource": resource instanceof GPUBuffer ? { "buffer": resource } : resource,
 		})),
 	});
 
@@ -300,14 +262,7 @@ const simulationBindGroup = BG(
 	pointLightCounterBuffer,
 );
 
-const renderBindGroup = BG(
-	pipeline,
-	0,
-	renderStateBuffer,
-	entityBuffer,
-	paletteTexture.createView(),
-	pointLightBuffer,
-);
+const renderBindGroup = BG(pipeline, 0, renderStateBuffer, entityBuffer, paletteTexture.createView(), pointLightBuffer);
 export async function render(t) {
 	if (DEBUG && debugModule) debugModule.stats.begin();
 	const now = performance.now();
@@ -325,12 +280,7 @@ export async function render(t) {
 
 	const readback = entityReadbacks.find((readback) => !readback.busy);
 	if (readback) {
-		renderState.set([
-			time,
-			c.width / c.height,
-			cameraFov,
-			pendingSimulationTime,
-		]);
+		renderState.set([time, c.width / c.height, cameraFov, pendingSimulationTime]);
 		Q.writeBuffer(renderStateBuffer, 0, renderState);
 		const submitted = entities.slice();
 		Q.writeBuffer(entityInputBuffer, 0, submitted);
@@ -343,21 +293,12 @@ export async function render(t) {
 
 		simulationPass.dispatchWorkgroups(Math.ceil(ENTITY_COUNT / 64));
 		simulationPass.end();
-		simulation.copyBufferToBuffer(
-			entityBuffer,
-			0,
-			readback.buffer,
-			0,
-			entities.byteLength,
-		);
+		simulation.copyBufferToBuffer(entityBuffer, 0, readback.buffer, 0, entities.byteLength);
 		Q.submit([simulation.finish()]);
 		readback.busy = true;
 		pendingSimulationTime = 0;
 		readback.buffer.mapAsync(GPUMapMode.READ).then(() => {
-			mergeEntityFrame(
-				submitted,
-				new Float32Array(readback.buffer.getMappedRange()),
-			);
+			mergeEntityFrame(submitted, new Float32Array(readback.buffer.getMappedRange()));
 			readback.buffer.unmap();
 			readback.busy = false;
 		});
@@ -388,20 +329,14 @@ export async function render(t) {
 			"depthLoadOp": "clear",
 			"depthStoreOp": "store",
 		},
-		"timestampWrites":
-			DEBUG && debugModule
-				? debugModule.stats.getTimestampWrites("graphics")
-				: undefined,
+		"timestampWrites": DEBUG && debugModule ? debugModule.stats.getTimestampWrites("graphics") : undefined,
 	});
 	pass.setBindGroup(0, renderBindGroup);
 	pass.setPipeline(pipeline);
 	pass.setVertexBuffer(0, vertexBuffer);
 	pass.setIndexBuffer(indexBuffer, "uint16");
 	for (let i = 1; i < 128; i++) {
-		pass.setBindGroup(
-			1,
-			BG(pipeline, 1, ...voxT[i].map((texture) => texture.createView())),
-		);
+		pass.setBindGroup(1, BG(pipeline, 1, ...voxT[i].map((texture) => texture.createView())));
 		//pass.draw(vertices.length / 2); // 6 vertices
 		pass.drawIndexed(idx.length, ENTITY_COUNT, 0, 0, i << 16);
 	}
@@ -415,10 +350,7 @@ export async function render(t) {
 				"storeOp": "store",
 			},
 		],
-		"timestampWrites":
-			DEBUG && debugModule
-				? debugModule.stats.getTimestampWrites("bloom")
-				: undefined,
+		"timestampWrites": DEBUG && debugModule ? debugModule.stats.getTimestampWrites("bloom") : undefined,
 	});
 	bloomPass.setPipeline(bloomPipeline);
 	bloomPass.setBindGroup(0, BG(bloomPipeline, 0, sceneView, bloomSampler));
@@ -439,12 +371,7 @@ export async function render(t) {
 				},
 			],
 		});
-		debugModule.debug(
-			debugPass,
-			entities,
-			ENTITY_DATA_SIZE,
-			entityOverrides,
-		);
+		debugModule.debug(debugPass, entities, ENTITY_DATA_SIZE, entityOverrides);
 		debugPass.end();
 	}
 

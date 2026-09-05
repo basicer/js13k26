@@ -6,7 +6,7 @@ import vm from "node:vm";
 test("hurt renders a short audible stereo cue and reuses its samples", () => {
 	const source = readFileSync(new URL("../src/sfx.js", import.meta.url), "utf8");
 	const synth = readFileSync(new URL("../vendor/zzfx.js", import.meta.url), "utf8");
-	const hurtTrack = vm.runInNewContext(`(${readFileSync(new URL("../src/music/hurt.zzfxm", import.meta.url), "utf8")})`);
+	const hurtTrack = vm.runInNewContext(`(${readFileSync(new URL("../music/hurt.zzfxm", import.meta.url), "utf8")})`);
 	const context = vm.createContext({ hurtTrack, window: { AudioContext: class {} } });
 	vm.runInContext(synth.replaceAll("export ", ""), context);
 	vm.runInContext("zzfxP = (...channels) => channels", context);
@@ -25,7 +25,7 @@ test("hurt renders a short audible stereo cue and reuses its samples", () => {
 test("reload audio spans each weapon duration and caches the generated samples", () => {
 	const source = readFileSync(new URL("../src/sfx.js", import.meta.url), "utf8");
 	const synth = readFileSync(new URL("../vendor/zzfx.js", import.meta.url), "utf8");
-	const reloadTrack = vm.runInNewContext(`(${readFileSync(new URL("../src/music/reload.zzfxm", import.meta.url), "utf8")})`);
+	const reloadTrack = vm.runInNewContext(`(${readFileSync(new URL("../music/reload.zzfxm", import.meta.url), "utf8")})`);
 	const context = vm.createContext({ reloadTrack, window: { AudioContext: class {} } });
 	vm.runInContext(synth.replaceAll("export ", ""), context);
 	vm.runInContext("zzfxP = (...channels) => channels", context);

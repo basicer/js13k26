@@ -1,11 +1,4 @@
-import {
-	COMMAND_NAMES,
-	OP_PUSHI,
-	OP_VEC,
-	OP_VSTORE,
-	OP_VSTORE3,
-	OP_JUMPIF,
-} from "./vvm-const.js";
+import { COMMAND_NAMES, OP_PUSHI, OP_VEC, OP_VSTORE, OP_VSTORE3, OP_JUMPIF } from "./vvm-const.js";
 import { resolveVoxelConstants } from "./vvm-symbols.js";
 
 export function assemble(code) {
@@ -30,14 +23,12 @@ export function assemble(code) {
 		}
 		let parts = cmd.split(":");
 
-		if (parseInt(cmd) == cmd) {
+		if (/^-?\d+$/.test(cmd)) {
 			let values = [];
-			while (
-				i < cmds.length &&
-				parseInt(cmds[i]) == cmds[i] &&
-				values.length < 7
-			) {
-				values.push(parseInt(cmds[i++]));
+			while (i < cmds.length && /^-?\d+$/.test(cmds[i]) && values.length < 7) {
+				const value = Number(cmds[i++]);
+				if (value < -128 || value > 127) throw Error(`Signed byte out of range: ${value}`);
+				values.push(value);
 			}
 			bytecode.push((OP_PUSHI << 3) | values.length, ...values);
 			i--;
@@ -65,9 +56,7 @@ export function assemble(code) {
 		if (!labels.has(label)) throw Error(`Undefined label: ${label}`);
 		const offset = labels.get(label) - (at + 2);
 		if (offset < -1024 || offset > 1023)
-			throw Error(
-				`Jump to ${label} out of range: ${offset} bytes (expected -1024 to 1023).`,
-			);
+			throw Error(`Jump to ${label} out of range: ${offset} bytes (expected -1024 to 1023).`);
 		const encoded = offset & 2047;
 		bytecode[at] |= encoded >> 8;
 		bytecode[at + 1] = encoded & 255;

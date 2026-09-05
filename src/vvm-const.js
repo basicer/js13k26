@@ -9,7 +9,8 @@ export const OP_STROKE = 1,
 	OP_FLIP = 9,
 	OP_VSTORE3 = 10,
 	OP_LOADP = 11,
-	OP_JUMPIF = 12;
+	OP_JUMPIF = 12,
+	OP_SIZE = 13;
 
 export const COMMAND_NAMES = {
 	"stroke": OP_STROKE,
@@ -21,6 +22,7 @@ export const COMMAND_NAMES = {
 	"fstore": OP_FSTORE,
 	"loadp": OP_LOADP,
 	"jumpif": OP_JUMPIF,
+	"size": OP_SIZE,
 	"pushi": OP_PUSHI,
 	"mirror": OP_MIRROR,
 	"flip": OP_FLIP,

@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { minifyWgsl, tokenizeWgsl } from "./wgsl-minify.js";
+import { minifyWgsl, tokenizeWgsl } from "../src/minify.js";
 
 test("empty and comment-only modules", () => {
 	for (const source of ["", " \n\t", "// comment", "/* a /* b */ c */"])

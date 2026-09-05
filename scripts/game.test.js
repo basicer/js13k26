@@ -5,7 +5,7 @@ import vm from "node:vm";
 
 function game() {
 	let nextEntityId = 1;
-	const sounds = { hurt: 0, gunshot: 0, reload: 0, emptyClick: 0, spaceholder1: 0, shotgunPump: 0 };
+	const sounds = { hurt: 0, gunshot: 0, reload: 0, emptyClick: 0, explode: 0, shotgunPump: 0 };
 	let seed = 123456;
 	const randomMath = Object.create(Math);
 	randomMath.random = () => ((seed = (Math.imul(seed, 1664525) + 1013904223) >>> 0) / 4294967296);
@@ -37,15 +37,85 @@ function game() {
 	return { run, touch, sounds };
 }
 
-test("marine has four centered parts parented under an empty root", () => {
+test("marine has four parts parented under an empty root", () => {
 	const { run } = game();
 	assert.deepEqual(Array.from(run("marineParts.map(part => part[0])")), [8, 9, 10, 11]);
 	assert.equal(run("player[0]"), 1);
 	assert.equal(run("marineLegs[2] === player.id && marineBody[2] === player.id"), true);
 	assert.equal(run("marineArms[2] === marineBody.id && marineGun[2] === marineArms.id"), true);
-	assert.equal(run("marineParts.every(part => part[4] === 0 && part[5] === 0 && part[6] === 0 && part[16] === 0 && part[17] === 0 && part[18] === 0)"), true);
+	assert.equal(run("marineParts.slice(0, 3).every(part => part[4] === 0 && part[5] === 0 && part[6] === 0 && part[16] === 0 && part[17] === 0 && part[18] === 0)"), true);
+	assert.deepEqual(Array.from(run("marineGun.subarray(4, 7)")), [0.04749999940395355, 0.1328125, 0.22374999523162842]);
+	assert.deepEqual(Array.from(run("marineGun.subarray(12, 15)")), [0.17000000178813934, 0.25, 0.5600000023841858]);
+	assert.deepEqual(Array.from(run("marineGun.subarray(16, 19)")), [1, 1, 1]);
 	run("player[3] = 0.3; player[11] = 255; updateGame(0);");
 	assert.equal(run("marineParts.every(part => part[3] === player[3] && part[11] === 255)"), true);
+});
+
+test("wall portals face inward and spawn the initial herd and replacements clear of walls", () => {
+	const { run } = game();
+	assert.deepEqual(JSON.parse(run("JSON.stringify(EArray.filter(entity => entity[0] === 12).map(entity => [entity[4], entity[6]]))")), [
+		[3, -15], [15, 4], [6, 15], [-15, 4], [-15, -7], [-7, -15],
+	]);
+	assert.equal(run("EArray.filter(e => e[0] === 12).every(e => canStand(e[4] - Math.sin(e[9]), e[6] + Math.cos(e[9])))"), true);
+	assert.equal(run("EArray.filter(e => e[0] === 2).length"), 6);
+	assert.equal(run("EArray.filter(e => e[0] === 2).every(e => canStand(e[4], e[6]))"), true);
+	run("unicorns.length = 0; spawnCooldown = 0; updateGame(0);");
+	assert.equal(run("unicorns.length"), 1);
+	assert.equal(run("portalLocations.some(([x, z, yaw]) => Math.abs(unicorns[0].entity[4] - (x - Math.sin(yaw))) < 0.00001 && Math.abs(unicorns[0].entity[6] - (z + Math.cos(yaw))) < 0.00001)"), true);
+	assert.equal(run("canStand(unicorns[0].entity[4], unicorns[0].entity[6])"), true);
+});
+
+test("portals on every wall survive 49 hits and dissolve completely after hit 50", () => {
+	const { run } = game();
+	run("unicorns.length = 0;");
+	for (let index = 0; index < 6; index++) {
+		run(`globalThis.portalTarget = portals[${index}];
+			globalThis.normal = marineFacing(portalTarget.entity[9]);
+			player[4] = portalTarget.entity[4] + normal[0] * 3;
+			player[6] = portalTarget.entity[6] + normal[1] * 3;
+			globalThis.shootPortal = () => firePellet(player[4], 0.2, player[6], -normal[0], -normal[1], true);`);
+		run("for (let hit = 0; hit < 49; hit++) shootPortal();");
+		assert.equal(run("portalTarget.health"), 1);
+		assert.equal(run("portalTarget.entity[3]"), 0);
+		run("updateGame(0.1, true);");
+		assert.ok(run("portalTarget.entity[3] > 0 && portalTarget.entity[3] < 0.294"));
+		run("updateGame(2, true);");
+		assert.ok(Math.abs(run("portalTarget.entity[3]") - 0.294) < 0.00001);
+		run("shootPortal();");
+		assert.equal(run("portalTarget.health"), 0);
+		run("updateGame(0.1, true); shootPortal();");
+		assert.ok(run("portalTarget.entity[3] > 0.294 && portalTarget.entity[3] < 1"));
+		run("updateGame(2, true);");
+		assert.equal(run("portalTarget.entity[3]"), 1);
+		assert.equal(run("portalTarget.entity[11]"), 0);
+		assert.equal(run("portalTarget.health"), 0);
+	}
+	run("spawnCooldown = 0; updateGame(2, true);");
+	assert.equal(run("unicorns.length"), 0);
+});
+
+test("portal shots respect cover, nearer unicorns and the arch outline", () => {
+	const { run } = game();
+	// Cargo at (5, 5) blocks this ray to the south wall portal.
+	run("unicorns.length = 0; player[4] = 6; player[6] = 0; firePellet(6, 0.2, 0, 0, 1, true);");
+	assert.equal(run("portals[2].health"), 50);
+	// A unicorn between the gun and the north portal absorbs the hit.
+	run("player[4] = 3; player[6] = -12; spawnUnicorn(3, -13); firePellet(3, 0.2, -12, 0, -1, true);");
+	assert.equal(run("unicorns[0].health"), 3);
+	assert.equal(run("portals[0].health"), 50);
+	run("unicorns.length = 0; firePellet(3, 2, -12, 0, -1, false); firePellet(4.2, 0.2, -12, 0, -1, true);");
+	assert.equal(run("portals[0].health"), 50);
+});
+
+test("replacement unicorns only emerge from surviving portals", () => {
+	const { run } = game();
+	run("unicorns.length = 0; portals.forEach((p, i) => p.health = i === 1 ? 1 : 0);");
+	for (let attempt = 0; attempt < 10; attempt++) {
+		run("unicorns.length = 0; spawnCooldown = 0; updateGame(0);");
+		assert.equal(run("unicorns.length"), 1);
+		assert.equal(run("unicorns[0].entity[4]"), 14);
+		assert.equal(run("unicorns[0].entity[6]"), 4);
+	}
 });
 
 test("weapon selection preserves independent magazines and cancels reload without refilling", () => {
@@ -182,6 +252,21 @@ test("reload drops the arms fast, holds them down, and raises them at the end", 
 	}
 });
 
+test("shift sprints, lowers the gun, and interrupts weapon actions", () => {
+	const walk = game(), sprint = game();
+	for (const { run } of [walk, sprint]) run("unicorns.length = 0; solids.length = 0; heldKeys.add('w');");
+	walk.run("updateGame(0.1);");
+	sprint.run("weapon[4] = 0; reloadMarineGun(); heldKeys.add('shift'); updateGame(0.1);");
+	assert.ok(Math.abs(walk.run("player[6]") + 0.44) < 0.000001);
+	assert.ok(Math.abs(sprint.run("player[6]") + 0.58) < 0.000001);
+	assert.equal(sprint.run("reloadCooldown"), 0);
+	assert.ok(Math.abs(sprint.run("marineArms[8]") - 0.85) < 0.000001);
+	sprint.run("weapon[4] = 1; fireMarineGun(); reloadMarineGun();");
+	assert.equal(sprint.run("weapon[4]"), 1);
+	assert.equal(sprint.run("effects().filter(effect => effect[0] === 7).length"), 0);
+	assert.equal(sprint.run("reloadCooldown"), 0);
+});
+
 test("walking alternates marine leg variants and stops for free camera or blocked movement", () => {
 	const { run } = game();
 	run("solids.length = 0; heldKeys.add('w'); updateGame(0.15);");
@@ -247,9 +332,9 @@ test("unicorn walk cycle alternates model variants as it moves", () => {
 	const { run } = game();
 	run("solids.length = 0;");
 	assert.equal(run("unicorns[0].entity[15]"), 0);
-	run("updateGame(0.3)");
+	run("updateGame(0.2)");
 	assert.equal(run("unicorns[0].entity[15]"), 1);
-	run("updateGame(0.3)");
+	run("updateGame(0.2)");
 	assert.equal(run("unicorns[0].entity[15]"), 0);
 });
 
@@ -316,12 +401,14 @@ test("marine damage builds rainbow coverage to 30% and fully colors the corpse",
 test("fifth hit leaves a corpse and disables movement, aiming, firing and reload", () => {
 	const { run, touch, sounds } = game();
 	for (let i = 0; i < 5; i++) {
+		const position = Array.from(run("player.subarray(4, 7)"));
 		touch();
 		run("updateGame(0.86)");
+		if (i === 4) assert.deepEqual(Array.from(run("player.subarray(4, 7)")), position);
 	}
 	assert.equal(run("marineHealth"), 0);
 	assert.equal(sounds.hurt, 4);
-	assert.equal(sounds.spaceholder1, 1);
+	assert.equal(sounds.explode, 1);
 	assert.ok(Math.abs(run("player[8]") - Math.PI / 2) < 0.001);
 	const corpseX = run("player[4]");
 	run("heldKeys.add('d'); weapon[4] = 10; setMarineTrigger(true); fireMarineGun(); reloadMarineGun(); aimMarineAtCursor(0, 0, 800, 600); updateGame(2)");
@@ -331,7 +418,7 @@ test("fifth hit leaves a corpse and disables movement, aiming, firing and reload
 	assert.equal(sounds.gunshot, 0);
 	assert.equal(sounds.reload, 0);
 	assert.equal(sounds.hurt, 4);
-	assert.equal(sounds.spaceholder1, 1);
+	assert.equal(sounds.explode, 1);
 	assert.equal(run("player[0]"), 1, "corpse remains allocated");
 	assert.equal(run("player[5]"), 0, "fallen gun rests at floor height");
 	run("updateGame(4)");

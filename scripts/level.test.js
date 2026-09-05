@@ -21,7 +21,7 @@ function level() {
 test("arena leaves starting positions clear and excludes obstacles and outside spawns", () => {
 	const { canStand, blocks } = level();
 	assert.equal(blocks.length, 21);
-	for (const [x, z] of [[-2, 0], [4, -1], [7, 3], [3, 6], [-5, 5], [-8, -3], [1, -7]]) {
+	for (const [x, z] of [[-2, 0], [3, -2], [11, 4], [6, 10], [-11, 4], [-11, -7], [1, -11]]) {
 		assert.ok(canStand(x, z), `Starting position ${x}, ${z}`);
 	}
 	for (const [x, z] of [[5, 5], [-6, -5], [16, 0], [0, -16]]) assert.ok(!canStand(x, z));

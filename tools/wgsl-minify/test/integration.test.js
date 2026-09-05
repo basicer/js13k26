@@ -1,21 +1,21 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import fs from "node:fs";
-import { minifyWgsl } from "./wgsl-minify.js";
-import { fixtures } from "./wgsl-minify.fixtures.js";
+import { minifyWgsl } from "../src/minify.js";
+import { fixtures } from "./fixtures.js";
 
-import { checkShader as check } from "./wgsl-compiler-check.js";
+import { checkShader as check } from "../src/compiler-check.js";
 
 for (const name of ["shader"]) {
 	test(`${name}: unchanged compiler output`, () => {
 		const source = fs
 			.readFileSync(
-				new URL(`../shaders/${name}.wgsl`, import.meta.url),
+				new URL(`../../../shaders/${name}.wgsl`, import.meta.url),
 				"utf8",
 			)
 			.replace(/^#import "([^"]*)".*$/gm, (_, file) =>
 				fs.readFileSync(
-					new URL(`../shaders/${file}`, import.meta.url),
+					new URL(`../../../shaders/${file}`, import.meta.url),
 					"utf8",
 				),
 			);

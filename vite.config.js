@@ -8,7 +8,7 @@ import { parseAst } from "rolldown/parseAst";
 import { Packer } from "roadroller";
 import ClosureCompiler from "google-closure-compiler";
 import { assemble } from "./src/vvm-tools.js";
-import { minifyWgsl } from "./scripts/wgsl-minify.js";
+import { minifyWgsl } from "./tools/wgsl-minify/src/minify.js";
 
 import ect from "ect-bin";
 import advzip from "advzip-bin";
@@ -50,10 +50,7 @@ export default defineConfig(({ command, mode }) => {
 
 var dds = () => ({
 	name: "vite:dds",
-	load: (id) =>
-		/\.dds(?:\.gz)?$/.test(id)
-			? `export default "${readFileSync(id).toString("base64")}";`
-			: undefined,
+	load: (id) => (/\.dds(?:\.gz)?$/.test(id) ? `export default "${readFileSync(id).toString("base64")}";` : undefined),
 });
 
 var zzfxm = () => ({
@@ -78,9 +75,7 @@ var voxprog = (development) => {
 			if (!/\.(vp|vox)$/.test(id)) return;
 			const source = readFileSync(id, "utf8");
 			const file = path.relative(root, id).replaceAll("\\", "/");
-			const metadata = development
-				? JSON.stringify({ file, source })
-				: "undefined";
+			const metadata = development ? JSON.stringify({ file, source }) : "undefined";
 			return `export default "${Buffer.from(assemble(source)).toString("base64")}"; export const debugSource = ${metadata};`;
 		},
 	};
@@ -116,42 +111,32 @@ var roadroller = () => ({
 		}
 
 		const bundleOutputs = Object.values(ctx.bundle);
-		const javascript = bundleOutputs.find((output) =>
-			output.fileName.endsWith(".js"),
-		);
-		const otherBundleOutputs = bundleOutputs.filter(
-			(output) => output !== javascript,
-		);
+		const javascript = bundleOutputs.find((output) => output.fileName.endsWith(".js"));
+		const otherBundleOutputs = bundleOutputs.filter((output) => output !== javascript);
 		if (otherBundleOutputs.length > 0) {
-			otherBundleOutputs.forEach((output) =>
-				console.warn(`WARN Asset not inlined: ${output.fileName}`),
-			);
+			otherBundleOutputs.forEach((output) => console.warn(`WARN Asset not inlined: ${output.fileName}`));
 		}
 
-		const data = `(async () => {\n${javascript.code}\n})();`;
+		// Closure already wraps the game in an async function.
+		const data = javascript.code;
 		const packer = new Packer([{ data, type: "js", action: "eval" }], {
 			maxMemoryMB: 128,
-			modelRecipBaseCount: 10,
+			modelRecipBaseCount: 20,
+			modelMaxCount: 4,
 			numAbbreviations: 0,
 			sparseSelectors: [
-				0, 1, 2, 3, 6, 7, 8, 10, 13, 25, 28, 50, 112, 161, 163, 173,
-				182, 192, 197, 241, 243, 254, 390, 490,
+				0, 1, 2, 3, 5, 6, 7, 8, 10, 13, 25, 38, 48, 90, 112, 113, 140, 171, 193, 229,
 			],
-			precision: 14,
-			recipLearningRate: 940,
+			precision: 16,
+			recipLearningRate: 1500,
 			// The packed release owns its single page; game code has its own wrapper.
 			allowFreeVars: true,
 		});
 		// Reuse the tuned model for deterministic, fast builds; opt in to retuning.
-		if (process.env.REPACK)
-			console.log(
-				"Roadroller parameters",
-				JSON.stringify((await packer.optimize(2)).best),
-			);
+		if (process.env.REPACK) console.log("Roadroller parameters", JSON.stringify((await packer.optimize(2)).best));
 		const { firstLine, secondLine } = packer.makeDecoder();
 		const code = `${firstLine}\n${secondLine}`;
-		if (/<\/script/i.test(code))
-			throw Error("Unsafe packed script terminator");
+		if (/<\/script/i.test(code)) throw Error("Unsafe packed script terminator");
 		// Decode without running the game and verify the executable syntax tree.
 		let decoded;
 		// Local bindings avoid Node VM's slow global proxy during validation.
@@ -167,14 +152,9 @@ var roadroller = () => ({
 		);
 		const canonical = (source) =>
 			JSON.stringify(parseAst(source), (key, value) =>
-				["start", "end", "raw", "loc", "range"].includes(key)
-					? undefined
-					: value,
+				["start", "end", "raw", "loc", "range"].includes(key) ? undefined : value,
 			);
-		if (
-			typeof decoded !== "string" ||
-			canonical(decoded) !== canonical(data)
-		) {
+		if (typeof decoded !== "string" || canonical(decoded) !== canonical(data)) {
 			throw Error("Packed game failed its code round-trip check");
 		}
 
@@ -264,40 +244,19 @@ var zip = () => ({
 			const files = await readdir("dist/");
 			const assetFiles = files
 				.filter((file) => {
-					return (
-						file != "index.html" &&
-						file != "index.zip" &&
-						!file.endsWith(".js")
-					);
+					return file != "index.html" && file != "index.zip" && !file.endsWith(".js");
 				})
 				.map((file) => "dist/" + file);
 
-			const args = [
-				"-strip",
-				"-zip",
-				"-10009",
-				"dist/index.html",
-				...assetFiles,
-			];
+			const args = ["-strip", "-zip", "-10009", "dist/index.html", ...assetFiles];
 			const result = execFileSync(ect, args);
 			console.log("ECT result", result.toString());
-			const advzipResult = execFileSync(advzip, [
-				"-4",
-				"-z",
-				"dist/index.zip",
-			]);
+			const advzipResult = execFileSync(advzip, ["-4", "-z", "dist/index.zip"]);
 			console.log("advzip result", advzipResult.toString());
 			const stats = await stat("dist/index.zip");
-			console.log(
-				"ZIP size",
-				Math.round((stats.size / 1024) * 100) / 100,
-				"KB",
-			);
+			console.log("ZIP size", Math.round((stats.size / 1024) * 100) / 100, "KB");
 			console.log(13312 - stats.size, "bytes left");
-			if (stats.size > 13312)
-				throw new Error(
-					`Release exceeds 13 KiB by ${stats.size - 13312} bytes`,
-				);
+			if (stats.size > 13312) throw new Error(`Release exceeds 13 KiB by ${stats.size - 13312} bytes`);
 		} catch (err) {
 			throw err;
 		}

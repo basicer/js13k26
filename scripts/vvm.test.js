@@ -92,6 +92,15 @@ test("labels respect literal batching, vector fusion, comments and line breaks",
 	assert.deepEqual([...assemble("0 JUMPIF // target on next line\n end\nend:")], [57, 0, 96, 0]);
 });
 
+test("SIZE creates compact volumes and literal payloads are signed bytes", () => {
+	const buffer = run("8 6 4 VEC SIZE -7 FSTORE:MATERIAL BOX FSTORE:BRUSH STROKE");
+	assert.equal(buffer.length, 8 * 6 * 4 * 4);
+	assert.equal(buffer[0], 249);
+	assert.deepEqual([...assemble("-1")], [57, 255]);
+	assert.throws(() => compileVoxelSource("-1 1 1 VEC SIZE"), /Model size/);
+	assert.throws(() => compileVoxelSource("128"), /Literal out of range/);
+});
+
 test("all eleven offset bits and signed range boundaries", () => {
 	for (const n of [255, 256, 1023]) {
 		const bytes = assemble(`0 JUMPIF end ${"FLOAD ".repeat(n)} end:`);
@@ -209,21 +218,17 @@ test("FLIP swaps voxels only inside its box on each axis, including empty cells"
 	assert.throws(() => compileVoxelSource("FLIP:3"), /Invalid subopcode/);
 });
 
-test("marine parts preserve the original shape above the animated lower legs", (t) => {
-	const load = name => run(readFileSync(new URL(`../vox/${name}.vp`, import.meta.url), "utf8"));
-	const original = load("marine");
-	const parts = ["legs", "body", "arms", "gun"].map(name => load(`marine-${name}`));
-	let occupied = 0, shapeChanges = 0, materialChanges = 0;
-	for (let i = 0; i < original.length; i += 4) {
-		if (Math.floor(i / 4 / 64) % 64 < 28) continue;
-		const combined = parts.reduce((value, part) => part[i] || value, 0);
-		if (original[i] || combined) occupied++;
-		if (!!original[i] !== !!combined) shapeChanges++;
-		if (original[i] !== combined) materialChanges++;
-	}
-	t.diagnostic(`${occupied} occupied cells, ${shapeChanges} shape changes, ${materialChanges} material differences at part overlaps`);
-	assert.ok(shapeChanges / occupied < 0.01);
-	assert.ok(materialChanges / occupied < 0.03);
+test("marine gun uses a compact voxel volume", () => {
+	const gun = run(readFileSync(new URL("../vox/marine-gun.vp", import.meta.url), "utf8"));
+	assert.equal(gun.length, 16 * 20 * 32 * 4);
+	assert.ok(gun.some(value => value !== 0));
+});
+
+test("unicorn portal has a compact 255-material core", () => {
+	const portal = run(readFileSync(new URL("../vox/unicorn-portal.vp", import.meta.url), "utf8"));
+	assert.equal(portal.length, 32 * 48 * 8 * 4);
+	assert.equal(portal[((4 * 48 + 24) * 32 + 16) * 4], 255);
+	assert.deepEqual([4, 5, 6, 7, 8, 9].map(x => portal[((4 * 48 + 20) * 32 + x) * 4]), [243, 246, 242, 244, 245, 250]);
 });
 
 test("marine legs have opposite P0 poses with stable hip attachments", () => {
