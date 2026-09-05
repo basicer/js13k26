@@ -56,6 +56,7 @@ export var voxT = GenArray(256, () => empty);
 
 voxT[2] = cube;
 voxT[6] = sphere;
+voxT[7] = cube; // Solid blocks for the arena.
 
 export const flush = (texture) => {
 	Q.writeTexture(

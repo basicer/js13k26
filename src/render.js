@@ -5,11 +5,9 @@ import {
 	Q,
 	G,
 	GenArray,
-	heldKeys,
 	canvasSrgbFormat,
 	label,
 } from "./globals.js";
-import { vec3 } from "./math.js";
 import shaderCode from "../shaders/shader.wgsl";
 import computeShaderCode from "../shaders/compute.wgsl";
 import postShaderCode from "../shaders/post.wgsl";
@@ -19,10 +17,14 @@ import {
 	entityOverrides,
 	ENTITY_DATA_SIZE,
 	ENTITY_COUNT,
-	cameraPosition,
-	cameraRotation,
 } from "./entities.js";
 import { voxT } from "./vvm.js";
+import {
+	aimMarineAtCursor,
+	fireMarineGun,
+	setMarineTrigger,
+	updateGame,
+} from "./game.js";
 
 let lastFrameTime = performance.now();
 
@@ -30,48 +32,41 @@ const MAX_POINT_LIGHTS = 32;
 
 let debugModule;
 export const wantsKeyboard = () => debugModule?.wantsKeyboard();
-let cameraDragPointerId = null;
 
 if (DEBUG && import.meta.env.DEBUG) {
 	import("./debug/debug.js").then((module) => {
 		debugModule = module;
 		c.addEventListener("pointerdown", (event) => {
-			if (event.button !== 2 || module.wantsMouse()) return;
-			cameraDragPointerId = event.pointerId;
-			c.setPointerCapture(event.pointerId);
-			event.preventDefault();
-		});
-		c.addEventListener("pointermove", (event) => {
-			if (event.pointerId !== cameraDragPointerId) return;
-			if (!(event.buttons & 2)) {
-				cameraDragPointerId = null;
-				return;
-			}
-			cameraRotation[1] += event.movementX * 0.005;
-			cameraRotation[0] -= event.movementY * 0.005;
-			cameraRotation[0] = Math.max(
-				-1.5,
-				Math.min(1.5, cameraRotation[0]),
-			);
-		});
-		c.addEventListener("pointerup", (event) => {
-			if (event.pointerId === cameraDragPointerId)
-				cameraDragPointerId = null;
-		});
-		c.addEventListener("lostpointercapture", () => {
-			cameraDragPointerId = null;
-		});
-		c.addEventListener("pointerdown", async (event) => {
 			if (event.button !== 0 || module.wantsMouse()) return;
-			const bounds = c.getBoundingClientRect();
-			const [index] = await pickEntity(
-				((event.clientX - bounds.left) * c.width) / bounds.width,
-				((event.clientY - bounds.top) * c.height) / bounds.height,
-			);
-			if (index >= 0) module.selectEntity(index);
+			setMarineTrigger(true);
+			fireMarineGun();
+			c.setPointerCapture(event.pointerId);
 		});
 	});
 }
+
+if (!(DEBUG && import.meta.env.DEBUG)) {
+	c.addEventListener("pointerdown", (event) => {
+		if (event.button !== 0) return;
+		setMarineTrigger(true);
+		fireMarineGun();
+		c.setPointerCapture(event.pointerId);
+	});
+}
+
+for (const eventName of ["pointerup", "pointercancel", "lostpointercapture"]) {
+	c.addEventListener(eventName, () => setMarineTrigger(false));
+}
+
+c.addEventListener("pointermove", (event) => {
+	const bounds = c.getBoundingClientRect();
+	aimMarineAtCursor(
+		event.clientX - bounds.left,
+		event.clientY - bounds.top,
+		bounds.width,
+		bounds.height,
+	);
+});
 
 // Bit-packed -1/+1 cube vertices.
 const vertices = new Float32Array(
@@ -281,45 +276,8 @@ export function render(t) {
 	const deltaTime = (now - lastFrameTime) / 1000;
 	lastFrameTime = now;
 
-	const turnSpeed = 1.5;
-	const moveSpeed = heldKeys.has("shift") ? 16 : 6;
-
-	if (heldKeys.has("arrowleft")) cameraRotation[1] -= turnSpeed * deltaTime;
-	if (heldKeys.has("arrowright")) cameraRotation[1] += turnSpeed * deltaTime;
-	if (heldKeys.has("arrowup")) cameraRotation[0] += turnSpeed * deltaTime;
-	if (heldKeys.has("arrowdown")) cameraRotation[0] -= turnSpeed * deltaTime;
-	if (heldKeys.has("q")) cameraRotation[2] += turnSpeed * deltaTime;
-	if (heldKeys.has("e")) cameraRotation[2] -= turnSpeed * deltaTime;
-	cameraRotation[0] = Math.max(-1.5, Math.min(1.5, cameraRotation[0]));
-
-	const cosPitch = Math.cos(cameraRotation[0]);
-	const lookDirection = vec3(
-		Math.sin(cameraRotation[1]) * cosPitch,
-		Math.sin(cameraRotation[0]),
-		-Math.cos(cameraRotation[1]) * cosPitch,
-	);
-	const right = vec3(
-		Math.cos(cameraRotation[1]),
-		0,
-		Math.sin(cameraRotation[1]),
-	);
-	const forward_amount =
-		Number(heldKeys.has("w")) - Number(heldKeys.has("s"));
-	const strafe_amount = Number(heldKeys.has("d")) - Number(heldKeys.has("a"));
-	const vertical_amount =
-		Number(heldKeys.has("r")) - Number(heldKeys.has("f"));
-	const movement = vec3(
-		lookDirection[0] * forward_amount + right[0] * strafe_amount,
-		lookDirection[1] * forward_amount + vertical_amount,
-		lookDirection[2] * forward_amount + right[2] * strafe_amount,
-	);
-	const movement_length = Math.hypot(...movement);
-	if (movement_length) {
-		const movementScale = (moveSpeed * deltaTime) / movement_length;
-		cameraPosition[0] += movement[0] * movementScale;
-		cameraPosition[1] += movement[1] * movementScale;
-		cameraPosition[2] += movement[2] * movementScale;
-	}
+	debugModule?.updateCamera(deltaTime);
+	updateGame(deltaTime);
 
 	const time = now / 1000;
 	const fov = 60;

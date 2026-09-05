@@ -1,5 +1,6 @@
 import { ImGui, ImGuiImplWeb, ImVec2, ImVec4 } from "@mori2003/jsimgui";
 import { d, c, heldKeys } from "../globals.js";
+import { cameraRotation } from "../entities.js";
 import { palette } from "../palette.js";
 import { entityInspector } from "./entityInspector.js";
 import { voxelEditor, voxelEditorOpen } from "./voxelEditor.js";
@@ -17,6 +18,19 @@ stats.dom.style.left = '';
 stats.dom.style.right = '0px';
 stats.dom.style.width = '360px';
 stats.init(d);
+
+// Gameplay owns WASD and the follow camera. Arrow keys remain a debug-only
+// way to inspect the scene's viewing angle without becoming player controls.
+export function updateCamera(deltaTime) {
+	const turnSpeed = 1.5;
+	if (heldKeys.has("arrowleft")) cameraRotation[1] -= turnSpeed * deltaTime;
+	if (heldKeys.has("arrowright")) cameraRotation[1] += turnSpeed * deltaTime;
+	if (heldKeys.has("arrowup")) cameraRotation[0] += turnSpeed * deltaTime;
+	if (heldKeys.has("arrowdown")) cameraRotation[0] -= turnSpeed * deltaTime;
+	if (heldKeys.has("q")) cameraRotation[2] += turnSpeed * deltaTime;
+	if (heldKeys.has("e")) cameraRotation[2] -= turnSpeed * deltaTime;
+	cameraRotation[0] = Math.max(-1.2, Math.min(-0.15, cameraRotation[0]));
+}
 
 
 let initialization = false;

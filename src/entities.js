@@ -26,8 +26,11 @@ cameraEntity.set([1, 1, 1], 12);
 
 export const spawn = (kind) => {
 	let e = EArray.find((e) => e[0] === 255);
+	if (!e) return null;
+	// Entities are recycled (muzzle flashes and blood use the same pool), so
+	// clear overrides, rotations, lights, and parent links from their old role.
+	e.fill(0);
 	e[0] = kind;
-	e[5] = 0;
 	e[12] = e[13] = e[14] = 1;
 	e[15] = 1;
 	e[16] = e[17] = e[18] = -2;
@@ -37,15 +40,9 @@ export const spawn = (kind) => {
 
 let floor = spawn(5);
 floor[5] = -32/64;
-floor[12] = 15;
+floor[12] = 32;
 floor[13] = 4/64;
-floor[14] = 15;
-
-let one = spawn(1);
-one[4] = -2;
-
-spawn(2);
-
+floor[14] = 32;
 
 let light = spawn(6);
 light[6] = 2;

@@ -9,6 +9,7 @@ import {
 	canvasSrgbFormat,
 } from "./globals.js";
 import { render, wantsKeyboard } from "./render.js";
+import { reloadMarineGun } from "./game.js";
 
 import * as sound from "./sfx.js";
 
@@ -48,6 +49,7 @@ $.addEventListener("keydown", (event) => {
 	if (event.key === "h") {
 		sound.gunshot();
 	}
+	if (event.key.toLowerCase() === "r") reloadMarineGun();
 	// window.x = magic();
 
 	event.preventDefault();
