@@ -1,5 +1,33 @@
 import { zzfx, zzfxP, zzfxM, zzfxR, zzfxV } from "../vendor/zzfx.js";
 
+let hurtSamples;
+export let hurt = () => {
+	if (!hurtSamples) {
+		hurtSamples = new Float32Array(0.32 * zzfxR | 0);
+		// Low vocal harmonics shaped into an "oo", followed by an unvoiced "f".
+		const harmonics = Array.from({ length: 18 }, (_, i) => {
+			const frequency = (i + 1) * 120;
+			return (0.9 * Math.exp(-(((frequency - 330) / 110) ** 2))
+				+ 0.5 * Math.exp(-(((frequency - 850) / 180) ** 2))
+				+ (i === 0 ? 0.4 : 0)) / Math.sqrt(i + 1);
+		});
+		let phase = 0, breathLow = 0;
+		for (let i = 0; i < hurtSamples.length; i++) {
+			const t = i / zzfxR;
+			phase += 2 * Math.PI * (135 - 35 * Math.min(t / 0.23, 1)) / zzfxR;
+			let voice = 0;
+			for (let h = 0; h < harmonics.length; h++) voice += harmonics[h] * Math.sin(phase * (h + 1));
+			const vowel = Math.min(t / 0.009, 1) * Math.max(0, 1 - t / 0.23) ** 0.65;
+			const noise = Math.random() * 2 - 1;
+			breathLow += 0.3 * (noise - breathLow);
+			const breath = Math.max(0, Math.min((t - 0.15) / 0.045, 1))
+				* Math.max(0, (0.32 - t) / 0.125);
+			hurtSamples[i] = (voice * vowel + (noise - breathLow) * breath * 0.28) * zzfxV * 2;
+		}
+	}
+	return zzfxP(hurtSamples);
+};
+
 let reloadSamples;
 export let reload = () => {
 	if (!reloadSamples) {

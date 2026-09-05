@@ -12,6 +12,7 @@ import { render, wantsKeyboard } from "./render.js";
 import { reloadMarineGun } from "./game.js";
 
 import * as sound from "./sfx.js";
+import { zzfxX } from "../vendor/zzfx.js";
 
 Object.assign(c.style, {
 	position: "absolute",
@@ -79,6 +80,8 @@ if (DEBUG) console.log("Starting render loop");
 step(performance.now());
 
 
-setTimeout(() => {
-	for (let [name, s] of Object.entries(sound)) { s(); }
-}, 6e5);
+// Queue the track once; browsers that block autoplay resume on first input.
+sound.music1()["loop"] = true;
+for (const event of ["pointerdown", "keydown"]) {
+	$.addEventListener(event, () => zzfxX.resume(), { once: true });
+}

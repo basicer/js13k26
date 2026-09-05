@@ -3,6 +3,9 @@ if (import.meta.env.DEBUG) {
 	globalThis["DEBUG"] = /debug/i.test(window.location.search);
 }
 
+// 56% more magnification than the original 60-degree view (1.3 * 1.2).
+export const cameraFov = Math.atan(Math.tan(Math.PI / 6) / 1.56) * 360 / Math.PI;
+
 export let $ = document,
 	c = DEBUG
 		? $.getElementById("canvas") || $.createElement("canvas")

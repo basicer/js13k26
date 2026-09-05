@@ -6,6 +6,7 @@ import {
 	G,
 	GenArray,
 	canvasSrgbFormat,
+	cameraFov,
 	label,
 } from "./globals.js";
 import shaderCode from "../shaders/shader.wgsl";
@@ -280,11 +281,10 @@ export function render(t) {
 	updateGame(deltaTime);
 
 	const time = now / 1000;
-	const fov = 60;
 	let canvasTexture = G.getCurrentTexture();
 	let target = canvasTexture.createView({ format: canvasSrgbFormat });
 
-	renderState.set([time, c.width / c.height, fov]);
+	renderState.set([time, c.width / c.height, cameraFov]);
 	Q.writeBuffer(renderStateBuffer, 0, renderState);
 	Q.writeBuffer(entityBuffer, 0, entities);
 	Q.writeBuffer(pointLightCounterBuffer, 0, new Uint32Array(1));

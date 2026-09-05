@@ -43,20 +43,24 @@ export function moveActor(entity, dx, dz) {
 }
 
 export function clearShot(x, z, targetX, targetZ) {
+	return shotFraction(x, z, targetX, targetZ) === 1;
+}
+
+export function shotFraction(x, z, targetX, targetZ) {
 	// Intersect the shot segment with each block at muzzle height.
-	return !solids.some(([left, right, back, front, top]) => {
-		if (top < 1.25) return false;
+	return solids.reduce((nearest, [left, right, back, front, top]) => {
+		if (top < 1.25) return nearest;
 		let near = 0, far = 1;
 		for (const [origin, direction, min, max] of [[x, targetX - x, left, right], [z, targetZ - z, back, front]]) {
 			if (Math.abs(direction) < 0.00001) {
-				if (origin < min || origin > max) return false;
+				if (origin < min || origin > max) return nearest;
 			} else {
 				const a = (min - origin) / direction, b = (max - origin) / direction;
 				near = Math.max(near, Math.min(a, b));
 				far = Math.min(far, Math.max(a, b));
-				if (near > far) return false;
+				if (near > far) return nearest;
 			}
 		}
-		return true;
-	});
+		return Math.min(nearest, near);
+	}, 1);
 }
