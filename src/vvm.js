@@ -31,10 +31,10 @@ const tex = (name, size = [VOXEL_SIZE, VOXEL_SIZE, VOXEL_SIZE]) => {
 
 let buffers = new Map();
 const empty = tex("Empty");
-buffers.set(empty, new Float32Array(VOXEL_SIZE ** 3 * 4));
+if (DEBUG) buffers.set(empty, new Float32Array(VOXEL_SIZE ** 3 * 4));
 
-export var cube = tex(label`cube`);
-buffers.set(cube, new Float32Array(VOXEL_SIZE ** 3 * 4).fill(1));
+export var cube = DEBUG ? tex(label`cube`) : empty;
+if (DEBUG) buffers.set(cube, new Float32Array(VOXEL_SIZE ** 3 * 4).fill(1));
 
 const sphereCenter = (VOXEL_SIZE - 1) / 2;
 const sphereRadius = VOXEL_SIZE * 0.38;
@@ -46,15 +46,15 @@ for (let i = 0; i < VOXEL_SIZE ** 3; i++) {
 	const dx = i % VOXEL_SIZE - sphereCenter;
 	const dy = (i / VOXEL_SIZE | 0) % VOXEL_SIZE - sphereCenter;
 	const dz = (i / VOXEL_SIZE ** 2 | 0) - sphereCenter;
-	if (Math.hypot(dx, dy, dz) <= sphereRadius) sphereVoxels[i * 4] = 20;
+	if (dx * dx + dy * dy + dz * dz <= sphereRadius * sphereRadius) sphereVoxels[i * 4] = 20;
 }
 buffers.set(sphere, sphereVoxels);
 
 export var voxT = GenArray(256, () => [empty, empty]);
 
-voxT[2] = [cube, cube];
 voxT[6] = [sphere, sphere];
-voxT[7] = [cube, cube]; // Arena fallback until the metallic wall program loads.
+// Only the editor needs fallback cubes; release models finish loading before rendering.
+if (DEBUG) voxT[2] = voxT[7] = [cube, cube];
 
 export const flush = (texture) => {
 	Q.writeTexture(

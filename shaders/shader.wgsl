@@ -24,11 +24,6 @@ struct RenderState {
     fov: f32,
 };
 
-struct PointLight {
-    position: vec3<f32>,
-    intensity: f32,
-};
-
 const NEAR_PLANE = 0.1f;
 const FAR_PLANE = 100.0f;
 
@@ -43,7 +38,7 @@ var<storage, read> entities: array<Entity>;
 @group(0) @binding(2)
 var palette: texture_storage_2d<rgba8unorm, read>;
 @group(0) @binding(3)
-var<storage, read> point_lights: array<PointLight>;
+var<storage, read> point_lights: array<SpotLight>;
 
 const MAX_POINT_LIGHTS = 32u;
 
@@ -106,6 +101,8 @@ fn shade_pbr(base_color: vec3<f32>, normal: vec3<f32>, view: vec3<f32>, roughnes
         let distance_squared = dot(to_light, to_light);
         if (distance_squared <= 0.000001f) { continue; }
         let light_direction = to_light * inverseSqrt(distance_squared);
+        // Light direction points out along local +Z; to_light points back at the source.
+        if (light.cutoff > -1.0f && dot(-light_direction, light.direction) <= light.cutoff) { continue; }
         let radiance = light.intensity / (1.0f + distance_squared);
         point_lighting += direct_lighting(base_color, normal, view, roughness, metalness, light_direction) * radiance;
     }
@@ -127,7 +124,7 @@ fn vs_main(
     // belongs to a different texture before they reach rasterization.
     let entity_kind = u32(entities[entity_index].kind);
     let transparency = entities[entity_index].transparency;
-    if (entity_index == 0u || entity_kind == 255u || entity_kind != current_vox_kind || transparency >= 1.0f) {
+    if (entity_index == 0u || entity_kind >= 254u || (entity_kind & 127u) != current_vox_kind || transparency >= 1.0f) {
         out.clip_position = vec4<f32>(0.0f, 0.0f, 2.0f, 1.0f);
         return out;
     }
@@ -189,7 +186,11 @@ fn voxel_search(ray_origin: vec3<f32>, ray_direction: vec3<f32>, repeats: vec3<f
     let delta_distance = abs(cell_size / safe_direction);
     let boundary = (vec3<f32>(cell) + select(vec3<f32>(0.0f), vec3<f32>(1.0f), safe_direction >= vec3<f32>(0.0f))) * cell_size;
     var side_distance = distance + (boundary - point) / safe_direction;
-    var normal = vec3<f32>(0.0f, 1.0f, 0.0f);
+    // A solid boundary voxel is hit before DDA advances: use the box entry face.
+    let entry_axis = select(select(2u, 1u, bounds_near.y >= bounds_near.z), 0u,
+        bounds_near.x >= max(bounds_near.y, bounds_near.z));
+    var normal = vec3<f32>(0.0f);
+    normal[entry_axis] = -f32(step[entry_axis]);
     let max_steps = u32(ceil(grid_size.x) + ceil(grid_size.y) + ceil(grid_size.z));
     for (var step_count = 0u; step_count < max_steps; step_count++) {
         let material = voxel_at(cell, volume_size, grid_size, variant);
@@ -271,8 +272,8 @@ fn fs_main(in: VertexOutput) -> FragmentOutput {
     let material = select(select(hit.material, e.matOverride, e.matOverride > 0.0f), clamp(e.dissolvePalette, 0.0f, 255.0f), dissolved);
     var color = textureLoad(palette, vec2<u32>(u32(material), 0));
     if (material == 255.0f) {
-        // Smooth model-space bands, with a stable hue offset per entity.
-        let p = voxel_position * 0.08f;
+        // Scroll smooth model-space bands using simulation time (paused with the game).
+        let p = voxel_position * 0.08f + vec3<f32>(render_state.time * 0.1f, 0.0f, 0.0f);
         let hue = fract(p.x + p.y * 0.7f + p.z * 0.5f +
             0.3f * sin(p.x + p.z * 2.0f) + dissolve_noise(vec3<u32>(0u), in.idx));
         let rainbow = clamp(abs(fract(vec3<f32>(hue) + vec3<f32>(0.0f, 0.6666667f, 0.3333333f)) * 6.0f - 3.0f) - 1.0f, vec3<f32>(0.0f), vec3<f32>(1.0f));

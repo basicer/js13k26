@@ -9,7 +9,7 @@ import {
 	canvasSrgbFormat,
 } from "./globals.js";
 import { render, wantsKeyboard, isFlying, isPaused } from "./render.js";
-import { reloadMarineGun, selectMarineWeapon } from "./game.js";
+import { reloadMarineGun, selectMarineWeapon, toggleMarineFlashlight } from "./game.js";
 
 import * as sound from "./sfx.js";
 import { zzfxX } from "../vendor/zzfx.js";
@@ -55,6 +55,7 @@ $.addEventListener("keydown", (event) => {
 		sound.gunshot();
 	}
 	if (!isPaused() && !isFlying() && key === "r") reloadMarineGun();
+	if (!isPaused() && !isFlying() && key === "f") toggleMarineFlashlight();
 	// window.x = magic();
 
 	event.preventDefault();
@@ -74,7 +75,7 @@ $.addEventListener("keyup", (event) => {
 });
 
 let step = async (dt) => {
-	render(dt);
+	await render(dt);
 	requestAnimationFrame(step);
 };
 if (DEBUG) console.log("Starting render loop");

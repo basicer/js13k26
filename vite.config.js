@@ -89,15 +89,28 @@ var voxprog = (development) => {
 
 var shader = (isBuild) => ({
 	name: "vite:shader",
-	transform: (code, id) => {
+	transform(code, id) {
 		if (!id.endsWith(".wgsl")) return;
 
 		code = code.replace(/^#import "([^"]*)".*$/gm, (_, str) => {
-			return readFileSync(path.resolve(path.dirname(id), str), "utf-8");
+			const dependency = path.resolve(path.dirname(id), str);
+			this.addWatchFile(dependency);
+			return readFileSync(dependency, "utf-8");
 		});
 
 		try {
-			if (isBuild) code = minifyWgsl(code);
+			if (isBuild) {
+				// Give shared structs and transforms identical names in both shaders.
+				const files = ["shader.wgsl", "compute.wgsl"];
+				const index = files.indexOf(path.basename(id));
+				if (index < 0) code = minifyWgsl(code);
+				else {
+					const separator = "const SHADER_BOUNDARY=0;";
+					const sources = files.map(file => readFileSync(path.resolve(path.dirname(id), file), "utf8")
+						.replace(/^#import "([^"]*)".*$/gm, (_, file) => readFileSync(path.resolve(path.dirname(id), file), "utf8")));
+					code = minifyWgsl(sources.join(separator), { preserveNames: ["SHADER_BOUNDARY"] }).split(separator)[index];
+				}
+			}
 		} catch (cause) {
 			throw new Error(`Unable to minify shader ${id}: ${cause.message}`, { cause });
 		}
@@ -126,14 +139,26 @@ var roadroller = () => ({
 		}
 
 		const data = `(async () => {\n${javascript.code}\n})();`;
-		const packer = new Packer([{ data, type: "js", action: "eval" }], { maxMemoryMB: 32 });
-		await packer.optimize(1);
+		const packer = new Packer([{ data, type: "js", action: "eval" }], {
+			maxMemoryMB: 128,
+			modelRecipBaseCount: 10,
+			numAbbreviations: 0,
+			sparseSelectors: [0,1,2,3,6,7,8,10,13,25,28,50,112,161,163,173,182,192,197,241,243,254,390,490],
+			precision: 14,
+			recipLearningRate: 940,
+			// The packed release owns its single page; game code has its own wrapper.
+			allowFreeVars: true,
+		});
+		// Reuse the tuned model for deterministic, fast builds; opt in to retuning.
+		if (process.env.REPACK) console.log("Roadroller parameters", JSON.stringify((await packer.optimize(2)).best));
 		const { firstLine, secondLine } = packer.makeDecoder();
 		const code = `${firstLine}\n${secondLine}`;
 		if (/<\/script/i.test(code)) throw Error("Unsafe packed script terminator");
 		// Decode without running the game and verify the executable syntax tree.
 		let decoded;
-		vm.runInNewContext(code, { eval: value => { decoded = value; } }, { timeout: 10000 });
+		// Local bindings avoid Node VM's slow global proxy during validation.
+		const validationCode = `(function(){var ${"abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ".split("").join(",")};${code}})()`;
+		vm.runInNewContext(validationCode, { eval: value => { decoded = value; } }, { timeout: 10000 });
 		const canonical = source => JSON.stringify(parseAst(source), (key, value) =>
 			["start", "end", "raw", "loc", "range"].includes(key) ? undefined : value);
 		if (typeof decoded !== "string" || canonical(decoded) !== canonical(data)) {
@@ -256,8 +281,9 @@ var zip = () => ({
 				"KB",
 			);
 			console.log(13312 - stats.size, "bytes left");
+			if (stats.size > 13312) throw new Error(`Release exceeds 13 KiB by ${stats.size - 13312} bytes`);
 		} catch (err) {
-			console.log("ECT error", err);
+			throw err;
 		}
 	},
 });

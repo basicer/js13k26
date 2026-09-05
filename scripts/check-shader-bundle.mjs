@@ -27,7 +27,8 @@ walk(parseAst(match[1]));
 if (!strings.some(text => text.includes("fn vs_main("))) {
 	// Roadroller's eval is intercepted: inspect the game without executing it.
 	let decoded;
-	vm.runInNewContext(match[1], { eval: value => { decoded = value; } }, { timeout: 10000 });
+	const decoder = `(function(){var ${"abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ".split("").join(",")};${match[1]}})()`;
+	vm.runInNewContext(decoder, { eval: value => { decoded = value; } }, { timeout: 10000 });
 	assert.equal(typeof decoded, "string", "Packed game must decode to JavaScript");
 	strings.length = 0;
 	walk(parseAst(decoded));

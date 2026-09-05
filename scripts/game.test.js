@@ -9,13 +9,18 @@ function game() {
 	let seed = 123456;
 	const randomMath = Object.create(Math);
 	randomMath.random = () => ((seed = (Math.imul(seed, 1664525) + 1013904223) >>> 0) / 4294967296);
+	const EArray = [];
 	const context = vm.createContext({
+		EArray, effects: () => EArray.filter(e => e[0] !== 255 && e[23] < 1e8),
 		DEBUG: true, Math: randomMath,
 		heldKeys: new Set(), cameraPosition: [0, 5, 8], cameraRotation: [-0.5, 0, 0],
 		spawn: kind => {
-			const entity = new Float32Array(20);
+			const entity = new Float32Array(28);
 			entity.id = nextEntityId++;
 			entity[0] = kind;
+			entity[23] = Infinity;
+			entity[24] = Math.PI * 2;
+			EArray.push(entity);
 			entity[12] = entity[13] = entity[14] = 1;
 			entity[16] = entity[17] = entity[18] = -2;
 			return entity;
@@ -109,21 +114,21 @@ test("shotgun fires twelve distinct pellet rays per shell with a 0.7 second cool
 	const { run, sounds } = game();
 	run("unicorns.length = 0; solids.length = 0; selectMarineWeapon(3); setMarineTrigger(true); fireMarineGun();");
 	assert.equal(run("weapon[4]"), 7);
-	assert.equal(run("temporary.filter(effect => effect.entity[0] === 7).length"), 12);
-	assert.equal(run("new Set(temporary.filter(effect => effect.entity[0] === 7).map(effect => effect.entity[9])).size"), 12);
-	assert.equal(run("temporary.filter(effect => effect.entity[1] === 12).length"), 1);
-	const first = run("temporary.filter(effect => effect.entity[0] === 7).map(effect => Array.from(effect.velocity))");
+	assert.equal(run("effects().filter(effect => effect[0] === 7).length"), 12);
+	assert.equal(run("new Set(effects().filter(effect => effect[0] === 7).map(effect => effect[9])).size"), 12);
+	assert.equal(run("effects().filter(effect => effect[1] === 12).length"), 1);
+	const first = run("effects().filter(effect => effect[0] === 7).map(effect => Array.from(effect.subarray(20, 23)))");
 	assert.ok(first.some(v => v[1] > 0));
 	assert.ok(first.some(v => v[1] < 0));
 	for (const velocity of first) {
-		assert.ok(Math.abs(Math.hypot(...velocity) - 45) < 0.000001);
+		assert.ok(Math.abs(Math.hypot(...velocity) - 45) < 0.00001);
 		assert.ok(velocity[2] / 45 >= Math.cos(0.14) - 0.000001);
 	}
 	run("setMarineTrigger(false); updateGame(0.69); fireMarineGun();");
 	assert.equal(sounds.gunshot, 1);
 	run("updateGame(0.02); fireMarineGun();");
 	assert.equal(sounds.gunshot, 2); assert.equal(run("weapon[4]"), 6);
-	const second = run("temporary.filter(effect => effect.entity[0] === 7).map(effect => Array.from(effect.velocity))");
+	const second = run("effects().filter(effect => effect[0] === 7).map(effect => Array.from(effect.subarray(20, 23)))");
 	assert.notEqual(JSON.stringify(first), JSON.stringify(second));
 });
 
@@ -265,13 +270,15 @@ test("walk cycle is frame-rate independent and freezes when blocked, stopped, or
 	assert.equal(coarse.run("unicorns[0].entity[15]"), 1);
 });
 
-test("contact hurts once, plays a sound and pushes the attacker away", () => {
+test("contact hurts once, plays a sound and pushes the marine away", () => {
 	const { run, touch, sounds } = game();
 	touch();
 	run("updateGame(0)");
 	assert.equal(run("marineHealth"), 4);
 	assert.equal(sounds.hurt, 1);
-	assert.ok(run("unicorns[0].entity[4] - player[4] > 2.7"));
+	assert.equal(run("unicorns[0].entity[4]"), -1, "attacker is not knocked back");
+	assert.ok(Math.abs(run("player[4]") + 2.9) < 0.00001);
+	assert.ok(run("unicorns[0].entity[4] - player[4] > 1.8"));
 	touch();
 	run("updateGame(0.4)");
 	assert.equal(sounds.hurt, 1);
@@ -316,8 +323,9 @@ test("fifth hit leaves a corpse and disables movement, aiming, firing and reload
 	assert.equal(sounds.hurt, 4);
 	assert.equal(sounds.spaceholder1, 1);
 	assert.ok(Math.abs(run("player[8]") - Math.PI / 2) < 0.001);
+	const corpseX = run("player[4]");
 	run("heldKeys.add('d'); weapon[4] = 10; setMarineTrigger(true); fireMarineGun(); reloadMarineGun(); aimMarineAtCursor(0, 0, 800, 600); updateGame(2)");
-	assert.equal(run("player[4]"), -2);
+	assert.equal(run("player[4]"), corpseX);
 	assert.equal(run("player[9]"), 0);
 	assert.equal(run("reloadCooldown"), 0);
 	assert.equal(sounds.gunshot, 0);
@@ -325,6 +333,9 @@ test("fifth hit leaves a corpse and disables movement, aiming, firing and reload
 	assert.equal(sounds.hurt, 4);
 	assert.equal(sounds.spaceholder1, 1);
 	assert.equal(run("player[0]"), 1, "corpse remains allocated");
+	assert.equal(run("player[5]"), 0, "fallen gun rests at floor height");
+	run("updateGame(4)");
+	assert.equal(run("marineParts.every(part => part[0] !== 255 && part[23] === Infinity)"), true);
 });
 
 test("dead unicorns cannot hurt and exact overlap produces finite knockback", () => {
@@ -334,35 +345,33 @@ test("dead unicorns cannot hurt and exact overlap produces finite knockback", ()
 	assert.equal(sounds.hurt, 0);
 	run("unicorns[0].health = 4; unicorns[0].entity[4] = player[4]; updateGame(0)");
 	assert.equal(sounds.hurt, 1);
-	assert.ok(run("Number.isFinite(unicorns[0].entity[4]) && Number.isFinite(unicorns[0].entity[6])"));
+	assert.ok(run("Number.isFinite(player[4]) && Number.isFinite(player[6])"));
 });
 
 test("knockback stays inside the arena and cover prevents contact damage", () => {
 	const { run, touch, sounds } = game();
-	run("player[4] = 12");
-	touch();
+	run("player[4] = 14; unicorns[0].entity[4] = 13; unicorns[0].entity[6] = player[6]");
 	run("updateGame(0)");
-	assert.ok(run("canStand(unicorns[0].entity[4], unicorns[0].entity[6])"));
-	assert.ok(run("unicorns[0].entity[4] <= 14.55"));
+	assert.ok(run("canStand(player[4], player[6])"));
+	assert.ok(run("player[4] > 14 && player[4] <= 14.55"));
 	run("hurtCooldown = 0; player[4] = -6; player[6] = -5.6; unicorns[0].entity[4] = -6; unicorns[0].entity[6] = -4.4; updateGame(0)");
 	assert.equal(sounds.hurt, 1);
 });
 
-test("tracers start at the muzzle, stop at cover and expire", () => {
+test("tracers store a GPU trajectory ending at cover", () => {
 	const { run } = game();
 	run("unicorns.length = 0; fireMarineGun();");
-	const tracer = run("temporary.find(effect => effect.entity[0] === 7).entity");
+	const tracer = run("effects().find(effect => effect[0] === 7)");
 	assert.ok(Math.abs(tracer[6] - Math.cos(tracer[9]) * tracer[14] / 2 - 30 / 64) < 0.001);
 	assert.ok(tracer[14] <= 0.251);
 	assert.equal(tracer[19], 242);
 	const startZ = tracer[6], startY = tracer[5];
+	const ttl = tracer[23];
 	run("updateGame(0.05)");
-	assert.equal(tracer[0], 7);
-	assert.ok(Math.abs(tracer[6] - startZ - 2.25) < 0.001);
+	assert.equal(tracer[6], startZ);
 	assert.equal(tracer[5], startY);
-	run("updateGame(1)");
-	assert.ok(Math.abs(tracer[6] + Math.cos(tracer[9]) * tracer[14] / 2 - 15) < 0.001);
-	assert.equal(tracer[0], 255);
+	assert.equal(tracer[23], ttl, "Gameplay leaves movement and TTL to compute");
+	assert.ok(Math.abs(tracer[6] + tracer[22] * ttl + Math.cos(tracer[9]) * tracer[14] / 2 - 15) < 0.001);
 });
 
 test("tracer and flash originate at the model bore at every facing and scale", () => {
@@ -375,8 +384,8 @@ test("tracer and flash originate at the model bore at every facing and scale", (
 			10.5 * 1.4 / 64,
 			Math.sin(angle) * 1.2 / 64 + Math.cos(angle) * 30 * 0.8 / 64,
 		];
-		const flash = run("temporary[0].entity");
-		const tracer = run("temporary.find(effect => effect.entity[0] === 7).entity");
+		const flash = run("effects()[0]");
+		const tracer = run("effects().find(effect => effect[0] === 7)");
 		const start = [tracer[4] + Math.sin(tracer[9]) * tracer[14] / 2, tracer[5], tracer[6] - Math.cos(tracer[9]) * tracer[14] / 2];
 		for (let axis = 0; axis < 3; axis++) {
 			assert.ok(Math.abs(start[axis] - expected[axis]) < 0.00001);
@@ -388,31 +397,35 @@ test("tracer and flash originate at the model bore at every facing and scale", (
 test("tracers follow hits and are absent for empty or reloading weapons", () => {
 	const { run } = game();
 	run("unicorns[0].entity[4] = -2 + 1/64; unicorns[0].entity[6] = 4; fireMarineGun()");
-	const tracer = run("temporary.find(effect => effect.entity[0] === 7).entity");
+	const tracer = run("effects().find(effect => effect[0] === 7)");
 	run("updateGame(1)");
-	const endX = tracer[4] - Math.sin(tracer[9]) * tracer[14] / 2;
-	const endZ = tracer[6] + Math.cos(tracer[9]) * tracer[14] / 2;
+	const endX = tracer[4] + tracer[20] * tracer[23] - Math.sin(tracer[9]) * tracer[14] / 2;
+	const endZ = tracer[6] + tracer[22] * tracer[23] + Math.cos(tracer[9]) * tracer[14] / 2;
 	assert.ok(Math.abs(endX - (-2 + 1/64)) < 0.001);
 	assert.ok(Math.abs(endZ - 3.7) < 0.001);
 	assert.equal(run("unicorns[0].health"), 3);
-	run("temporary.length = 0; shotCooldown = 0; weapon[4] = 0; fireMarineGun(); reloadMarineGun(); fireMarineGun()");
-	assert.equal(run("temporary.length"), 0);
+	run("for (const effect of effects()) effect[0] = 255; shotCooldown = 0; weapon[4] = 0; fireMarineGun(); reloadMarineGun(); fireMarineGun()");
+	assert.equal(run("effects().length"), 0);
 });
 
-test("unicorn damage dissolves up to 30% while alive and completes on death", () => {
+test("unicorn death preserves damage, rolls onto its side and gives the corpse a TTL", () => {
 	const { run } = game();
 	run("unicorns[0].entity[4] = -2 + 1/64; unicorns[0].entity[6] = 4; spawnUnicorn(2, 3)");
 	assert.equal(run("unicorns[0].entity[3]"), 0);
 	assert.equal(run("unicorns[0].entity[11]"), 249);
 	for (let hit = 1; hit <= 4; hit++) {
 		run("shotCooldown = 0; fireMarineGun()");
-		assert.ok(Math.abs(run("unicorns[0].entity[3]") - (hit < 4 ? hit * 0.1 : 1)) < 0.000001);
+		assert.ok(Math.abs(run("unicorns[0].entity[3]") - Math.min(hit, 3) * 0.1) < 0.000001);
+		assert.equal(run("unicorns[0].entity[23]"), hit < 4 ? Infinity : 5);
 		assert.equal(run("unicorns[0].health"), 4 - hit);
 		assert.equal(run("!unicorns[0].health"), hit === 4);
 		assert.equal(run("unicorns[1].entity[3]"), 0);
 	}
 	run("shotCooldown = 0; fireMarineGun(); spawnUnicorn(3, 4)");
-	assert.equal(run("unicorns[0].entity[3]"), 1);
+	assert.ok(Math.abs(run("unicorns[0].entity[3]") - 0.3) < 0.000001);
+	assert.equal(run("unicorns[0].entity[8]"), 0, "head-to-tail axis stays level");
+	assert.ok(Math.abs(run("unicorns[0].entity[10]") - Math.PI / 2) < 0.000001);
+	assert.equal(run("unicorns[0].entity[5]"), -20 / 64);
 	assert.equal(run("unicorns[2].entity[3]"), 0);
 });
 
@@ -422,7 +435,7 @@ test("targets beyond the capped forgiveness remain misses without tracer steerin
 		run(`unicorns[0].entity[4] = -1.5; unicorns[0].entity[6] = ${z}; fireMarineGun()`);
 		assert.equal(run("unicorns[0].health"), 4);
 		assert.equal(run("unicorns[0].entity[3]"), 0);
-		assert.equal(Math.abs(run("temporary.find(effect => effect.entity[0] === 7).velocity[0]")), 0);
+		assert.equal(Math.abs(run("effects().find(effect => effect[0] === 7)[20]")), 0);
 	}
 });
 
@@ -430,33 +443,31 @@ test("small edge misses register without steering the firing ray", () => {
 	const { run } = game();
 	run("unicorns[0].entity[4] = -2 + 1/64 + 0.38; unicorns[0].entity[6] = 4; fireMarineGun()");
 	assert.equal(run("unicorns[0].health"), 3);
-	assert.equal(Math.abs(run("temporary.find(effect => effect.entity[0] === 7).velocity[0]")), 0);
+	assert.equal(Math.abs(run("effects().find(effect => effect[0] === 7)[20]")), 0);
 });
 
 test("blood starts at the unicorn center even for an off-center hit", () => {
 	const { run } = game();
 	run("unicorns[0].entity[4] = -2 + 1/64 + 0.38; unicorns[0].entity[5] = 0.2; unicorns[0].entity[6] = 4; fireMarineGun()");
 	const center = Array.from(run("unicorns[0].entity.subarray(4, 7)"));
-	const blood = run("temporary.filter(effect => effect.entity[19] === 249)");
+	const blood = run("effects().filter(effect => effect[19] === 249)");
 	assert.equal(blood.length, 28);
 	for (const drop of blood) {
-		assert.deepEqual(Array.from(drop.entity.subarray(4, 7)), center);
-		assert.equal(drop.entity[7], 0.5);
-		assert.equal(drop.entity[0], 134, "Transparent sphere draws after opaque types");
+		assert.deepEqual(Array.from(drop.subarray(4, 7)), center);
+		assert.equal(drop[7], 0.5);
+		assert.equal(drop[0], 134, "Transparent sphere draws after opaque types");
 	}
 });
 
-test("blood falls faster and settles on the floor instead of above its origin", () => {
+test("blood stores velocity and TTL directly on its entity", () => {
 	const { run } = game();
 	run("unicorns[0].entity[4] = -2 + 1/64; unicorns[0].entity[6] = 4; fireMarineGun()");
-	const blood = run("temporary.find(effect => effect.entity[19] === 249)");
-	const initialSpeed = blood.velocity[1];
+	const blood = run("effects().find(effect => effect[19] === 249)");
+	assert.ok(blood[21] >= .3 && blood[21] <= 1.1);
+	assert.ok(blood[23] >= .9 && blood[23] <= 1.35);
+	const before = Array.from(blood);
 	run("updateGame(0.01)");
-	assert.ok(Math.abs(blood.velocity[1] - (initialSpeed - 0.11)) < 0.000001);
-	for (let i = 0; i < 70; i++) run("updateGame(0.01)");
-	assert.ok(blood.entity[5] < 0);
-	assert.ok(Math.abs(blood.entity[5] - (-30 / 64 + blood.entity[13] * 0.38)) < 0.000001);
-	assert.equal(blood.velocity[1], 0);
+	assert.deepEqual(Array.from(blood), before);
 });
 
 test("a directly aimed target takes priority over a closer assisted target", () => {
@@ -478,27 +489,27 @@ test("the first body on the firing ray wins, and cover blocks damage", () => {
 test("a muzzle reaching through cover cannot draw a backward tracer", () => {
 	const { run } = game();
 	run("unicorns.length = 0; player[4] = -6; player[6] = -6; fireMarineGun()");
-	assert.equal(run("temporary.filter(effect => effect.entity[0] === 7).length"), 0);
+	assert.equal(run("effects().filter(effect => effect[0] === 7).length"), 0);
 });
 
 test("wall and cover hits throw short-lived sparks back from the impact", () => {
 	for (const [x, z, wallZ] of [[-2, 0, 15], [-6, -7, -5.5]]) {
 		const { run } = game();
 		run(`unicorns.length = 0; player[4] = ${x}; player[6] = ${z}; fireMarineGun()`);
-		const sparks = run("temporary.filter(effect => effect.entity[0] === 6 && effect.entity[19] !== 246)");
+		const sparks = run("effects().filter(effect => effect[0] === 6 && effect[19] !== 246)");
 		assert.equal(sparks.length, 8);
 		for (const spark of sparks) {
-			assert.ok(Math.abs(spark.entity[6] - (wallZ - 0.06)) < 0.00001);
-			assert.ok(spark.velocity[2] < 0);
-			assert.ok(spark.lifetime >= 0.25 && spark.lifetime <= 0.45);
-			assert.equal(spark.entity[1], 0, "Sparks do not cast point light");
-			assert.equal(spark.entity[7], 0, "Sparks remain opaque");
-			assert.equal(spark.entity[11], 0, "Ordinary particles retain default dissolve behavior");
-			assert.deepEqual(Array.from(spark.entity.subarray(16, 19)), [0, 0, 0], "Particles sample the full sphere");
-			assert.ok(spark.entity[12] >= 0.1 && spark.entity[12] <= 0.16);
+			assert.ok(Math.abs(spark[6] - (wallZ - 0.06)) < 0.00001);
+			assert.ok(spark.subarray(20, 23)[2] < 0);
+			assert.ok(spark[23] >= 0.25 && spark[23] <= 0.45);
+			assert.equal(spark[1], 0, "Sparks do not cast point light");
+			assert.equal(spark[7], 0, "Sparks remain opaque");
+			assert.equal(spark[11], 0, "Ordinary particles retain default dissolve behavior");
+			assert.deepEqual(Array.from(spark.subarray(16, 19)), [0, 0, 0], "Particles sample the full sphere");
+			assert.ok(spark[12] >= 0.1 && spark[12] <= 0.16);
 		}
 		run("updateGame(0.5)");
-		assert.ok(sparks.every(spark => spark.entity[0] === 255));
+		assert.ok(sparks.every(spark => spark[0] === 6), "CPU gameplay does not expire particles");
 	}
 });
 
@@ -510,6 +521,6 @@ test("enemy hits, range misses and obstructed muzzles do not create wall sparks"
 	]) {
 		const { run } = game();
 		run(`${setup}; fireMarineGun()`);
-		assert.equal(run("temporary.filter(effect => effect.entity[0] === 6 && [242, 248].includes(effect.entity[19])).length"), 0);
+		assert.equal(run("effects().filter(effect => effect[0] === 6 && [242, 248].includes(effect[19])).length"), 0);
 	}
 });

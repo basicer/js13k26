@@ -1,5 +1,4 @@
 if (import.meta.env.DEBUG) {
-	console.log("DEBUG", window.location);
 	globalThis["DEBUG"] = /debug/i.test(window.location.search);
 }
 

@@ -11,12 +11,18 @@ struct Entity {
     modelVariant: f32,
     tile: vec3<f32>,
     matOverride: f32,
+    velocity: vec3<f32>,
+    // Preserve CPU float bits; +Infinity must never enter shader arithmetic.
+    ttl: u32,
+    light_angle: f32,
+    padding: array<f32, 3>,
 };
 
 fn rotation_matrix(rotation: vec3<f32>) -> mat3x3<f32> {
     let cos_pitch = cos(rotation.x);
     let forward = vec3<f32>(sin(rotation.y) * cos_pitch, sin(rotation.x), -cos(rotation.y) * cos_pitch);
-    let base_right = normalize(cross(forward, vec3<f32>(0.0f, 1.0f, 0.0f)));
+    // Derive right from yaw: crossing with world-up degenerates at +/-90 pitch.
+    let base_right = vec3<f32>(cos(rotation.y), 0.0f, sin(rotation.y));
     let base_up = cross(base_right, forward);
     let right = base_right * cos(rotation.z) + base_up * sin(rotation.z);
     let up = base_up * cos(rotation.z) - base_right * sin(rotation.z);
@@ -32,3 +38,11 @@ fn local_transform(entity: Entity, entity_scale: vec3<f32>) -> mat4x4<f32> {
         vec4<f32>(entity.pos, 1.0f),
     );
 }
+
+// Full cone width is stored on Entity; the collector caches its half-angle cosine.
+struct SpotLight {
+    position: vec3<f32>,
+    intensity: f32,
+    direction: vec3<f32>,
+    cutoff: f32,
+};

@@ -5,7 +5,7 @@ import { canStand, moveActor, clearShot, shotFraction } from "./level.js";
 
 
 const unicorns = [];
-const temporary = [];
+
 
 const player = spawn(1);
 player[4] = -2;
@@ -19,6 +19,8 @@ const [marineLegs, marineBody, marineArms, marineGun] = marineParts;
 marineLegs[2] = marineBody[2] = player.id;
 marineArms[2] = marineBody.id;
 marineGun[2] = marineArms.id;
+marineGun[1] = 12;
+marineGun[24] = Math.PI / 6; // 30-degree flashlight cone along the gun's +Z.
 
 for (const part of marineParts) {
 	part[11] = 255;
@@ -79,7 +81,13 @@ function temporarySphere(x, y, z, scale, material, light, lifetime, velocity, tr
 	entity[16] = entity[17] = entity[18] = 0;
 	entity[19] = material;
 	entity[1] = light;
-	temporary.push({ entity, lifetime, velocity });
+	entity[23] = lifetime;
+	if (velocity) entity.set(velocity, 20);
+}
+
+export function toggleMarineFlashlight() {
+	marineGun[1] = marineGun[1] ? 0 : 12;
+	sound.emptyClick();
 }
 
 export function selectMarineWeapon(number) {
@@ -173,8 +181,7 @@ function firePellet(muzzleX, muzzleY, muzzleZ, forwardX, forwardZ, assist, forwa
 			tracer[9] = Math.atan2(-traceX, traceZ);
 			tracer[8] = -Math.asin(forwardY);
 			tracer[19] = 242;
-			temporary.push({ entity: tracer, lifetime: (distance - length) / 45,
-				velocity: [forwardX * 45, forwardY * 45, forwardZ * 45] });
+			tracer.set([forwardX * 45, forwardY * 45, forwardZ * 45, (distance - length) / 45], 20);
 		}
 	}
 	if (!target) {
@@ -209,14 +216,15 @@ function firePellet(muzzleX, muzzleY, muzzleZ, forwardX, forwardZ, assist, forwa
 		);
 	}
 	target.health--;
-	// Surviving hits stain 10%, 20%, then 30%; the lethal hit stains the rest.
-	target.entity[3] = target.health > 0 ? (4 - target.health) * 0.1 : 1;
+	// Surviving hits stain 10%, 20%, then 30%; death preserves those stains.
+	if (target.health > 0) target.entity[3] = (4 - target.health) * 0.1;
 	if (target.health <= 0) {
 		
-		// Retain the defeated pose, now fully covered in the dissolve material.
-		target.entity[8] = Math.PI / 2;
-		target.entity[10] = random(-0.5) * 0.45;
-		target.entity[5] = 0.2;
+		// Roll onto the side, keeping the head-to-tail axis level.
+		target.entity[8] = 0;
+		target.entity[23] = 5;
+		target.entity[10] = Math.PI / 2;
+		target.entity[5] = -20 / 64;
 	}
 }
 
@@ -331,40 +339,21 @@ export function updateGame(deltaTime, freeCamera = false) {
 			hurtCooldown = 0.85;
 			player[19] = 117;
 			if (marineHealth) sound.hurt();
-			// Push the attacker back through the same collision checks as walking.
-			const pushX = distance > 0.001 ? -dx / distance : Math.sin(entity[9]);
-			const pushZ = distance > 0.001 ? -dz / distance : Math.cos(entity[9]);
-			moveActor(entity, pushX * 1.8, pushZ * 1.8);
+			// Push the marine away from the attacker, respecting walls and cover.
+			const pushX = distance > 0.001 ? dx / distance : -Math.sin(entity[9]);
+			const pushZ = distance > 0.001 ? dz / distance : Math.cos(entity[9]);
+			moveActor(player, pushX * 0.9, pushZ * 0.9);
 			if (!marineHealth) {
 				sound.spaceholder1();
 				triggerHeld = false;
 				reloadCooldown = 0;
 				player[19] = 0;
 				player[8] = Math.PI / 2;
-				player[5] = 0.2;
+				player[5] = 0;
 			}
 		}
 	}
 
-	for (let i = temporary.length; i--;) {
-		const effect = temporary[i];
-		const step = Math.min(deltaTime, effect.lifetime);
-		effect.lifetime -= deltaTime;
-		if (effect.velocity) {
-			for (let axis = 0; axis < 3; axis++) effect.entity[4 + axis] += effect.velocity[axis] * step;
-			if (effect.entity[0] !== 7) {
-				effect.velocity[1] -= (effect.entity[19] === 249 ? 11 : 7) * step;
-				const floor = -30 / 64 + effect.entity[13] * 0.38;
-				if (effect.entity[5] <= floor + 0.000001) {
-					effect.entity[5] = floor;
-					effect.velocity[1] = 0;
-				}
-			}
-		}
-		if (effect.lifetime > 0) continue;
-		effect.entity[0] = 255;
-		temporary.splice(i, 1);
-	}
 
 	// Quick lower, hold for the reload, then quick return to the firing pose.
 	const reloadPose = Math.max(0, Math.min(1, (weapon[1] - reloadCooldown) / 0.12, reloadCooldown / 0.15));

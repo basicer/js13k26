@@ -53,6 +53,10 @@ Lexical rules follow the [WGSL textual structure specification](https://www.w3.o
 ## Size tools
 
 After a production build, `node scripts/size-audit.mjs <output.json>` measures
-compressed section contributions. `node scripts/packing-benchmark.mjs` compares
+non-additive section excision costs after decoding and repacking with the current
+Roadroller settings. It matches the current articulated models and reload/hurt
+tracks against source, and requires an unchanged repack to reproduce the release
+ZIP exactly. These probes are not runnable feature-removal patches.
+`node scripts/packing-benchmark.mjs` compares
 Roadroller configurations without changing the production artifact. Both use
 scratch files outside `dist` so experiments do not get shipped.

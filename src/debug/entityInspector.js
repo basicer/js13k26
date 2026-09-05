@@ -39,6 +39,7 @@ export function entityInspector(overrides, open) {
 	const entity = EArray[selectedEntity];
 	const kind = [Math.round(entity[0])];
 	const pointLight = [entity[1]];
+	const lightAngle = [entity[24]];
 	const parent = [Math.round(entity[2])];
 	const dissolve = [entity[3]];
 	const dissolvePalette = [Math.round(entity[11])];
@@ -49,6 +50,8 @@ export function entityInspector(overrides, open) {
 	const tiling = [entity[16], entity[17], entity[18]];
 	const matOverride = [Math.round(entity[19])];
 	const modelVariant = [entity[15] >= 0.5];
+	const velocity = Array.from(entity.subarray(20, 23));
+	const ttl = [entity[23]];
 	let changed = false;
 	if (ImGui.InputInt("Kind", kind, 1, 10)) {
 		entity[0] = Math.max(0, Math.min(255, kind[0]));
@@ -63,8 +66,12 @@ export function entityInspector(overrides, open) {
 		entity[15] = Number(modelVariant[0]);
 		changed = true;
 	}
-	if (ImGui.DragFloat("Point light", pointLight, 0.1, 0, 100)) {
+	if (ImGui.DragFloat("Light intensity", pointLight, 0.1, 0, 100)) {
 		entity[1] = pointLight[0];
+		changed = true;
+	}
+	if (ImGui.SliderFloat("Light cone (rad, 2PI = point)", lightAngle, 0, Math.PI * 2)) {
+		entity[24] = lightAngle[0];
 		changed = true;
 	}
 	if (ImGui.InputInt("Parent", parent, 1, 10)) {
@@ -88,6 +95,14 @@ export function entityInspector(overrides, open) {
 	}
 	if (ImGui.DragFloat3("Position", position, 0.05)) {
 		entity.set(position, 4);
+		changed = true;
+	}
+	if (ImGui.DragFloat3("Velocity", velocity, 0.05)) {
+		entity.set(velocity, 20);
+		changed = true;
+	}
+	if (ImGui.DragFloat("TTL (seconds)", ttl, 0.05)) {
+		entity[23] = ttl[0];
 		changed = true;
 	}
 	if (ImGui.DragFloat3("Rotation (rad)", rotation, 0.01)) {

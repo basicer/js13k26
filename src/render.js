@@ -15,6 +15,7 @@ import postShaderCode from "../shaders/post.wgsl";
 import { palette } from "./palette.js";
 import {
 	entities,
+	mergeEntityFrame,
 	entityOverrides,
 	ENTITY_DATA_SIZE,
 	ENTITY_COUNT,
@@ -98,7 +99,12 @@ const vertices = new Float32Array(
 var entityBuffer = d.createBuffer({
 	"label": label`Entities`,
 	"size": entities.byteLength,
-	"usage": GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST,
+	"usage": GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST | GPUBufferUsage.COPY_SRC,
+});
+
+const entityReadback = d.createBuffer({
+	"size": entities.byteLength,
+	"usage": GPUBufferUsage.COPY_DST | GPUBufferUsage.MAP_READ,
 });
 
 const pointLightCounterBuffer = d.createBuffer({
@@ -108,10 +114,10 @@ const pointLightCounterBuffer = d.createBuffer({
 });
 const pointLightBuffer = d.createBuffer({
 	"label": label`Point lights`,
-	"size": MAX_POINT_LIGHTS * 16,
+	"size": MAX_POINT_LIGHTS * 32,
 	"usage": GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST,
 });
-const emptyPointLights = new Float32Array(MAX_POINT_LIGHTS * 4);
+const emptyPointLights = new Float32Array(MAX_POINT_LIGHTS * 8);
 
 const renderState = new Float32Array(4);
 const renderStateBuffer = d.createBuffer({
@@ -130,7 +136,7 @@ var paletteTexture = d.createTexture({
 Q.writeTexture(
 	{ "texture": paletteTexture },
 	palette,
-	{ "bytesPerRow": 1024, "rowsPerImage": 2 },
+	{ "bytesPerRow": 1024 },
 	[256, 2],
 );
 
@@ -214,7 +220,6 @@ const pipeline = d.createRenderPipeline({
 	"layout": "auto",
 	"vertex": {
 		"module": shader,
-		"entryPoint": "vs_main",
 		"buffers": [
 			{
 				"arrayStride": 12,
@@ -230,13 +235,12 @@ const pipeline = d.createRenderPipeline({
 	},
 	"fragment": {
 		"module": shader,
-		"entryPoint": "fs_main",
 		"targets": [
 			{
 				"format": "rgba16float",
 				"blend": {
 					"color": { "srcFactor": "src-alpha", "dstFactor": "one-minus-src-alpha" },
-					"alpha": { "srcFactor": "one", "dstFactor": "one-minus-src-alpha" },
+					"alpha": { "dstFactor": "one-minus-src-alpha" },
 				},
 			},
 			{
@@ -255,12 +259,15 @@ const pipeline = d.createRenderPipeline({
 
 const bloomPipeline = d.createRenderPipeline({
 	"layout": "auto",
-	"vertex": { "module": postShader, "entryPoint": "vs_post" },
+	"vertex": { "module": postShader },
 	"fragment": {
 		"module": postShader,
-		"entryPoint": "fs_post",
 		"targets": [{ "format": canvasSrgbFormat }],
 	},
+});
+const simulationPipeline = d.createComputePipeline({
+	"layout": "auto",
+	"compute": { "module": lightShader, "entryPoint": "update_entities" },
 });
 const lightPipeline = d.createComputePipeline({
 	"layout": "auto",
@@ -276,9 +283,18 @@ const BG = (pipeline, id, ...array) =>
 		"layout": pipeline.getBindGroupLayout(id),
 		"entries": array.map((resource, binding) => ({
 			"binding": binding,
-			"resource": resource,
+			"resource": resource instanceof GPUBuffer ? { "buffer": resource } : resource,
 		})),
 	});
+
+const simulationBindGroup = d.createBindGroup({
+	"layout": simulationPipeline.getBindGroupLayout(0),
+	"entries": [
+		{ "binding": 0, "resource": { "buffer": entityBuffer } },
+		{ "binding": 3, "resource": { "buffer": renderStateBuffer } },
+	],
+});
+
 
 const renderBindGroup = BG(
 	pipeline,
@@ -296,32 +312,47 @@ const lightBindGroup = BG(
 	pointLightBuffer,
 );
 
-export function render(t) {
+export async function render(t) {
 	if (DEBUG && debugModule) debugModule.stats.begin();
 	const now = performance.now();
 	const deltaTime = (now - lastFrameTime) / 1000;
 	lastFrameTime = now;
 
-	debugModule?.updateCamera(deltaTime);
+	if (DEBUG) debugModule?.updateCamera(deltaTime);
 	if (!isPaused()) {
 		updateGame(deltaTime, isFlying());
 		simulationTime += deltaTime;
 	}
 
 	const time = simulationTime;
+
+
+	renderState.set([time, c.width / c.height, cameraFov, isPaused() ? 0 : deltaTime]);
+	Q.writeBuffer(renderStateBuffer, 0, renderState);
+	const submitted = entities.slice();
+	Q.writeBuffer(entityBuffer, 0, submitted);
+	const simulation = d.createCommandEncoder();
+	const simulationPass = simulation.beginComputePass();
+	simulationPass.setPipeline(simulationPipeline);
+	simulationPass.setBindGroup(0, simulationBindGroup);
+
+	simulationPass.dispatchWorkgroups(Math.ceil(ENTITY_COUNT / 64));
+	simulationPass.end();
+	simulation.copyBufferToBuffer(entityBuffer, 0, entityReadback, 0, entities.byteLength);
+	Q.submit([simulation.finish()]);
+	await entityReadback.mapAsync(GPUMapMode.READ);
+	mergeEntityFrame(submitted, new Float32Array(entityReadback.getMappedRange()));
+	entityReadback.unmap();
+
 	let canvasTexture = G.getCurrentTexture();
 	let target = canvasTexture.createView({ format: canvasSrgbFormat });
-
-	renderState.set([time, c.width / c.height, cameraFov]);
-	Q.writeBuffer(renderStateBuffer, 0, renderState);
-	Q.writeBuffer(entityBuffer, 0, entities);
 	Q.writeBuffer(pointLightCounterBuffer, 0, new Uint32Array(1));
 	Q.writeBuffer(pointLightBuffer, 0, emptyPointLights);
 
 	const e = d.createCommandEncoder();
-	const lightPass = e.beginComputePass({
-		"timestampWrites": (DEBUG && debugModule) ? debugModule.stats.getTimestampWrites("compute") : undefined,
-	});
+	const lightPass = e.beginComputePass((DEBUG && debugModule) ? {
+		"timestampWrites": debugModule.stats.getTimestampWrites("compute"),
+	} : {});
 	lightPass.setPipeline(lightPipeline);
 	lightPass.setBindGroup(0, lightBindGroup);
 	lightPass.dispatchWorkgroups(Math.ceil(ENTITY_COUNT / 64));
@@ -331,7 +362,6 @@ export function render(t) {
 		"colorAttachments": [
 			{
 				"view": sceneView,
-				"clearValue": [0, 0, 0, 1],
 				"loadOp": "clear",
 				"storeOp": "store",
 			},
@@ -359,25 +389,12 @@ export function render(t) {
 		//pass.draw(vertices.length / 2); // 6 vertices
 		pass.drawIndexed(idx.length, ENTITY_COUNT, 0, 0, i << 16);
 	}
-	// High type IDs reuse the low type's model and follow the opaque scene.
-	// Keep them far-to-near so nearer particles don't hide layers behind them.
-	const forward = [Math.sin(cameraRotation[1]) * Math.cos(cameraRotation[0]),
-		Math.sin(cameraRotation[0]), -Math.cos(cameraRotation[1]) * Math.cos(cameraRotation[0])];
-	const viewDepth = entity => cameraPosition.reduce((sum, value, axis) =>
-		sum + (entity[4 + axis] - value) * forward[axis], 0);
-	const transparent = EArray.filter(entity => entity[0] >= 128 && entity[0] < 254 && entity[7] < 1)
-		.sort((a, b) => viewDepth(b) - viewDepth(a));
-	for (const entity of transparent) {
-		pass.setBindGroup(1, BG(pipeline, 1, ...voxT[entity[0] & 127].map(texture => texture.createView())));
-		pass.drawIndexed(idx.length, 1, 0, 0, (entity[0] << 16) + entity.id);
-	}
 	pass.end();
 
 	const bloomPass = e.beginRenderPass({
 		"colorAttachments": [
 			{
 				"view": target,
-				"clearValue": [0, 0, 0, 1],
 				"loadOp": "clear",
 				"storeOp": "store",
 			},
@@ -430,7 +447,7 @@ export async function pickEntity(x, y) {
 	const encoder = d.createCommandEncoder();
 	encoder.copyTextureToBuffer(
 		{ "texture": entityIndexTexture, "origin": [pixelX, pixelY] },
-		{ "buffer": readback, "bytesPerRow": 256 },
+		{ "buffer": readback },
 		[1, 1],
 	);
 	Q.submit([encoder.finish()]);

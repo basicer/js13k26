@@ -60,13 +60,12 @@ export let magic = zzfx([,,539,0,0.04,0.29,1,1.92,,,567,0.02,0.02,,,,0.04,]),
 
 	
 import music1_js from "./music/Main Title.zzfxm";
-import ambident1_js from "./music/Ambient1.zzfxm";
-export let ambient1 = () => zzfxP(...zzfxM(...ambident1_js));
-
-
 export let music1 = () => zzfxP(...zzfxM(...music1_js));
 
 /*
+import ambident1_js from "./music/Ambient1.zzfxm";
+export let ambient1 = () => zzfxP(...zzfxM(...ambident1_js));
+
 import music2_js from "./music/Boss fight.zzfxm";
 import ambident2_js from "./music/Ambient2.zzfxm";
 
