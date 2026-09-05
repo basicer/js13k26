@@ -46,6 +46,10 @@ const saveSettings = () => {
     saveDebugPanels();
     if (initialization) saveDebugLayout(ImGui.SaveIniSettingsToMemory());
 };
+const restartGame = () => {
+    saveSettings();
+    window.location.reload();
+};
 window.addEventListener("pagehide", saveSettings);
 document.addEventListener("visibilitychange", () => {
     if (document.visibilityState === "hidden") saveSettings();
@@ -73,9 +77,11 @@ export function debug(passEncoder, entities, entitySize, overrides) {
     ImGui.PushFontFloat(null, 14);
     if (ImGui.BeginMainMenuBar()) {
 
+        if (ImGui.Button("Reset")) restartGame();
+
         if (ImGui.BeginMenu("Scene")) {
             if (ImGui.MenuItem("Reset")) {
-                EArray.map((e, id) => { if (id > 1) e[0] = 255; });
+                restartGame();
             }
             if (ImGui.MenuItem("Spheres")) {
                 EArray.map((e, id) => { if (id > 1) e[0] = 255; });

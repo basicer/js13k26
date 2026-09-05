@@ -1,6 +1,9 @@
 import { GenArray } from "./globals.js";
 
 export const ENTITY_DATA_SIZE = 20; // (in floats)
+// Slot 3 is dissolve (0 = intact, 1 = fully affected), matching Entity in structs.wgsl.
+// Slot 7 is transparency (0 = opaque, 1 = invisible); spawn resets both to zero.
+// Slot 11 is dissolve palette (0 = remove chunks, otherwise replace their material).
 export const ENTITY_COUNT = 1900;
 
 export const entities = new Float32Array(ENTITY_COUNT * ENTITY_DATA_SIZE).fill(

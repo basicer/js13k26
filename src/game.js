@@ -11,6 +11,7 @@ const player = spawn(1);
 player[4] = -2;
 player[5] = 0;
 player[6] = 0;
+player[11] = 255; // Dissolve into the blood material instead of empty chunks.
 marines.push(player);
 
 function spawnUnicorn(x, z) {
@@ -20,6 +21,7 @@ function spawnUnicorn(x, z) {
 	unicorn[4] = x;
 	unicorn[5] = 0;
 	unicorn[6] = z;
+	unicorn[11] = 255;
 	unicorns.push({ entity: unicorn, health: 4, dead: false });
 	return true;
 }
@@ -47,13 +49,16 @@ const marineFacing = (yaw) => {
 	return [-x, -z];
 };
 
-function temporarySphere(x, y, z, scale, material, light, lifetime, velocity) {
+function temporarySphere(x, y, z, scale, material, light, lifetime, velocity, transparency = 0) {
 	const entity = spawn(6);
 	if (!entity) return;
 	entity[4] = x;
 	entity[5] = y;
 	entity[6] = z;
+	entity[7] = transparency;
 	entity[12] = entity[13] = entity[14] = scale;
+	// Small particles need the whole sphere, not a tiled slice of its empty corner.
+	entity[16] = entity[17] = entity[18] = 0;
 	entity[19] = material;
 	entity[1] = light;
 	temporary.push({ entity, lifetime, velocity });
@@ -119,25 +124,43 @@ export function fireMarineGun() {
 				velocity: [traceX / distance * 45, 0, traceZ / distance * 45] });
 		}
 	}
-	if (!target) return;
+	if (!target) {
+		if (range > 0 && range < 18) {
+			// Keep the burst just outside the wall and throw hot fragments back.
+			for (let i = 0; i < 8; i++) {
+				const speed = 1.5 + Math.random() * 2;
+				temporarySphere(
+					hitX - forwardX * 0.06, muzzleY, hitZ - forwardZ * 0.06,
+					0.1 + Math.random() * 0.06, i % 2 ? 248 : 242,
+					0, 0.25 + Math.random() * 0.2,
+					[-forwardX * speed + (Math.random() - 0.5),
+						0.5 + Math.random() * 2, -forwardZ * speed + (Math.random() - 0.5)],
+				);
+			}
+		}
+		return;
+	}
 	for (let i = 0; i < 28; i++) {
 		const angle = Math.random() * Math.PI * 2;
 		const spread = 0.35 + Math.random() * 1.15;
 		temporarySphere(
-			hitX,
-			0.35 + Math.random() * 0.45,
-			hitZ,
-			0.16 + Math.random() * 0.14,
+			target.entity[4],
+			target.entity[5],
+			target.entity[6],
+			0.06 + Math.random() * 0.04,
 			255,
 			0,
 			0.9 + Math.random() * 0.45,
 			[Math.cos(angle) * spread, 0.3 + Math.random() * 0.8, Math.sin(angle) * spread],
+			0.5,
 		);
 	}
 	target.health--;
+	// Surviving hits stain 10%, 20%, then 30%; the lethal hit stains the rest.
+	target.entity[3] = target.health > 0 ? Math.max(0, (4 - target.health) * 0.1) : 1;
 	if (target.health <= 0) {
 		target.dead = true;
-		// Roll the body to the ground and leave it there as a visible corpse.
+		// Retain the defeated pose, now fully covered in the dissolve material.
 		target.entity[8] = Math.PI / 2;
 		target.entity[10] = (Math.random() - 0.5) * 0.45;
 		target.entity[5] = 0.2;
@@ -233,6 +256,8 @@ export function updateGame(deltaTime) {
 			&& Math.hypot(player[4] - unicorn.entity[4], player[6] - unicorn.entity[6]) <= 1.4
 			&& clearShot(player[4], player[6], unicorn.entity[4], unicorn.entity[6])) {
 			marineHealth--;
+			// Four surviving hits ramp blood coverage from 0% to 30%.
+			player[3] = marineHealth > 0 ? (5 - marineHealth) * 0.075 : 1;
 			hurtCooldown = 0.85;
 			player[19] = 117;
 			if (marineHealth) sound.hurt();
@@ -260,9 +285,10 @@ export function updateGame(deltaTime) {
 			effect.entity[5] += effect.velocity[1] * step;
 			effect.entity[6] += effect.velocity[2] * step;
 			if (effect.entity[0] !== 7) {
-				effect.velocity[1] -= 7 * step;
-				if (effect.entity[5] < 0.08) {
-					effect.entity[5] = 0.08;
+				effect.velocity[1] -= (effect.entity[19] === 255 ? 11 : 7) * step;
+				const floor = -30 / 64 + effect.entity[13] * 0.38;
+				if (effect.entity[5] <= floor + 0.000001) {
+					effect.entity[5] = floor;
 					effect.velocity[1] = 0;
 				}
 			}

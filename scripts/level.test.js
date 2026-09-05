@@ -6,8 +6,9 @@ import vm from "node:vm";
 function level() {
 	const blocks = [];
 	const context = vm.createContext({
-		spawn: () => {
+		spawn: kind => {
 			const entity = new Float32Array(20);
+			entity[0] = kind;
 			blocks.push(entity);
 			return entity;
 		},
@@ -24,6 +25,20 @@ test("arena leaves starting positions clear and excludes obstacles and outside s
 		assert.ok(canStand(x, z), `Starting position ${x}, ${z}`);
 	}
 	for (const [x, z] of [[5, 5], [-6, -5], [16, 0], [0, -16]]) assert.ok(!canStand(x, z));
+});
+
+test("bulkheads and cargo use the wall palette with whole panels on each axis", () => {
+	const { blocks } = level();
+	const walls = blocks.filter(entity => entity[19] === 0);
+	assert.equal(walls.length, 14);
+	for (const entity of walls) {
+		assert.equal(entity[0], 7);
+		for (const repeat of entity.subarray(16, 19)) {
+			assert.ok(Number.isInteger(repeat) && repeat >= 1);
+		}
+	}
+	assert.deepEqual(Array.from(blocks[0].subarray(16, 19)), [1, 1, 16]);
+	assert.deepEqual(Array.from(blocks[1].subarray(16, 19)), [15, 1, 1]);
 });
 
 test("movement cannot tunnel through cover or perimeter and can slide along a wall", () => {

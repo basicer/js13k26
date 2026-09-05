@@ -56,7 +56,7 @@ export var voxT = GenArray(256, () => empty);
 
 voxT[2] = cube;
 voxT[6] = sphere;
-voxT[7] = cube; // Solid blocks for the arena.
+voxT[7] = cube; // Arena fallback until the metallic wall program loads.
 
 export const flush = (texture) => {
 	Q.writeTexture(
@@ -205,6 +205,7 @@ buffers.forEach((_, texture) => flush(texture));
 import program1, { debugSource as source1 } from "../vox/marine.vp";
 import program2, { debugSource as source2 } from "../vox/unicorn.vp";
 import program3, { debugSource as source3 } from "../vox/floortile.vp";
+import program4, { debugSource as source4 } from "../vox/walltile.vp";
 
 let wait = (n) => new Promise((resolve) => setTimeout(resolve, n));
 
@@ -263,6 +264,8 @@ setTimeout(async () => {
 		"bytes",
 	);
 	await runCached(5, Uint8Array.fromBase64(program3));
+	await wait(1);
+	await runCached(7, Uint8Array.fromBase64(program4));
 
 	if (DEBUG && import.meta.env.DEBUG) {
 		const { registerVoxelProgram } =
@@ -271,6 +274,7 @@ setTimeout(async () => {
 			[1, source1],
 			[2, source2],
 			[5, source3],
+			[7, source4],
 		]) {
 			registerVoxelProgram(slot, source, (bytecode) => {
 				const previous = voxT[slot];

@@ -119,14 +119,16 @@ fn vs_main(
     @location(0) pos: vec3<f32>
 ) -> VertexOutput {
     let entity_index = idx & 65535u;
-    let current_vox_kind = idx >> 16u;
+    let current_vox_kind = (idx >> 16u) & 255u;
+    let transparent_pass = (idx & 2147483648u) != 0u;
     var out: VertexOutput;
     out.idx = entity_index;
 
     // This draw call has one voxel texture bound. Clip instances whose kind
     // belongs to a different texture before they reach rasterization.
     let entity_kind = u32(entities[entity_index].kind);
-    if (entity_index == 0u || entity_kind == 255u || entity_kind != current_vox_kind) {
+    let transparency = entities[entity_index].transparency;
+    if (entity_index == 0u || entity_kind == 255u || entity_kind != current_vox_kind || transparency >= 1.0f || (transparency > 0.0f) != transparent_pass) {
         out.clip_position = vec4<f32>(0.0f, 0.0f, 2.0f, 1.0f);
         return out;
     }
@@ -202,9 +204,20 @@ fn voxel_search(ray_origin: vec3<f32>, ray_direction: vec3<f32>, repeats: vec3<f
     return VoxelHit(0.0f, 0.0f, vec3<f32>(0.0f));
 }
 
+// Stable model-space chunks, with a different mask for each entity ID.
+fn dissolve_noise(chunk: vec3<u32>, entity_id: u32) -> f32 {
+    var seed = (chunk.x * 1973u) ^ (chunk.y * 9277u) ^ (chunk.z * 104729u) ^ (entity_id * 26699u);
+    seed = (seed ^ (seed >> 16u)) * 0x7feb352du;
+    seed = (seed ^ (seed >> 15u)) * 0x846ca68bu;
+    seed = seed ^ (seed >> 16u);
+    // Exactly representable values in [0, 1): endpoints preserve all/remove all.
+    return f32(seed & 16777215u) / 16777216.0f;
+}
+
 @fragment
 fn fs_main(in: VertexOutput) -> FragmentOutput {
     let e = entities[in.idx];
+    if (e.dissolve >= 1.0f && e.dissolvePalette <= 0.0f) { discard; }
     let camera_transform = world_transform(0u);
     let camera_position = camera_transform[3].xyz;
     let camera_direction = -normalize(camera_transform[2].xyz);
@@ -235,6 +248,10 @@ fn fs_main(in: VertexOutput) -> FragmentOutput {
     let grid_size = vec3<f32>(volume_size) * repeats;
     let voxel_position = (ray_origin + ray_direction * (hit.distance + 0.0001f)) * grid_size;
     let cell = clamp(vec3<i32>(floor(voxel_position)), vec3<i32>(0), vec3<i32>(ceil(grid_size)) - vec3<i32>(1));
+    // The same 4x4x4 mask either removes chunks or replaces their material.
+    let dissolve_chunk = vec3<u32>(cell) / vec3<u32>(4u);
+    let dissolved = e.dissolve > 0.0f && dissolve_noise(dissolve_chunk, in.idx) < clamp(e.dissolve, 0.0f, 1.0f);
+    if (dissolved && e.dissolvePalette <= 0.0f) { discard; }
     let normal = vec3<i32>(hit.normal);
     let tangent = select(vec3<i32>(1, 0, 0), vec3<i32>(0, 1, 0), normal.x != 0);
     let bitangent = select(vec3<i32>(0, 1, 0), vec3<i32>(0, 0, 1), normal.z == 0);
@@ -249,14 +266,14 @@ fn fs_main(in: VertexOutput) -> FragmentOutput {
     );
     
 
-    let material = select(hit.material, e.matOverride, e.matOverride > 0.0f);
+    let material = select(select(hit.material, e.matOverride, e.matOverride > 0.0f), clamp(e.dissolvePalette, 0.0f, 255.0f), dissolved);
     let color = textureLoad(palette, vec2<u32>(u32(material), 0));
     let surface = textureLoad(palette, vec2<u32>(u32(material), 1));
     let view_depth = hit.distance * dot(world_ray, camera_direction);
     let depth = clip_depth(view_depth) / view_depth;
     let world_normal = normalize(transpose(inverse_entity_transform) * hit.normal);
     return FragmentOutput(
-        vec4<f32>(shade_pbr(color.rgb, world_normal, -world_ray, surface.g, surface.r, hit.distance * world_ray + camera_position, ao), color.a),
+        vec4<f32>(shade_pbr(color.rgb, world_normal, -world_ray, surface.g, surface.r, hit.distance * world_ray + camera_position, ao), color.a * (1.0f - clamp(e.transparency, 0.0f, 1.0f))),
         vec2<u32>(in.idx, u32(material)),
         depth,
     );

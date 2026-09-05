@@ -39,6 +39,9 @@ export function entityInspector(overrides, open) {
 	const kind = [Math.round(entity[0])];
 	const pointLight = [entity[1]];
 	const parent = [Math.round(entity[2])];
+	const dissolve = [entity[3]];
+	const dissolvePalette = [Math.round(entity[11])];
+	const transparency = [entity[7]];
 	const position = [entity[4], entity[5], entity[6]];
 	const rotation = [entity[8], entity[9], entity[10]];
 	const scale = [entity[12], entity[13], entity[14]];
@@ -60,6 +63,18 @@ export function entityInspector(overrides, open) {
 	}
 	if (ImGui.InputInt("Parent", parent, 1, 10)) {
 		entity[2] = Math.max(0, Math.min(EArray.length - 1, parent[0]));
+		changed = true;
+	}
+	if (ImGui.SliderFloat("Dissolve", dissolve, 0, 1)) {
+		entity[3] = Math.max(0, Math.min(1, dissolve[0]));
+		changed = true;
+	}
+	if (ImGui.InputInt("Dissolve palette (0=remove)", dissolvePalette, 1, 10)) {
+		entity[11] = Math.max(0, Math.min(255, dissolvePalette[0]));
+		changed = true;
+	}
+	if (ImGui.SliderFloat("Transparency", transparency, 0, 1)) {
+		entity[7] = Math.max(0, Math.min(1, transparency[0]));
 		changed = true;
 	}
 	if (ImGui.DragFloat3("Position", position, 0.05)) {

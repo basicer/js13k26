@@ -18,6 +18,10 @@ The comparison command fails if the tool is missing or rejects either shader;
 it does not silently skip checks. Run it when changing the minifier or shaders.
 After a production build, the bundle check catches shader changes introduced
 by downstream JavaScript transforms as well as minifier changes.
+Production builds also apply Roadroller with a 32 MB decoder memory budget.
+The build checks that decoding reproduces the same JavaScript syntax tree,
+without executing the game. The bundle shader check inspects the decoded code.
+The decoder adds a short startup cost (about 0.9 seconds in a local Node benchmark).
 The Pages workflow runs the dependency-free tests automatically.
 
 ## Contract

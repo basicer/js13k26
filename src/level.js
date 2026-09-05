@@ -3,28 +3,30 @@ import { spawn } from "./entities.js";
 const solids = [];
 const ground = -30 / 64;
 
-function block(x, z, width, height, depth, material, bottom = ground, solid = true) {
+function block(x, z, width, height, depth, material = 0, bottom = ground, solid = true) {
 	const entity = spawn(7);
 	if (!entity) return;
 	entity.set([x, bottom + height / 2, z], 4);
 	entity.set([width, height, depth], 12);
+	// Whole panels meet both ends of every block; approximately two world units each.
+	entity.set([width, height, depth].map(size => Math.max(1, Math.round(size / 2))), 16);
 	entity[19] = material;
 	if (solid) solids.push([x - width / 2, x + width / 2, z - depth / 2, z + depth / 2, bottom + height]);
 }
 
-// Open-roof yard with broad lanes between rough concrete and cargo cover.
+// Open-roof yard with broad lanes between metallic bulkheads and cargo cover.
 for (const side of [-1, 1]) {
-	block(side * 15.5, 0, 1, 2.8, 32, 168);
-	block(0, side * 15.5, 30, 2.8, 1, 168);
+	block(side * 15.5, 0, 1, 2.8, 32);
+	block(0, side * 15.5, 30, 2.8, 1);
 }
 for (const [x, z, width, depth] of [[-6, -5, 5, 1], [5, -5, 1, 5], [-6, 2, 1, 4], [1, 8, 5, 1]]) {
-	block(x, z, width, 1.9, depth, 175);
+	block(x, z, width, 1.9, depth);
 	block(x, z, width + 0.08, 0.12, depth + 0.08, 248, ground + 1.9, false);
 }
 for (const [x, z] of [[5, 5], [9, 0], [-10, 9]]) {
-	block(x, z, 2.5, 1.8, 2.5, 62);
+	block(x, z, 2.5, 1.8, 2.5);
 	block(x, z, 2.6, 0.12, 2.6, 101, ground + 1.8, false);
-	block(x + 0.3, z + 0.2, 1.5, 1, 1.5, 69, ground + 1.92);
+	block(x + 0.3, z + 0.2, 1.5, 1, 1.5, 0, ground + 1.92);
 }
 
 export function canStand(x, z, radius = 0.45) {

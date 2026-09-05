@@ -1,6 +1,7 @@
 // Explicit, optional compiler validation of what will actually ship.
 import assert from "node:assert/strict";
 import fs from "node:fs";
+import vm from "node:vm";
 import { parseAst } from "rolldown/parseAst";
 import { checkShader } from "./wgsl-compiler-check.js";
 
@@ -23,6 +24,14 @@ function walk(node) {
 	}
 }
 walk(parseAst(match[1]));
+if (!strings.some(text => text.includes("fn vs_main("))) {
+	// Roadroller's eval is intercepted: inspect the game without executing it.
+	let decoded;
+	vm.runInNewContext(match[1], { eval: value => { decoded = value; } }, { timeout: 10000 });
+	assert.equal(typeof decoded, "string", "Packed game must decode to JavaScript");
+	strings.length = 0;
+	walk(parseAst(decoded));
+}
 for (const [file, entrypoint] of [
 	["shader", "vs_main"],
 	["post", "vs_post"],

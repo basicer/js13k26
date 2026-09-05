@@ -18,6 +18,9 @@ import {
 	entityOverrides,
 	ENTITY_DATA_SIZE,
 	ENTITY_COUNT,
+	EArray,
+	cameraPosition,
+	cameraRotation,
 } from "./entities.js";
 import { voxT } from "./vvm.js";
 import {
@@ -189,7 +192,7 @@ if (window.ResizeObserver) new ResizeObserver(resizeCanvas).observe(c);
 $.addEventListener("resize", resizeCanvas);
 resizeCanvas();
 
-const pipeline = d.createRenderPipeline({
+const pipelineDescriptor = {
 	"layout": "auto",
 	"vertex": {
 		"module": shader,
@@ -226,6 +229,24 @@ const pipeline = d.createRenderPipeline({
 		"depthWriteEnabled": true,
 		"depthCompare": "less",
 	},
+};
+const pipeline = d.createRenderPipeline(pipelineDescriptor);
+const transparentPipeline = d.createRenderPipeline({
+	...pipelineDescriptor,
+	"fragment": {
+		...pipelineDescriptor.fragment,
+		"targets": [
+			{
+				"format": "rgba16float",
+				"blend": {
+					"color": { "srcFactor": "src-alpha", "dstFactor": "one-minus-src-alpha" },
+					"alpha": { "srcFactor": "one", "dstFactor": "one-minus-src-alpha" },
+				},
+			},
+			{ "format": "rg32uint" },
+		],
+	},
+	"depthStencil": { ...pipelineDescriptor.depthStencil, "depthWriteEnabled": false },
 });
 
 const bloomPipeline = d.createRenderPipeline({
@@ -269,6 +290,10 @@ const lightBindGroup = BG(
 	entityBuffer,
 	pointLightCounterBuffer,
 	pointLightBuffer,
+);
+const transparentBindGroup = BG(
+	transparentPipeline, 0, renderStateBuffer, entityBuffer,
+	paletteTexture.createView(), pointLightBuffer,
 );
 
 export function render(t) {
@@ -330,6 +355,19 @@ export function render(t) {
 		pass.setBindGroup(1, BG(pipeline, 1, voxT[i].createView()));
 		//pass.draw(vertices.length / 2); // 6 vertices
 		pass.drawIndexed(idx.length, ENTITY_COUNT, 0, 0, i << 16);
+	}
+	// Blend far-to-near after opaque geometry, without writing particle depth.
+	const forward = [Math.sin(cameraRotation[1]) * Math.cos(cameraRotation[0]),
+		Math.sin(cameraRotation[0]), -Math.cos(cameraRotation[1]) * Math.cos(cameraRotation[0])];
+	const viewDepth = entity => cameraPosition.reduce((sum, value, axis) =>
+		sum + (entity[4 + axis] - value) * forward[axis], 0);
+	const transparent = EArray.filter(entity => entity.id > 0 && entity[0] > 0 && entity[0] < 255 && entity[7] > 0 && entity[7] < 1)
+		.sort((a, b) => viewDepth(b) - viewDepth(a));
+	pass.setPipeline(transparentPipeline);
+	pass.setBindGroup(0, transparentBindGroup);
+	for (const entity of transparent) {
+		pass.setBindGroup(1, BG(transparentPipeline, 1, voxT[entity[0]].createView()));
+		pass.drawIndexed(idx.length, 1, 0, 0, 2147483648 + (entity[0] << 16) + entity.id);
 	}
 	pass.end();
 
