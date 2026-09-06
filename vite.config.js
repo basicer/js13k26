@@ -9,12 +9,16 @@ import { Packer } from "roadroller";
 import ClosureCompiler from "google-closure-compiler";
 import { assemble } from "./src/vvm-tools.js";
 import { minifyWgsl } from "./tools/wgsl-minify/src/minify.js";
+import { compactShaderEntity } from "./scripts/compact-shader-entity.mjs";
+import { writeEntityConstants } from "./scripts/generate-entity-constants.mjs";
 
 import ect from "ect-bin";
 import advzip from "advzip-bin";
 
 export default defineConfig(({ command, mode }) => {
+	writeEntityConstants();
 	let pack = command == "build" && mode != "development";
+	const useRoadroller = mode !== "unpacked" && process.env.ROADROLLER !== "0";
 
 	return {
 		base: "./",
@@ -23,12 +27,13 @@ export default defineConfig(({ command, mode }) => {
 			zzfxm(),
 			voxprog(mode === "development"),
 			shader(pack),
-			...(pack ? [closure(), roadroller(), zip()] : []),
+			...(pack ? [closure(), roadroller(useRoadroller), zip(useRoadroller)] : []),
 		],
 		define: {
 			"import.meta.env.DEBUG": JSON.stringify(mode === "development"),
 		},
 		build: {
+			outDir: pack && !useRoadroller ? "dist-unpacked" : "dist",
 			assetsDir: "",
 			modulePreload: { polyfill: false },
 			rolldownOptions: {
@@ -93,7 +98,7 @@ var shader = (isBuild) => ({
 		});
 
 		try {
-			if (isBuild) code = minifyWgsl(code);
+			if (isBuild) code = minifyWgsl(compactShaderEntity(code));
 		} catch (cause) {
 			throw new Error(`Unable to minify shader ${id}: ${cause.message}`, {
 				cause,
@@ -103,7 +108,7 @@ var shader = (isBuild) => ({
 	},
 });
 
-var roadroller = () => ({
+var roadroller = (enabled) => ({
 	name: "vite:roadroller",
 	transformIndexHtml: async (html, ctx) => {
 		if (!ctx || !ctx.bundle) {
@@ -119,14 +124,18 @@ var roadroller = () => ({
 
 		// Closure already wraps the game in an async function.
 		const data = javascript.code;
+		if (!enabled) {
+			if (/<\/script/i.test(data)) throw Error("Unsafe inline script terminator");
+			return html.replace(/<script.*?<\/script>/, () => `<script>${data}</script>`).trim();
+		}
 		const packer = new Packer([{ data, type: "js", action: "eval" }], {
 			maxMemoryMB: 128,
-			modelRecipBaseCount: 32,
+			modelRecipBaseCount: 61,
 			modelMaxCount: 3,
 			numAbbreviations: 0,
-			sparseSelectors: [0, 1, 2, 3, 5, 6, 7, 8, 10, 13, 25, 38, 48, 90, 112, 113, 140, 171, 193, 229],
+			sparseSelectors: [0, 1, 2, 3, 5, 6, 7, 8, 10, 13, 16, 25, 33, 48, 150, 185, 191, 193, 280, 363],
 			precision: 16,
-			recipLearningRate: 1910,
+			recipLearningRate: 2090,
 			// The packed release owns its single page; game code has its own wrapper.
 			allowFreeVars: true,
 		});
@@ -156,7 +165,7 @@ var roadroller = () => ({
 			throw Error("Packed game failed its code round-trip check");
 		}
 
-		return html.replace(/<script.*?<\/script>/, `<script>${code}</script>`);
+		return html.replace(/<script.*?<\/script>/, `<script>${code}</script>`).trim();
 	},
 });
 
@@ -194,7 +203,7 @@ var closure = () => ({
 
 		code = code.replace(/label`[^`]*`/g, "''");
 		code = code.replace(/"label": '',/g, "");
-		code = code.replace(/if \(DEBUG && false\);/g, "");
+		code = code.replace(/if \(DEBUG[^;\n]*\);/g, "");
 
 		await writeFile(
 			tmpobj.name,
@@ -235,28 +244,32 @@ var DEBUG = true;
 	},
 });
 
-var zip = () => ({
-	name: "vite:ect",
-	writeBundle: async () => {
-		try {
-			const files = await readdir("dist/");
-			const assetFiles = files
-				.filter((file) => {
-					return file != "index.html" && file != "index.zip" && !file.endsWith(".js");
-				})
-				.map((file) => "dist/" + file);
+var zip = (enforceLimit) => {
+	let outDir;
+	return {
+		name: "vite:ect",
+		configResolved(config) { outDir = config.build.outDir; },
+		writeBundle: async () => {
+			try {
+				const files = await readdir(outDir);
+				const assetFiles = files
+					.filter((file) => {
+						return file != "index.html" && file != "index.zip" && !file.endsWith(".js");
+					})
+					.map((file) => path.join(outDir, file));
 
-			const args = ["-strip", "-zip", "-10009", "dist/index.html", ...assetFiles];
-			const result = execFileSync(ect, args);
-			console.log("ECT result", result.toString());
-			const advzipResult = execFileSync(advzip, ["-4", "-z", "dist/index.zip"]);
-			console.log("advzip result", advzipResult.toString());
-			const stats = await stat("dist/index.zip");
-			console.log("ZIP size", Math.round((stats.size / 1024) * 100) / 100, "KB");
-			console.log(13312 - stats.size, "bytes left");
-			if (stats.size > 13312) throw new Error(`Release exceeds 13 KiB by ${stats.size - 13312} bytes`);
-		} catch (err) {
-			throw err;
-		}
-	},
-});
+				const args = ["-strip", "-zip", "-10009", path.join(outDir, "index.html"), ...assetFiles];
+				const result = execFileSync(ect, args);
+				console.log("ECT result", result.toString());
+				const advzipResult = execFileSync(advzip, ["-4", "-z", path.join(outDir, "index.zip")]);
+				console.log("advzip result", advzipResult.toString());
+				const stats = await stat(path.join(outDir, "index.zip"));
+				console.log("ZIP size", Math.round((stats.size / 1024) * 100) / 100, "KB");
+				console.log(13312 - stats.size, "bytes left");
+				if (enforceLimit && stats.size > 13312) throw new Error(`Release exceeds 13 KiB by ${stats.size - 13312} bytes`);
+			} catch (err) {
+				throw err;
+			}
+		},
+	};
+};

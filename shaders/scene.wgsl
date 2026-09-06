@@ -17,11 +17,11 @@ fn vs_main(
         return out;
     }
 
-    let camera_transform = world_transform(0u, 0.0f);
+    let camera_transform = world_transform(0u);
     let forward = -normalize(camera_transform[2].xyz);
     let right = normalize(camera_transform[0].xyz);
     let up = normalize(camera_transform[1].xyz);
-    let entity_transform = world_transform(entity_index, 0.0f);
+    let entity_transform = world_transform(entity_index);
     // Rasterize the containment cube directly in world space. The fragment
     // shader still finds the real voxel hit, then supplies its true depth.
     let world_position = (entity_transform * vec4<f32>(pos, 1.0f)).xyz;
@@ -54,7 +54,11 @@ fn voxel_at(cell: vec3<i32>, volume_size: vec3<i32>, grid_size: vec3<f32>, varia
     return textureLoad(vox, cell % volume_size, 0).x;
 }
 
-fn voxel_search(ray_origin: vec3<f32>, ray_direction: vec3<f32>, repeats: vec3<f32>, variant: bool) -> VoxelHit {
+fn voxel_cell(position: vec3<f32>, grid_size: vec3<f32>) -> vec3<i32> {
+    return clamp(vec3<i32>(floor(position)), vec3<i32>(0), vec3<i32>(ceil(grid_size)) - vec3<i32>(1));
+}
+
+fn voxel_search(ray_origin: vec3<f32>, ray_direction: vec3<f32>, volume_size: vec3<i32>, grid_size: vec3<f32>, variant: bool) -> VoxelHit {
     let safe_direction = select(ray_direction, vec3<f32>(0.000001f), abs(ray_direction) < vec3<f32>(0.000001f));
     let inverse_direction = 1.0f / safe_direction;
     let first_bounds = -ray_origin * inverse_direction;
@@ -63,12 +67,10 @@ fn voxel_search(ray_origin: vec3<f32>, ray_direction: vec3<f32>, repeats: vec3<f
     let bounds_far = max(first_bounds, second_bounds);
     var distance = max(max(bounds_near.x, bounds_near.y), max(bounds_near.z, 0.0f));
     let exit_distance = min(min(bounds_far.x, bounds_far.y), bounds_far.z);
-    if (distance > exit_distance) { return VoxelHit(0.0f, 0.0f, vec3<f32>(0.0f)); }
+    if (distance > exit_distance) { return VoxelHit(); }
 
-    let volume_size = vec3<i32>(textureDimensions(vox));
-    let grid_size = vec3<f32>(volume_size) * repeats;
     let point = ray_origin + ray_direction * (distance + 0.0001f);
-    var cell = clamp(vec3<i32>(floor(point * grid_size)), vec3<i32>(0), vec3<i32>(ceil(grid_size)) - vec3<i32>(1));
+    var cell = voxel_cell(point * grid_size, grid_size);
     let step = select(vec3<i32>(-1), vec3<i32>(1), ray_direction >= vec3<f32>(0.0f));
     let cell_size = 1.0f / grid_size;
     let delta_distance = abs(cell_size / safe_direction);
@@ -82,7 +84,11 @@ fn voxel_search(ray_origin: vec3<f32>, ray_direction: vec3<f32>, repeats: vec3<f
     let max_steps = u32(ceil(grid_size.x) + ceil(grid_size.y) + ceil(grid_size.z));
     for (var step_count = 0u; step_count < max_steps; step_count++) {
         let material = voxel_at(cell, volume_size, grid_size, variant);
-        if (material > 0.0f) { return VoxelHit(distance, material, normal); }
+        if (material > 0.0f) {
+            // Preserve the original hit-position epsilon and cell rounding for AO/dissolve.
+            let position = (ray_origin + ray_direction * (distance + 0.0001f)) * grid_size;
+            return VoxelHit(distance, material, normal, position, voxel_cell(position, grid_size));
+        }
         let smallest = side_distance < min(side_distance.yzx, side_distance.zxy);
         let mask = select(vec3<f32>(0.0f), vec3<f32>(1.0f), smallest);
         distance = dot(side_distance, mask);
@@ -91,7 +97,7 @@ fn voxel_search(ray_origin: vec3<f32>, ray_direction: vec3<f32>, repeats: vec3<f
         normal = -vec3<f32>(step) * mask;
         if (distance > exit_distance || any(cell < vec3<i32>(0)) || any(vec3<f32>(cell) >= grid_size)) { break; }
     }
-    return VoxelHit(0.0f, 0.0f, vec3<f32>(0.0f));
+    return VoxelHit();
 }
 
 // Stable model-space chunks, with a different mask for each entity ID.
@@ -109,7 +115,7 @@ fn fs_main(in: VertexOutput) -> FragmentOutput {
     let e = entities[in.idx];
     let variant = e.modelVariant >= 0.5f;
     if (e.dissolve >= 1.0f && e.dissolvePalette <= 0.0f) { discard; }
-    let camera_transform = world_transform(0u, 0.0f);
+    let camera_transform = world_transform(0u);
     let camera_position = camera_transform[3].xyz;
     let camera_direction = -normalize(camera_transform[2].xyz);
     let scale = abs(e.scale);
@@ -123,22 +129,23 @@ fn fs_main(in: VertexOutput) -> FragmentOutput {
         scale * 64.0f / vec3<f32>(volume_size),
         e.tile == vec3<f32>(-2.0f),
     );
-    let entity_transform = world_transform(in.idx, 0.0f);
+    let entity_transform = world_transform(in.idx);
     let linear_transform = mat3x3<f32>(entity_transform[0].xyz, entity_transform[1].xyz, entity_transform[2].xyz);
+    let cofactor = cross(linear_transform[1], linear_transform[2]);
     let inverse_entity_transform = transpose(mat3x3<f32>(
-        cross(linear_transform[1], linear_transform[2]),
+        cofactor,
         cross(linear_transform[2], linear_transform[0]),
         cross(linear_transform[0], linear_transform[1]),
-    )) * (1.0f / dot(linear_transform[0], cross(linear_transform[1], linear_transform[2])));
+    )) * (1.0f / dot(linear_transform[0], cofactor));
 
     let world_ray = normalize(in.world_position - camera_position);
     let ray_origin = inverse_entity_transform * (camera_position - entity_transform[3].xyz) + vec3<f32>(0.5f);
     let ray_direction = inverse_entity_transform * world_ray;
-    let hit = voxel_search(ray_origin, ray_direction, repeats, variant);
-    if (hit.material == 0.0f) { discard; }
     let grid_size = vec3<f32>(volume_size) * repeats;
-    let voxel_position = (ray_origin + ray_direction * (hit.distance + 0.0001f)) * grid_size;
-    let cell = clamp(vec3<i32>(floor(voxel_position)), vec3<i32>(0), vec3<i32>(ceil(grid_size)) - vec3<i32>(1));
+    let hit = voxel_search(ray_origin, ray_direction, volume_size, grid_size, variant);
+    if (hit.material == 0.0f) { discard; }
+    let voxel_position = hit.position;
+    let cell = hit.cell;
     // The same 4x4x4 mask either removes chunks or replaces their material.
     let dissolve_chunk = vec3<u32>(cell) / vec3<u32>(4u);
     let dissolved = e.dissolve > 0.0f && dissolve_noise(dissolve_chunk, in.idx) < clamp(e.dissolve, 0.0f, 1.0f);

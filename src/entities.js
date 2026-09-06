@@ -1,6 +1,7 @@
+import * as E from "./entities-const.js";
 import { GenArray } from "./globals.js";
 
-export const ENTITY_DATA_SIZE = 32; // (in floats)
+export const ENTITY_DATA_SIZE = E.STRIDE; // (in floats)
 // Kind 0 is empty. Types 128–253 are transparent aliases; 254/255 remain reserved.
 // Slot 3 is dissolve (0 = intact, 1 = fully affected), matching Entity in common.wgsl.
 // Slot 7 is transparency (0 = opaque, 1 = invisible); spawn resets both to zero.
@@ -10,7 +11,8 @@ export const ENTITY_DATA_SIZE = 32; // (in floats)
 // Slot 24 is the full spotlight cone angle in radians; 2*PI is omnidirectional.
 // Slots 25/26 hold actor health and walk phase; slot 27 is age in seconds.
 // Age advances even for immortal entities and resets on reuse or a new corpse timer.
-// Slot 28 is solid-box collision (0/1); slots 29-31 preserve GPU struct alignment.
+// Slot 28 is movement solidity; 29/30 are local hit radius and sphere center Y.
+// Radius zero uses only the box. Lifecycle and movement properties follow.
 // New entities live indefinitely unless given a nonzero TTL.
 // Kind 1 is the empty marine root; kinds 8–11 are legs, body, arms, and gun.
 export const ENTITY_COUNT = 1900;
@@ -18,8 +20,8 @@ export const ENTITY_COUNT = 1900;
 export const entities = new Float32Array(ENTITY_COUNT * ENTITY_DATA_SIZE);
 
 export const cameraEntity = entities.subarray(0, ENTITY_DATA_SIZE);
-export const cameraPosition = cameraEntity.subarray(4, 7);
-export const cameraRotation = cameraEntity.subarray(8, 11);
+export const cameraPosition = cameraEntity.subarray(E.POS, E.POS + 3);
+export const cameraRotation = cameraEntity.subarray(E.ROT, E.ROT + 3);
 export const entityOverrides = new Map();
 
 export const EArray = GenArray(ENTITY_COUNT, (i) => {
@@ -29,15 +31,15 @@ export const EArray = GenArray(ENTITY_COUNT, (i) => {
 });
 
 export const spawn = (kind) => {
-	let e = EArray.find((e) => e[0] === 0);
+	let e = EArray.find((e) => e[E.KIND] === 0);
 	if (!e) return null;
 	// Entities are recycled (muzzle flashes and blood use the same pool), so
 	// clear overrides, rotations, lights, and parent links from their old role.
 	e.fill(0);
-	e[0] = kind;
-	e[24] = Math.PI * 2;
-	e[12] = e[13] = e[14] = 1;
-	e[16] = e[17] = e[18] = -2;
+	e[E.KIND] = kind;
+	e[E.LIGHT_ANGLE] = Math.PI * 2;
+	e[E.SCALE_X] = e[E.SCALE_Y] = e[E.SCALE_Z] = 1;
+	e[E.TILE_X] = e[E.TILE_Y] = e[E.TILE_Z] = -2;
 	return e;
 };
 
@@ -47,33 +49,56 @@ export function setupEntities() {
 	entityVersion++;
 	entities.fill(0);
 	entityOverrides.clear();
-	cameraEntity[24] = Math.PI * 2;
-	cameraEntity[0] = 254; // Camera entity kind
+	cameraEntity[E.LIGHT_ANGLE] = Math.PI * 2;
+	cameraEntity[E.KIND] = 254; // Camera entity kind
 	cameraRotation.set([(-50 * Math.PI) / 180, Math.PI / 2, 0]);
 	cameraPosition.set([-9.2 * Math.cos(cameraRotation[0]), -9.2 * Math.sin(cameraRotation[0]), 0]);
-	cameraEntity.set([1, 1, 1], 12);
+	cameraEntity.set([1, 1, 1], E.SCALE);
 
 	const floor = spawn(5);
-	floor[5] = -32 / 64;
-	floor[12] = 32;
-	floor[13] = 4 / 64;
-	floor[14] = 32;
+	floor[E.POS_Y] = -32 / 64;
+	floor[E.SCALE_X] = 32;
+	floor[E.SCALE_Y] = 4 / 64;
+	floor[E.SCALE_Z] = 32;
 
 	let light = spawn(6);
-	light[6] = 2;
-	light[5] = 2;
-	light[1] = 5;
+	light[E.POS_Z] = 2;
+	light[E.POS_Y] = 2;
+	light[E.SPOTLIGHT] = 5;
 }
 
-// Preserve input/editor changes made while a GPU frame was in flight.
-export function mergeEntityFrame(submitted, simulated, version = entityVersion) {
-	if (version !== entityVersion) return;
+// An invalid entity ID terminates the light list, including when it is empty.
+export const lightEntities = new Uint32Array(32);
+
+export function updateEntities(dt) {
+	lightEntities.fill(-1);
+	let lights = 0;
 	for (const entity of EArray) {
-		const offset = entity.id * ENTITY_DATA_SIZE;
-		if (entity.every((value, slot) => value === submitted[offset + slot]))
-			entity.set(simulated.subarray(offset, offset + ENTITY_DATA_SIZE));
-		// Movement and damage edits must not freeze the independent lifetime clock.
-		else if ([0, 23, 27].every((slot) => entity[slot] === submitted[offset + slot]))
-			entity[27] = simulated[offset + 27];
+		if (!entity[E.KIND]) continue;
+		if (dt) {
+			entity[E.AGE] += dt;
+			if (entity[E.TTL] && entity[E.AGE] >= entity[E.TTL]) {
+				entity.fill(0);
+				continue;
+			}
+			for (let axis = 0; axis < 3; axis++) entity[E.POS + axis] += entity[E.VELOCITY + axis] * dt;
+			// Any entity can erode toward a target and retire once fully dissolved.
+			if (entity[E.DISSOLVE_RATE]) {
+				entity[E.DISSOLVE] = Math.min(entity[E.DISSOLVE_TARGET], entity[E.DISSOLVE] + entity[E.DISSOLVE_RATE] * dt);
+				if (entity[E.DISSOLVE] >= 1) {
+					entity.fill(0);
+					continue;
+				}
+			}
+			if (entity[E.GRAVITY]) {
+				entity[E.VELOCITY_Y] -= entity[E.GRAVITY] * dt;
+				const floor = -30 / 64 + entity[E.SCALE_Y] * 0.38;
+				if (entity[E.POS_Y] <= floor + 0.000001) {
+					entity[E.POS_Y] = floor;
+					entity[E.VELOCITY_Y] = 0;
+				}
+			}
+		}
+		if (entity[E.SPOTLIGHT] > 0 && lights < lightEntities.length) lightEntities[lights++] = entity.id;
 	}
 }

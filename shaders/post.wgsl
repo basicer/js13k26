@@ -16,7 +16,6 @@ fn vs_post(@builtin(vertex_index) vertex_index: u32) -> PostOutput {
 
 @group(0) @binding(0) var scene_texture: texture_2d<f32>;
 @group(0) @binding(1) var scene_sampler: sampler;
-@group(0) @binding(2) var<uniform> post_state: RenderState;
 
 fn tone_map(color: vec3<f32>) -> vec3<f32> {
     let exposed = color * 1.1f;
@@ -49,6 +48,5 @@ fn fs_post(in: PostOutput) -> @location(0) vec4<f32> {
     let texel = 1.0f / dimensions;
     let uv = in.clip_position.xy / dimensions;
     let scene = aa(uv, texel);
-    let p = abs(uv * post_state.mouse.zw - post_state.mouse.xy);
     return vec4<f32>(tone_map(scene), 1.0f);
 }

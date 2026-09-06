@@ -1,7 +1,22 @@
+import * as E from "../src/entities-const.js";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import test from "node:test";
 import vm from "node:vm";
+
+// Apply the shader's entity basis and parent chain to a model-space point.
+function worldPoint(entities, entity, point = [0,0,0]) {
+	while (entity) {
+		const [x,y,z] = point.map((n,i) => n * entity[E.SCALE+i]);
+		const [p,a,r] = entity.slice(E.ROT,E.ROT+3);
+		const right = x*Math.cos(r)-y*Math.sin(r), up = x*Math.sin(r)+y*Math.cos(r);
+		const back = up*Math.sin(p)+z*Math.cos(p);
+		point = [right*Math.cos(a)-back*Math.sin(a), up*Math.cos(p)-z*Math.sin(p), right*Math.sin(a)+back*Math.cos(a)]
+			.map((n,i) => n + entity[E.POS+i]);
+		entity = entity[E.PARENT] ? entities.find(e => e.id === entity[E.PARENT]) : null;
+	}
+	return point;
+}
 
 function game() {
 	let nextEntityId = 1;
@@ -12,16 +27,16 @@ function game() {
 	const randomMath = Object.create(Math);
 	randomMath.random = () => ((seed = (Math.imul(seed, 1664525) + 1013904223) >>> 0) / 4294967296);
 	const EArray = [];
-	const context = vm.createContext({
+	const context = vm.createContext({ E,
 		EArray, getUnicorns: () => EArray.filter(e => e[0] === 2), getPortals: () => EArray.filter(e => e[0] === 12), effects: () => EArray.filter(e => e[0] !== 0 && e[23] !== 0),
 		DEBUG: true, Math: randomMath,
 		setTimeout: (callback, delay) => timers.push({ callback, delay }),
 		setupEntities: () => { EArray.length = 0; nextEntityId = 1; },
-		heldKeys: new Set(), cameraEntity: new Float32Array(32), cameraPosition: [0, 5, 8], cameraRotation: [-0.5, 0, 0],
+		heldKeys: new Set(), cameraEntity: new Float32Array(E.STRIDE), cameraPosition: [0, 5, 8], cameraRotation: [-0.5, 0, 0],
 		spawn: kind => {
 			let entity = EArray.find(e => e[0] === 0);
 			if (!entity) {
-				entity = new Float32Array(32);
+				entity = new Float32Array(E.STRIDE);
 				entity.id = nextEntityId++;
 				EArray.push(entity);
 			}
@@ -40,6 +55,10 @@ function game() {
 		vm.runInContext(readFileSync(new URL(`../src/${file}.js`, import.meta.url), "utf8")
 			.replace(/^import .*;\r?\n/gm, "").replaceAll("export ", ""), context);
 	}
+	context.lightEntities = new Uint32Array(32);
+	const entitySource = readFileSync(new URL("../src/entities.js", import.meta.url), "utf8");
+	vm.runInContext(entitySource.slice(entitySource.indexOf("export function updateEntities"))
+		.replace("export ", ""), context);
 	const run = code => vm.runInContext(code, context);
 	run("globalThis.initialUnicorns = getUnicorns().length; getUnicorns().slice(1).forEach(e => e[0] = 0);");
 	const touch = () => run("getUnicorns()[0][4] = player[4] + 1; getUnicorns()[0][6] = player[6];");
@@ -65,9 +84,9 @@ test("only a fatal hit schedules one restart after five seconds", () => {
 	assert.equal(run("weapons.every(w => w[4] === w[0])"), true);
 });
 
-test("in-place setup restores the entire world and rejects previous-run GPU readbacks", () => {
+test("in-place setup restores the entire world and advances the debug camera version", () => {
 	const timers = [];
-	const context = vm.createContext({
+	const context = vm.createContext({ E,
 		DEBUG: true, heldKeys: new Set(), cameraFov: 60,
 		GenArray: (n, fn) => Array.from({ length: n }, (_, i) => fn(i)),
 		sound: { wobble() {}, hurt() {}, explode() {} },
@@ -82,8 +101,6 @@ test("in-place setup restores the entire world and rejects previous-run GPU read
 	for (let cycle = 0; cycle < 2; cycle++) {
 		run(`
 			globalThis.oldVersion = entityVersion;
-			globalThis.oldFrame = entities.slice();
-			globalThis.oldResult = entities.slice(); oldResult[27] = 999;
 			marineHealth = 1; hurtCooldown = 0;
 			globalThis.enemy = EArray.find(e => e[0] === 2);
 			enemy[4] = player[4]; enemy[6] = player[6]; updateGame(0);
@@ -96,7 +113,7 @@ test("in-place setup restores the entire world and rejects previous-run GPU read
 		assert.equal(run("entities.every((value, i) => value === initial[i])"), true);
 		assert.equal(run("marineHealth === 5 && selectedWeapon === 1 && weapons.every(w => w[4] === w[0])"), true);
 		assert.equal(run("!heldKeys.size && !entityOverrides.size && !triggerHeld && !reloadCooldown"), true);
-		run("mergeEntityFrame(oldFrame, oldResult, oldVersion);");
+		assert.equal(run("entityVersion === oldVersion + 1"), true);
 		assert.equal(run("entities.every((value, i) => value === initial[i])"), true);
 	}
 });
@@ -150,47 +167,47 @@ test("wall and interior pillar portals survive 49 hits and dissolve completely a
 	const { run } = game();
 	run("getUnicorns().forEach(e => e[0] = 0);");
 	for (let index = 0; index < 5; index++) {
-		run(`globalThis.portalTarget = getPortals()[${index}];
+		run(`globalThis.portalTarget = getPortals()[0];
 			globalThis.normal = marineFacing(portalTarget[9]);
 			player[4] = portalTarget[4] + normal[0] * 3;
 			player[6] = portalTarget[6] + normal[1] * 3;
-			globalThis.shootPortal = () => firePellet(player[4], 0.2, player[6], -normal[0], -normal[1], true);`);
+			globalThis.shootPortal = () => firePellet(player[4], 0.2, player[6], -normal[0], -normal[1]);`);
 		run("for (let hit = 0; hit < 49; hit++) shootPortal();");
 		assert.equal(run("portalTarget[25]"), 1);
 		assert.equal(run("portalTarget[3]"), 0);
-		run("updateGame(0.1, true);");
+		run("updateGame(0.1, true); updateEntities(0.1);");
 		assert.ok(run("portalTarget[3] > 0 && portalTarget[3] < 0.294"));
-		run("updateGame(2, true);");
+		run("updateGame(2, true); updateEntities(2);");
 		assert.ok(Math.abs(run("portalTarget[3]") - 0.294) < 0.00001);
 		run("shootPortal();");
 		assert.equal(run("portalTarget[25]"), 0);
-		run("updateGame(0.1, true); shootPortal();");
+		run("updateGame(0.1, true); updateEntities(0.1); shootPortal();");
 		assert.ok(run("portalTarget[3] > 0.294 && portalTarget[3] < 1"));
-		run("updateGame(2, true);");
-		assert.equal(run("portalTarget[3]"), 1);
+		run("updateGame(2, true); updateEntities(2);");
+		assert.equal(run("portalTarget.every(n => n === 0)"), true);
 		assert.equal(run("portalTarget[1]"), 0);
 		assert.equal(run("portalTarget[11]"), 0);
 		assert.equal(run("portalTarget[25]"), 0);
 	}
-	run("getPortals().forEach(p => p[27] = 26); updateGame(2, true);");
+	run("getPortals().forEach(p => p[27] = 26); updateGame(2, true); updateEntities(2);");
 	assert.equal(run("getUnicorns().length"), 0);
 });
 
-test("portal shots respect cover, nearer unicorns and the arch outline", () => {
+test("portal shots respect cover, nearer unicorns and the elliptical outline", () => {
 	const { run } = game();
 	// Cargo at (5, 5) blocks this ray to the south wall portal.
-	run("getUnicorns().forEach(e => e[0] = 0); player[4] = 6; player[6] = 0; firePellet(6, 0.2, 0, 0, 1, true);");
+	run("getUnicorns().forEach(e => e[0] = 0); player[4] = 6; player[6] = 0; firePellet(6, 0.2, 0, 0, 1);");
 	assert.equal(run("getPortals()[2][25]"), 50);
 	// A unicorn between the gun and the north portal absorbs the hit.
-	run("player[4] = 3; player[6] = -12; spawnUnicorn(3, -13); firePellet(3, 0.2, -12, 0, -1, true);");
+	run("player[4] = 3; player[6] = -12; spawnUnicorn(3, -13); firePellet(3, 0.2, -12, 0, -1);");
 	assert.equal(run("getUnicorns()[0][25]"), 3);
 	assert.equal(run("getPortals()[0][25]"), 50);
-	run("getUnicorns().forEach(e => e[0] = 0); firePellet(3, 2, -12, 0, -1, false); firePellet(4.8, 0.2, -12, 0, -1, true);");
+	run("getUnicorns().forEach(e => e[0] = 0); firePellet(3, 2, -12, 0, -1); firePellet(4.8, 0.2, -12, 0, -1);");
 	assert.equal(run("getPortals()[0][25]"), 50);
 	// The wider lower arc takes hits, but its empty upper corners do not.
-	run("firePellet(4.2, 0.2, -12, 0, -1, true);");
+	run("firePellet(4.2, 0.2, -12, 0, -1);");
 	assert.equal(run("getPortals()[0][25]"), 49);
-	run("firePellet(4.2, 1.1, -12, 0, -1, false);");
+	run("firePellet(4.2, 1.1, -12, 0, -1);");
 	assert.equal(run("getPortals()[0][25]"), 49);
 });
 
@@ -298,7 +315,7 @@ test("shotgun fires twelve distinct pellet rays per shell with a 0.7 second cool
 	assert.equal(run("weapon[4]"), 7);
 	assert.equal(run("effects().filter(effect => effect[0] === 7).length"), 12);
 	assert.equal(run("new Set(effects().filter(effect => effect[0] === 7).map(effect => effect[9])).size"), 12);
-	assert.equal(run("effects().filter(effect => effect[1] === 12).length"), 1);
+	assert.equal(run("EArray.filter(effect => effect[1] === 12).length"), 1);
 	const first = run("effects().filter(effect => effect[0] === 7).map(effect => Array.from(effect.subarray(20, 23)))");
 	assert.ok(first.some(v => v[1] > 0));
 	assert.ok(first.some(v => v[1] < 0));
@@ -316,9 +333,9 @@ test("shotgun fires twelve distinct pellet rays per shell with a 0.7 second cool
 
 test("pellet height affects hits and short cover intersection", () => {
 	const { run } = game();
-	run("EArray.forEach(e => e[28] = 0); getUnicorns().forEach(e => e[0] = 0); spawnUnicorn(0, 8); firePellet(0, 0.1640625, 0, 0, Math.cos(0.14), false, Math.sin(0.14));");
+	run("EArray.forEach(e => e[28] = 0); getUnicorns().forEach(e => e[0] = 0); spawnUnicorn(0, 8); firePellet(0, 0.1640625, 0, 0, Math.cos(0.14), Math.sin(0.14));");
 	assert.equal(run("getUnicorns()[0][25]"), 4);
-	run("firePellet(0, 0.1640625, 0, 0, 1, false, 0);");
+	run("firePellet(0, 0.1640625, 0, 0, 1, 0);");
 	assert.equal(run("getUnicorns()[0][25]"), 3);
 	run("block(0, 5.5, 2, 0.5 - ground, 1);");
 	assert.equal(run("shotFraction(0, 0, 0, 10, 0.2, 2)"), 1);
@@ -386,13 +403,13 @@ test("walking alternates marine leg variants and stops for free camera or blocke
 	assert.equal(run("marineBody[15] === 0 && marineArms[15] === 0 && marineGun[15] === 0"), true);
 	run("updateGame(0.15);");
 	assert.equal(run("marineLegs[15]"), 0);
-	const before = run("marineWalk");
+	const before = run("player[E.WALK]");
 	run("updateGame(1, true);");
-	assert.equal(run("marineWalk"), before);
+	assert.equal(run("player[E.WALK]"), before);
 	run("moveActor = () => {}; updateGame(1);");
-	assert.equal(run("marineWalk"), before);
+	assert.equal(run("player[E.WALK]"), before);
 	run("heldKeys.clear(); updateGame(1);");
-	assert.equal(run("marineWalk"), before);
+	assert.equal(run("player[E.WALK]"), before);
 });
 
 test("legs turn toward travel while torso and gun retain firing direction", () => {
@@ -531,7 +548,7 @@ test("fifth hit leaves a corpse and disables movement, aiming, firing and reload
 		if (i === 4) assert.deepEqual(Array.from(run("player.subarray(4, 7)")), position);
 	}
 	assert.equal(run("marineHealth"), 0);
-	assert.equal(sounds.hurt, 4);
+	assert.equal(sounds.hurt, 5);
 	assert.equal(sounds.explode, 1);
 	assert.ok(Math.abs(run("marineBody[8]") - Math.PI / 2) < 0.001);
 	const corpseX = run("player[4]");
@@ -541,7 +558,7 @@ test("fifth hit leaves a corpse and disables movement, aiming, firing and reload
 	assert.equal(run("reloadCooldown"), 0);
 	assert.equal(sounds.gunshot, 0);
 	assert.equal(sounds.reload, 0);
-	assert.equal(sounds.hurt, 4);
+	assert.equal(sounds.hurt, 5);
 	assert.equal(sounds.explode, 1);
 	assert.equal(run("player[0]"), 1, "corpse remains allocated");
 	assert.equal(run("player[5]"), 0, "fallen gun rests at floor height");
@@ -581,7 +598,7 @@ test("tracers store a GPU trajectory ending at cover", () => {
 	run("updateGame(0.05)");
 	assert.equal(tracer[6], startZ);
 	assert.equal(tracer[5], startY);
-	assert.equal(tracer[23], ttl, "Gameplay leaves movement and TTL to compute");
+	assert.equal(tracer[23], ttl, "Gameplay leaves movement and TTL to the shared entity update");
 	assert.ok(Math.abs(tracer[6] + tracer[22] * ttl + Math.cos(tracer[9]) * tracer[14] / 2 - 15) < 0.001);
 });
 
@@ -591,16 +608,16 @@ test("tracer and flash originate at the model bore at every facing and scale", (
 		run(`getUnicorns().forEach(e => e[0] = 0); marineBody[9] = ${yaw}; player[12] = 1.2; player[13] = 1.4; player[14] = 0.8; fireMarineGun()`);
 		const angle = run("marineBody[9]");
 		const expected = [
-			-2 + Math.cos(angle) * 1.2 / 64 - Math.sin(angle) * 30 * 0.8 / 64,
+			-2 + (Math.cos(angle) - Math.sin(angle) * 30) * 1.2 / 64,
 			10.5 * 1.4 / 64,
-			Math.sin(angle) * 1.2 / 64 + Math.cos(angle) * 30 * 0.8 / 64,
+			(Math.sin(angle) + Math.cos(angle) * 30) * 0.8 / 64,
 		];
-		const flash = run("effects().find(effect => effect[0] === 6 && effect[1] > 0)");
+		const flash = worldPoint(run("EArray"), run("muzzleFlash"));
 		const tracer = run("effects().find(effect => effect[0] === 7)");
 		const start = [tracer[4] + Math.sin(tracer[9]) * tracer[14] / 2, tracer[5], tracer[6] - Math.cos(tracer[9]) * tracer[14] / 2];
 		for (let axis = 0; axis < 3; axis++) {
 			assert.ok(Math.abs(start[axis] - expected[axis]) < 0.00001);
-			assert.ok(Math.abs(flash[axis + 4] - expected[axis]) < 0.00001);
+			assert.ok(Math.abs(flash[axis] - expected[axis]) < 0.00001);
 		}
 	}
 });
@@ -642,7 +659,7 @@ test("unicorn death preserves damage, rolls onto its side and gives the corpse a
 	assert.equal(run("getUnicorns()[2][3]"), 0);
 });
 
-test("targets beyond the capped forgiveness remain misses without tracer steering", () => {
+test("shots outside the sphere remain misses at every distance", () => {
 	for (const z of [2, 4, 12]) {
 		const { run } = game();
 		run(`getUnicorns()[0][4] = -1.5; getUnicorns()[0][6] = ${z}; fireMarineGun()`);
@@ -652,16 +669,16 @@ test("targets beyond the capped forgiveness remain misses without tracer steerin
 	}
 });
 
-test("small edge misses register without steering the firing ray", () => {
+test("small edge misses no longer receive aim assistance", () => {
 	const { run } = game();
 	run("getUnicorns()[0][4] = -2 + 1/64 + 0.38; getUnicorns()[0][6] = 4; fireMarineGun()");
-	assert.equal(run("getUnicorns()[0][25]"), 3);
+	assert.equal(run("getUnicorns()[0][25]"), 4);
 	assert.equal(Math.abs(run("effects().find(effect => effect[0] === 7)[20]")), 0);
 });
 
 test("blood starts at the unicorn center even for an off-center hit", () => {
 	const { run } = game();
-	run("getUnicorns()[0][4] = -2 + 1/64 + 0.38; getUnicorns()[0][5] = 0.2; getUnicorns()[0][6] = 4; fireMarineGun()");
+	run("getUnicorns()[0][4] = -2 + 1/64 + 0.18; getUnicorns()[0][5] = 0.1; getUnicorns()[0][6] = 4; fireMarineGun()");
 	const center = Array.from(run("getUnicorns()[0].subarray(4, 7)"));
 	const blood = run("effects().filter(effect => effect[19] === 249)");
 	assert.equal(blood.length, 28);
@@ -683,7 +700,7 @@ test("blood stores velocity and TTL directly on its entity", () => {
 	assert.deepEqual(Array.from(blood), before);
 });
 
-test("a directly aimed target takes priority over a closer assisted target", () => {
+test("a nearer miss does not intercept a farther direct hit", () => {
 	const { run } = game();
 	run("getUnicorns()[0][4] = -1.6; getUnicorns()[0][6] = 3; spawnUnicorn(-2 + 1/64, 6); fireMarineGun()");
 	assert.equal(run("getUnicorns()[0][25]"), 4);
@@ -737,4 +754,136 @@ test("enemy hits, range misses and obstructed muzzles do not create wall sparks"
 		run(`${setup}; fireMarineGun()`);
 		assert.equal(run("effects().filter(effect => effect[0] === 6 && [242, 248].includes(effect[19])).length"), 0);
 	}
+});
+
+test("single-shot weapons use height and low cover without aim assistance", () => {
+	const { run } = game();
+	run("getUnicorns()[0][4] = -2 + 1/64; getUnicorns()[0][5] = 1; getUnicorns()[0][6] = 4; fireMarineGun();");
+	assert.equal(run("getUnicorns()[0][25]"), 4, "a target above the firing line misses");
+	run("getUnicorns()[0][5] = 0; block(-2, 2, 1, .5 - ground, .5); shotCooldown = 0; fireMarineGun();");
+	assert.equal(run("getUnicorns()[0][25]"), 4, "short cover blocks a shot at muzzle height");
+});
+
+test("floor uses the same box intersection and dead targets or effects do not intercept shots", () => {
+	const { run } = game();
+	run(`EArray.forEach(e => e[0] = 0);
+		const floor = spawn(5); floor.set([0,-32/64,0], E.POS); floor.set([32,4/64,32], E.SCALE);
+		player[E.POS_X] = player[E.POS_Z] = 0;
+		firePellet(0, .5, 0, 0, Math.SQRT1_2, -Math.SQRT1_2);`);
+	assert.equal(run("effects().filter(e => e[E.MAT_OVERRIDE] === 242 && e[E.KIND] === 6).length"), 4);
+	const { run: shoot } = game();
+	shoot(`getUnicorns()[0].set([-2+1/64, 0, 2], E.POS); getUnicorns()[0][E.HEALTH] = 0;
+		spawnUnicorn(-2+1/64, 4); const effect = spawn(6); effect.set([-2+1/64,0,1], E.POS); fireMarineGun();`);
+	assert.equal(shoot("getUnicorns()[1][E.HEALTH]"), 3);
+});
+
+test("crates drop one marine gun on the fatal hit while the crate finishes dissolving", () => {
+	const { run } = game();
+	run(`getUnicorns().forEach(e => e[0] = 0);
+		globalThis.crate = EArray.find(e => e[E.KIND] === 16);
+		player[E.POS_X] = crate[E.POS_X]; player[E.POS_Z] = crate[E.POS_Z] - 1;
+		globalThis.shootCrate = () => firePellet(player[E.POS_X], .1, player[E.POS_Z], 0, 1);`);
+	assert.equal(run("EArray.filter(e => e[E.KIND] === 16).every(e => e[E.HEALTH] === 4 && e[E.DISSOLVE_PALETTE] === 0)"), true);
+	for (let hit = 1; hit <= 3; hit++) {
+		run("shootCrate(); updateGame(.2, true); updateEntities(.2);");
+		assert.equal(run("crate[E.HEALTH]"), 4 - hit);
+		assert.ok(Math.abs(run("crate[E.DISSOLVE]") - hit * .075) < 1e-6);
+		assert.equal(run("canStand(crate[E.POS_X], crate[E.POS_Z])"), false);
+		assert.equal(run("crate[E.SPOTLIGHT]"), 0, "crates never inherit portal lights");
+	}
+	assert.equal(run("effects().filter(e => e[E.MAT_OVERRIDE] === 249).length"), 0, "wood does not bleed");
+	run("globalThis.position = Array.from(crate.subarray(E.POS, E.POS + 3)); shootCrate();");
+	assert.equal(run("crate[E.HEALTH]"), 0);
+	assert.equal(run("crate[E.KIND]"), 16, "the model remains during collapse");
+	run("globalThis.droppedGun = EArray.find(e => e[E.KIND] === 11 && !e[E.PARENT]);");
+	assert.equal(run("!!droppedGun && droppedGun !== crate"), true, "gun exists immediately, before advancing the dissolve");
+	assert.equal(run("droppedGun[E.POS_X] === position[0] && droppedGun[E.POS_Z] === position[2]"), true);
+	assert.ok(Math.abs(run("droppedGun[E.POS_Y] - droppedGun[E.SCALE_X] / 2") - (-30/64)) < 1e-6, "gun lies on its side at the droppedGun base");
+	assert.deepEqual(Array.from(run("droppedGun.subarray(E.SCALE,E.SCALE+3)")), Array.from(new Float32Array([.17,.25,.56])));
+	assert.deepEqual(Array.from(run("droppedGun.subarray(E.TILE,E.TILE+3)")), [1,1,1], "whole gun model, no tiling");
+	assert.ok(Math.abs(run("droppedGun[E.ROT_Z]") - Math.PI/2) < 1e-6);
+	for (const slot of [E.HEALTH,E.SOLID,E.DISSOLVE,E.DISSOLVE_PALETTE,E.PARENT,E.SPOTLIGHT,E.TTL])
+		assert.equal(run(`droppedGun[${slot}]`), 0, "drop has no droppedGun damage, collision, parent, or weapon light");
+	run("globalThis.drop = Array.from(droppedGun);");
+	assert.equal(run("canStand(...[position[0],position[2]])"), true, "no invisible movement obstacle after destruction");
+	assert.equal(run("shotFraction(position[0],position[2]-1,position[0],position[2]+1,.1)"), 1, "destroyed crate no longer blocks bullets");
+	run("shootCrate(); updateGame(.5, true); updateEntities(.5);");
+	assert.equal(run("crate[E.HEALTH]"), 0, "additional pellets cannot damage the collapsing crate");
+	assert.ok(Math.abs(run("crate[E.DISSOLVE]") - .475) < 1e-6);
+	assert.deepEqual(Array.from(run("crate.subarray(E.POS,E.POS+3)")), Array.from(run("position")), "crate does not receive an actor death pose");
+	run("updateGame(2, true); updateEntities(2);");
+	assert.equal(run("crate.every(n => n === 0)"), true, "crate slot clears after collapse");
+	run("shootCrate(); updateGame(10, true); updateEntities(10);");
+	assert.deepEqual(Array.from(run("droppedGun")).filter((_, i) => i !== E.AGE), Array.from(run("drop")).filter((_, i) => i !== E.AGE), "gun persists through crate cleanup");
+	assert.equal(run("EArray.filter(e => e[E.KIND] === 11 && !e[E.PARENT]).length"), 1, "no second drop after collapse");
+	assert.equal(run("EArray.filter(e => e[E.KIND] === 16).length"), 3, "other crates stay intact");
+});
+
+test("crate cover protects a target until the fatal pellet; subsequent pellets pass through", () => {
+	const { run } = game();
+	run(`getUnicorns().forEach(e => e[0] = 0);
+		globalThis.crate = EArray.find(e => e[E.KIND] === 16);
+		player[E.POS_X] = crate[E.POS_X]; player[E.POS_Z] = crate[E.POS_Z] - 1;
+		spawnUnicorn(crate[E.POS_X], crate[E.POS_Z] + 1);
+		for (let hit = 0; hit < 4; hit++) firePellet(player[E.POS_X], .1, player[E.POS_Z], 0, 1);`);
+	assert.equal(run("getUnicorns()[0][E.HEALTH]"), 4);
+	run("firePellet(player[E.POS_X], .1, player[E.POS_Z], 0, 1);");
+	assert.equal(run("getUnicorns()[0][E.HEALTH]"), 3);
+});
+
+test("one permanent muzzle flash follows the arms and reuses its 35ms timer", () => {
+	const { run } = game();
+	run("globalThis.flash = muzzleFlash; globalThis.stepFlash = dt => { updateGame(dt, true); updateEntities(dt); };");
+	assert.equal(run("flash[E.PARENT] === marineArms.id"), true);
+	assert.equal(run("flash[E.TRANSPARENCY]"), 1);
+	assert.equal(run("flash[E.SPOTLIGHT]"), 0);
+	assert.equal(run("flash[E.TTL]"), 0);
+	assert.equal(run("marineParts.includes(flash)"), false, "flash does not inherit actor damage colors");
+	run("fireMarineGun(); stepFlash(.02);");
+	assert.equal(run("flash[E.TRANSPARENCY]"), 0);
+	assert.equal(run("flash[E.SPOTLIGHT]"), 12);
+	run("stepFlash(.016);");
+	assert.equal(run("flash[E.TRANSPARENCY]"), 1);
+	assert.equal(run("flash[E.SPOTLIGHT]"), 0);
+	run("stepFlash(.05); selectMarineWeapon(1); fireMarineGun(); stepFlash(.02); setMarineTrigger(false); fireMarineGun(); stepFlash(.02);");
+	assert.equal(run("flash[E.TRANSPARENCY]"), 0, "a new shot restarts the duration");
+	run("stepFlash(.02);");
+	assert.equal(run("flash[E.TRANSPARENCY]"), 1);
+	assert.equal(run("EArray.filter(e => e[E.KIND] === 6 && e[E.MAT_OVERRIDE] === 246).length"), 1);
+	assert.equal(run("flash === muzzleFlash"), true);
+	for (const setup of ["weapon[4] = 0", "reloadCooldown = 1", "marineHealth = 0"]) {
+		run(`weapon[4] = 10; reloadCooldown = 0; marineHealth = 5; setMarineTrigger(false); ${setup}; fireMarineGun();`);
+		assert.equal(run("flash[E.SPOTLIGHT]"), 0, "blocked firing cannot reactivate the flash");
+	}
+});
+
+test("attached flash stays on the model bore through arm poses and parent transforms", () => {
+	const { run } = game();
+	for (const pose of [0, .3, .85]) {
+		run(`player.set([3,.4,-2], E.POS); player.set([1.2,1.4,.8], E.SCALE);
+			marineBody[E.ROT_Y] = .7; marineArms[E.ROT_X] = ${pose};
+			marineArms[E.POS_Y] = .03; marineArms[E.POS_Z] = -.02;`);
+		const entities = run("EArray");
+		const actual = worldPoint(entities, run("muzzleFlash"));
+		const bore = worldPoint(entities, run("marineGun"), [5/16-.5, 12.5/20-.5, 30/32-.5]);
+		for (let i=0;i<3;i++) assert.ok(Math.abs(actual[i]-bore[i]) < 1e-6);
+	}
+});
+
+test("permanent flash survives entity updates and only contributes light while active", () => {
+	const context = vm.createContext({ E, DEBUG:true, heldKeys:new Set(), cameraFov:60,
+		GenArray:(n,fn)=>Array.from({length:n},(_,i)=>fn(i)), setTimeout(){},
+		sound:{wobble(){}, gunshot(){}, hurt(){}, explode(){}} });
+	for (const file of ["entities","level","game"])
+		vm.runInContext(readFileSync(new URL(`../src/${file}.js`, import.meta.url),"utf8").replace(/^import .*;\r?\n/gm,"").replaceAll("export ",""),context);
+	const run = code => vm.runInContext(code,context);
+	run("updateEntities(0);");
+	assert.equal(run("lightEntities.includes(muzzleFlash.id)"), false);
+	run("fireMarineGun(); updateEntities(.01);");
+	assert.equal(run("lightEntities.includes(muzzleFlash.id)"), true);
+	run("updateGame(.04,true); updateEntities(100);");
+	assert.equal(run("lightEntities.includes(muzzleFlash.id)"), false);
+	assert.equal(run("muzzleFlash[E.KIND]"), 6);
+	assert.equal(run("muzzleFlash[E.DISSOLVE]"), 0);
+	assert.deepEqual(Array.from(run("muzzleFlash.subarray(E.POS,E.POS+3)")), [1/64,10.5/64,30/64]);
 });

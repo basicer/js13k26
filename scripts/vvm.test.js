@@ -29,6 +29,56 @@ function runBytes(bytecode, parameter) {
 	return vm.runInContext(interpreter + "\nbuffers.get(runByteCode(bytecode, parameter))", context, { timeout: 1000 });
 }
 
+test("wooden crate has steel edge bands, parallel inset boards, and one diagonal per face", () => {
+	const grid = run(readFileSync(new URL("../vox/wooden-crate.vp", import.meta.url), "utf8"));
+	assert.equal(grid.length, 32 ** 3 * 4);
+	const at = (x, y, z) => grid[((z * 32 + y) * 32 + x) * 4];
+	assert.equal(palette[1024 + 184 * 4], 210, "strap uses a metallic material");
+	const materials = new Set();
+	for (let i = 0; i < grid.length; i += 4) materials.add(grid[i]);
+	assert.deepEqual([...materials].sort((a,b) => a-b), [0, 81, 100, 184, 187]);
+	for (const side of [d => d, d => 31-d]) {
+		for (const face of [(a,b,d) => at(a,b,side(d)), (a,b,d) => at(side(d),b,a), (a,b,d) => at(b,side(d),a)]) {
+			for (let a = 0; a < 2; a++) {
+				for (const edge of [[a,15], [31-a,15], [15,a], [15,31-a]])
+					assert.equal(face(...edge,0), 184, "steel bands wrap every edge");
+			}
+			for (const a of [3, 4, 27, 28]) for (const b of [7, 8, 15, 16, 23, 24])
+				assert.equal(face(a,b,0), 187, "raised rivets at both ends of every board");
+			assert.equal(face(6,15,0), 0, "rivet heads stay small and separate");
+			assert.equal(face(2,15,0), 0, "edge bands are narrower than the old frame");
+			assert.equal(face(12,12,0), 184, "steel diagonal reaches outer face");
+			assert.equal(face(13,12,0), 184, "steel strap spans the diagonal");
+			assert.equal(face(14,12,0), 0, "strap is narrower than the old timber brace");
+			assert.equal(face(10,21,0), 0, "no second diagonal");
+			assert.equal(face(18,7,0), 0, "shallow recess above boards");
+			assert.equal(face(18,7,1), 81, "inset board surface");
+			assert.equal(face(18,10,1), 0, "open joint between boards");
+			assert.equal(face(18,10,2), 100, "backing directly below joint");
+			assert.equal(face(10,18,1), 81, "parallel boards have no perpendicular joint");
+		}
+	}
+});
+
+test("wall panel P0 raises the left lever and turns the right screen green", () => {
+	const code = readFileSync(new URL("../vox/computer-console.vp", import.meta.url), "utf8");
+	const red = run(code, [0]), green = run(code, [1]);
+	assert.equal(red.length, 40 * 32 * 12 * 4);
+	const at = (grid, x, y, z) => grid[((z * 32 + y) * 40 + x) * 4];
+	assert.equal(at(red, 8, 7, 10), 2, "ivory grip down");
+	assert.equal(at(red, 8, 24, 10), 0);
+	assert.equal(at(green, 8, 7, 10), 0);
+	assert.equal(at(green, 8, 24, 10), 2, "ivory grip up");
+	for (let z = 0; z < 12; z++) for (let y = 0; y < 32; y++) for (let x = 0; x < 40; x++) {
+		if (x < 14) assert.equal(at(red, x, y, z), at(green, x, 31-y, z));
+		else if (z === 6 && x >= 17 && x <= 34 && y >= 9 && y <= 24) {
+			assert.equal(at(red, x, y, z), 243);
+			assert.equal(at(green, x, y, z), 244);
+		} else assert.equal(at(red, x, y, z), at(green, x, y, z));
+	}
+	for (const material of [243, 244]) assert.ok(palette[1024 + material * 4 + 2] > 0);
+});
+
 test("LOADP calls the supplied function with the subopcode on every execution", () => {
 	const requested = [];
 	const buffer = runBytes(assemble("LOADP:7 FSTORE:MATERIAL LOADP:3 FSTORE:RADIUS SPHERE FSTORE:BRUSH STROKE"), index => {
@@ -64,7 +114,7 @@ test("model rebuild retires aliased textures once and preserves old variants on 
 		runByteCode: (code, load) => { load(0); return { destroy() {} }; },
 	});
 	vm.runInContext(source.slice(source.indexOf("export function buildModel"), source.indexOf("\n// Load authored models."))
-		.replace("export ", ""), context);
+		.replace("export ", "").replaceAll("import.meta.env.DEBUG", "true"), context);
 	vm.runInContext("buildModel(0, [])", context);
 	await Promise.resolve();
 	assert.equal(destroyed, 1); assert.equal(context.buffers.has(old), false);

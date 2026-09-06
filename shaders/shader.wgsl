@@ -2,5 +2,4 @@
 #import "common.wgsl"
 #import "lighting.wgsl"
 #import "scene.wgsl"
-#import "compute.wgsl"
 #import "post.wgsl"

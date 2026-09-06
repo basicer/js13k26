@@ -244,6 +244,8 @@ import marineGun, { debugSource as gunSource } from "../vox/marine-gun.vp";
 import unicornPortal, { debugSource as portalSource } from "../vox/unicorn-portal.vp";
 import ggLogo, { debugSource as logoSource } from "../vox/gg-logo.vp";
 import railing, { debugSource as railingSource } from "../vox/railing.vp";
+import computerConsole, { debugSource as consoleSource } from "../vox/computer-console.vp";
+import woodenCrate, { debugSource as crateSource } from "../vox/wooden-crate.vp";
 import program2, { debugSource as source2 } from "../vox/unicorn.vp";
 import program3, { debugSource as source3 } from "../vox/floortile.vp";
 import program4, { debugSource as source4 } from "../vox/walltile.vp";
@@ -266,15 +268,23 @@ export function buildModel(slot, bytecode, parameter = () => 0) {
 	if (!DEBUG) return (voxT[slot] = buildVoxelVariants(bytecode, runByteCode, parameter));
 	const previous = voxT[slot];
 	const created = [];
-	voxT[slot] = buildVoxelVariants(
-		bytecode,
-		(code, load) => {
-			const texture = runByteCode(code, load);
-			created.push(texture);
-			return texture;
-		},
-		parameter,
-	);
+	try {
+		voxT[slot] = buildVoxelVariants(
+			bytecode,
+			(code, load) => {
+				const texture = runByteCode(code, load);
+				created.push(texture);
+				return texture;
+			},
+			parameter,
+		);
+	} catch (error) {
+		for (const texture of created) {
+			buffers.delete(texture);
+			texture.destroy();
+		}
+		throw error;
+	}
 
 	if (DEBUG && import.meta.env.DEBUG) {
 		for (const texture of new Set(previous)) {
@@ -297,6 +307,8 @@ export function buildModel(slot, bytecode, parameter = () => 0) {
 		[12, unicornPortal, portalSource],
 		[13, ggLogo, logoSource],
 		[14, railing, railingSource],
+		[15, computerConsole, consoleSource],
+		[16, woodenCrate, crateSource],
 		[2, program2, source2],
 		[5, program3, source3],
 		[7, program4, source4],

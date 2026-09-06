@@ -1,23 +1,24 @@
+import * as E from "../entities-const.js";
 import { cameraEntity, cameraPosition, EArray, entityVersion } from "../entities.js";
 
 let parentId = 0, version;
 
 // Gameplay's root supplies translation and scale; aiming lives on its body child.
 export function detachCamera() {
-	if (!cameraEntity[2]) return;
-	parentId = cameraEntity[2];
+	if (!cameraEntity[E.PARENT]) return;
+	parentId = cameraEntity[E.PARENT];
 	version = entityVersion;
 	const parent = EArray[parentId];
 	for (let axis = 0; axis < 3; axis++)
-		cameraPosition[axis] = parent[axis + 4] + cameraPosition[axis] * parent[axis + 12];
-	cameraEntity[2] = 0;
+		cameraPosition[axis] = parent[axis + E.POS] + cameraPosition[axis] * parent[axis + E.SCALE];
+	cameraEntity[E.PARENT] = 0;
 }
 
 export function attachCamera() {
-	if (!parentId || version !== entityVersion || cameraEntity[2]) return;
+	if (!parentId || version !== entityVersion || cameraEntity[E.PARENT]) return;
 	const parent = EArray[parentId];
 	for (let axis = 0; axis < 3; axis++)
-		cameraPosition[axis] = (cameraPosition[axis] - parent[axis + 4]) / parent[axis + 12];
-	cameraEntity[2] = parentId;
+		cameraPosition[axis] = (cameraPosition[axis] - parent[axis + E.POS]) / parent[axis + E.SCALE];
+	cameraEntity[E.PARENT] = parentId;
 	parentId = 0;
 }

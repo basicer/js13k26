@@ -1,10 +1,11 @@
+import * as E from "../src/entities-const.js";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import test from "node:test";
 import vm from "node:vm";
 
 function scene() {
-	const context = vm.createContext({
+	const context = vm.createContext({ E,
 		DEBUG: true, heldKeys: new Set(), cameraFov: 45,
 		GenArray: (n, fn) => Array.from({ length: n }, (_, i) => fn(i)),
 		sound: { wobble() {}, hurt() {}, explode() {} }, setTimeout() {},
@@ -81,12 +82,10 @@ test("startup logo stands on the floor with a temporary front light and short si
 	assert.equal(light[23], logo[23]);
 	assert.deepEqual(Array.from(logo.slice(16, 19)), [0, 0, 0]);
 	assert.equal(logo[28], 0, "logo is non-solid");
-	const source = readFileSync(new URL("../shaders/compute.wgsl", import.meta.url), "utf8");
-	const lifetime = source.slice(source.indexOf("    var entity = input;"), source.indexOf("    entity.pos +="))
-		.replace(/(\d+\.\d+)f/g, "$1").replace("Entity()", "({kind: 0, ttl: 0, age: 0})");
-	const step = vm.runInNewContext(`(input, dt) => { ${lifetime} return entity; }`);
-	let entity = { kind: 13, ttl: logo[23], age: 0 };
-	for (let frame = 0; frame < 100; frame++) entity = step(entity, 0);
-	assert.equal(entity.kind, 13, "logo survives the startup pause");
-	assert.equal(step(entity, 0.11).kind, 0, "logo expires just after gameplay starts");
+	for (let frame = 0; frame < 100; frame++) run("updateEntities(0)");
+	assert.equal(logo[0], 13, "logo survives the startup pause");
+	run("updateEntities(0.11)");
+	assert.equal(logo[0], 0, "logo expires just after gameplay starts");
+	assert.equal(light[0], 0, "the temporary logo light expires in the same frame");
+
 });

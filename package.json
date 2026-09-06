@@ -5,10 +5,12 @@
 	"scripts": {
 		"dev": "vite",
 		"build": "vite build",
+		"build:unpacked": "vite build --mode unpacked",
 		"build:dev": "vite build --mode development",
 		"native:mac": "python3 build_macos.py",
 		"serve": "vite preview",
 		"format": "prettier --write src/*.js *.js *.json",
+		"generate:entities": "node scripts/generate-entity-constants.mjs",
 		"test": "node --test tools/wgsl-minify/test/minify.test.js",
 		"test:vvm": "node --test scripts/vvm.test.js",
 		"test:shaders": "node --test tools/wgsl-minify/test/minify.test.js tools/wgsl-minify/test/integration.test.js",

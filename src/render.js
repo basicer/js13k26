@@ -1,23 +1,22 @@
 import { $, d, c, Q, G, GenArray, canvasSrgbFormat, cameraFov, label } from "./globals.js";
+import * as E from "./entities-const.js";
 import shaderCode from "../shaders/shader.wgsl";
 import { palette } from "./palette.js";
 import {
 	entities,
-	entityVersion,
-	mergeEntityFrame,
+	updateEntities,
+	lightEntities,
 	entityOverrides,
 	ENTITY_DATA_SIZE,
 	ENTITY_COUNT,
 	EArray,
-	cameraPosition,
-	cameraRotation,
+	entityVersion,
 } from "./entities.js";
 import { voxT } from "./vvm.js";
 import { aimMarineAtCursor, fireMarineGun, setMarineTrigger, updateGame } from "./game.js";
 
 let lastFrameTime = performance.now();
 let simulationTime = lastFrameTime / 1000;
-let pendingSimulationTime = 0;
 let started = false;
 
 export const startGame = () => {
@@ -31,42 +30,43 @@ export const isFlying = () => debugModule?.isFlying() ?? false;
 export const isPaused = () => !started || (debugModule?.isPaused() ?? false);
 
 if (DEBUG && import.meta.env.DEBUG) {
-	import("./debug/debug.js").then((module) => {
-		debugModule = module;
-		c.addEventListener("pointerdown", async (event) => {
-			if (event.button !== 0 || module.wantsMouse()) return;
-			if (!isPaused()) {
-				setMarineTrigger(true);
-				fireMarineGun();
-				c.setPointerCapture(event.pointerId);
-				return;
-			}
-			const bounds = c.getBoundingClientRect();
-			if (!bounds.width || !bounds.height) return;
-			try {
-				const [index] = await pickEntity(
-					((event.clientX - bounds.left) * c.width) / bounds.width,
-					((event.clientY - bounds.top) * c.height) / bounds.height,
-				);
-				if (isPaused() && index >= 0) module.selectEntity(index);
-			} catch (error) {
-				console.error("Entity selection failed", error);
-			}
-		});
-	});
+	import("./debug/debug.js").then((module) => { debugModule = module; });
 }
 
-if (!(DEBUG && import.meta.env.DEBUG)) {
-	c.addEventListener("pointerdown", (event) => {
-		if (event.button !== 0) return;
-		setMarineTrigger(true);
-		fireMarineGun();
-		c.setPointerCapture(event.pointerId);
-	});
-}
+// Pick before arming the weapon, including when the mouse is held down.
+let click = 0;
+c.addEventListener("pointerdown", async (event) => {
+	if (event.button !== 0 || (DEBUG && debugModule?.wantsMouse())) return;
+	const request = ++click, version = entityVersion;
+	setMarineTrigger(false);
+	c.setPointerCapture(event.pointerId);
+	const bounds = c.getBoundingClientRect();
+	try {
+		const [index] = await pickEntity(
+			((event.clientX - bounds.left) * c.width) / bounds.width,
+			((event.clientY - bounds.top) * c.height) / bounds.height,
+		);
+		if (request !== click || version !== entityVersion) return;
+		if (isPaused()) {
+			if (DEBUG && index >= 0) debugModule?.selectEntity(index);
+			return;
+		}
+		const entity = EArray[index];
+		if (entity?.[E.KIND] === 15) entity[E.MODEL_VARIANT] ^= 1;
+		else {
+			setMarineTrigger(c.hasPointerCapture(event.pointerId));
+			fireMarineGun();
+		}
+	} catch (error) {
+		if (DEBUG) console.error("Entity selection failed", error);
+	}
+});
 
 for (const eventName of ["pointerup", "pointercancel", "lostpointercapture"]) {
-	c.addEventListener(eventName, () => setMarineTrigger(false));
+	c.addEventListener(eventName, (event) => {
+		if (event.type === "pointercancel") click++;
+		setMarineTrigger(false);
+	});
 }
 
 c.addEventListener("pointermove", (event) => {
@@ -80,31 +80,12 @@ c.addEventListener("pointerleave", () => (renderState[4] = -1000));
 // Bit-packed -1/+1 cube vertices.
 const vertices = new Float32Array(GenArray(24, (i) => (((i / 3) >> (i % 3)) & 1) * 2 - 1));
 
-const entityInputBuffer = d.createBuffer({
+const entityBuffer = d.createBuffer({
 	"size": entities.byteLength,
 	"usage": GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST,
 });
-const spotlightCounterBuffer = d.createBuffer({
-	"size": 4,
-	"usage": GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST,
-});
-var entityBuffer = d.createBuffer({
-	"label": label`Entities`,
-	"size": entities.byteLength,
-	"usage": GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_SRC,
-});
-
-const entityReadbacks = GenArray(3, () => ({
-	"buffer": d.createBuffer({
-		"size": entities.byteLength,
-		"usage": GPUBufferUsage.COPY_DST | GPUBufferUsage.MAP_READ,
-	}),
-	"busy": false,
-}));
-
 const spotlightBuffer = d.createBuffer({
-	"label": label`Spotlights`,
-	"size": 32 * 32,
+	"size": lightEntities.byteLength,
 	"usage": GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST,
 });
 
@@ -244,10 +225,6 @@ const bloomPipeline = d.createRenderPipeline({
 		"targets": [{ "format": canvasSrgbFormat }],
 	},
 });
-const simulationPipeline = d.createComputePipeline({
-	"layout": "auto",
-	"compute": { "module": shader },
-});
 const bloomSampler = d.createSampler({
 	"magFilter": "linear",
 	"minFilter": "linear",
@@ -262,16 +239,6 @@ const BG = (pipeline, id, ...array) =>
 		})),
 	});
 
-const simulationBindGroup = BG(
-	simulationPipeline,
-	0,
-	renderStateBuffer,
-	entityInputBuffer,
-	entityBuffer,
-	spotlightBuffer,
-	spotlightCounterBuffer,
-);
-
 const renderBindGroup = BG(pipeline, 0, renderStateBuffer, entityBuffer, paletteTexture.createView(), spotlightBuffer);
 export async function render(t) {
 	if (DEBUG && debugModule) debugModule.stats.begin();
@@ -283,37 +250,13 @@ export async function render(t) {
 	if (!isPaused()) {
 		updateGame(deltaTime, isFlying());
 		simulationTime += deltaTime;
-		pendingSimulationTime += deltaTime;
 	}
 
-	const time = simulationTime;
-	renderState.set([time, c.width / c.height, cameraFov, pendingSimulationTime]);
+	updateEntities(isPaused() ? 0 : deltaTime);
+	renderState.set([simulationTime, c.width / c.height, cameraFov]);
 	Q.writeBuffer(renderStateBuffer, 0, renderState);
-
-	const readback = entityReadbacks.find((readback) => !readback.busy);
-	if (readback) {
-		const version = entityVersion;
-		const submitted = entities.slice();
-		Q.writeBuffer(entityInputBuffer, 0, submitted);
-		const simulation = d.createCommandEncoder();
-		simulation.clearBuffer(spotlightCounterBuffer);
-		simulation.clearBuffer(spotlightBuffer);
-		const simulationPass = simulation.beginComputePass();
-		simulationPass.setPipeline(simulationPipeline);
-		simulationPass.setBindGroup(0, simulationBindGroup);
-
-		simulationPass.dispatchWorkgroups(Math.ceil(ENTITY_COUNT / 64));
-		simulationPass.end();
-		simulation.copyBufferToBuffer(entityBuffer, 0, readback.buffer, 0, entities.byteLength);
-		Q.submit([simulation.finish()]);
-		readback.busy = true;
-		pendingSimulationTime = 0;
-		readback.buffer.mapAsync(GPUMapMode.READ).then(() => {
-			mergeEntityFrame(submitted, new Float32Array(readback.buffer.getMappedRange()), version);
-			readback.buffer.unmap();
-			readback.busy = false;
-		});
-	}
+	Q.writeBuffer(entityBuffer, 0, entities);
+	Q.writeBuffer(spotlightBuffer, 0, lightEntities);
 
 	let canvasTexture = G.getCurrentTexture();
 	let target = canvasTexture.createView({ format: canvasSrgbFormat });
@@ -364,7 +307,7 @@ export async function render(t) {
 		"timestampWrites": DEBUG && debugModule ? debugModule.stats.getTimestampWrites("bloom") : undefined,
 	});
 	bloomPass.setPipeline(bloomPipeline);
-	bloomPass.setBindGroup(0, BG(bloomPipeline, 0, sceneView, bloomSampler, renderStateBuffer));
+	bloomPass.setBindGroup(0, BG(bloomPipeline, 0, sceneView, bloomSampler));
 
 	bloomPass.draw(3);
 	bloomPass.end();

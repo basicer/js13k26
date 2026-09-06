@@ -1,3 +1,4 @@
+import * as E from "../entities-const.js";
 import { ImGui, ImGuiImplWeb, ImVec2, ImVec4 } from "@mori2003/jsimgui";
 import { d, c, heldKeys } from "../globals.js";
 import { cameraPosition, cameraRotation } from "../entities.js";
@@ -20,7 +21,7 @@ export const selectEntity = (index) => {
 };
 import Stats from "stats-gl";
 
-export let stats = new Stats({ trackGPU: true, trackCPT: true });
+export let stats = new Stats({ trackGPU: true });
 document.body.appendChild(stats.dom);
 stats.dom.style.position = "absolute";
 stats.dom.style.top = "29px";
@@ -161,15 +162,15 @@ export function debug(passEncoder, entities, entitySize, overrides) {
 			}
 			if (ImGui.MenuItem("Spheres")) {
 				EArray.map((e, id) => {
-					if (id > 1) e[0] = 0;
+					if (id > 1) e[E.KIND] = 0;
 				});
 				for (let i = 1; i < 256; i++) {
 					let e = spawn(6);
 
-					e[4] = Math.floor(i / 16);
-					e[5] = 0;
-					e[6] = i % 16;
-					if (i > 5) e[19] = i;
+					e[E.POS_X] = Math.floor(i / 16);
+					e[E.POS_Y] = 0;
+					e[E.POS_Z] = i % 16;
+					if (i > 5) e[E.MAT_OVERRIDE] = i;
 				}
 			}
 			ImGui.EndMenu();

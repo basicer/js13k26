@@ -24,11 +24,7 @@ export let reload = (seconds = 1.15) => {
 	return zzfxP(...reloadSamples[seconds]);
 };
 
-let shotgunPumpSamples;
-export let shotgunPump = () => {
-	if (!shotgunPumpSamples) shotgunPumpSamples = zzfxM(...shotgunPumpTrack);
-	return zzfxP(...shotgunPumpSamples);
-};
+export let shotgunPump = () => zzfxP(...zzfxM(...shotgunPumpTrack));
 
 export let magic = zzfx([, , 539, 0, 0.04, 0.29, 1, 1.92, , , 567, 0.02, 0.02, , , , 0.04]),
 	emptyClick = zzfx([0.65, 0, 180, 0, 0.003, 0.028, 4, 1, , , , , , 0.2, , , , , , , 1200]),

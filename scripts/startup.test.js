@@ -7,9 +7,9 @@ for (const DEBUG of [false, true]) test(`startup waits for input and preserves d
 	const source = readFileSync(new URL("../src/render.js", import.meta.url), "utf8");
 	const input = readFileSync(new URL("../src/index.js", import.meta.url), "utf8");
 	let now = 0, resumed = 0;
-	const steps = [], listeners = {};
+	const steps = [], simulations = [], listeners = {};
 	const context = vm.createContext({
-		DEBUG, performance: { now: () => now }, updateGame: dt => steps.push(dt),
+		DEBUG, performance: { now: () => now }, updateGame: dt => steps.push(dt), updateEntities: dt => simulations.push(dt),
 		zzfxX: { resume: () => resumed++ },
 		$: { addEventListener: (name, callback, options) => { listeners[name] = { callback, options }; } },
 	});
@@ -17,12 +17,12 @@ for (const DEBUG of [false, true]) test(`startup waits for input and preserves d
 	run(source.slice(source.indexOf("let lastFrameTime"), source.indexOf("if (DEBUG && import.meta.env.DEBUG)"))
 		.replaceAll("export ", ""));
 	run(input.slice(input.indexOf('for (const event of ["pointerdown", "keydown"])')));
-	const frame = source.slice(source.indexOf("\tconst now = performance.now()"), source.indexOf("\n\tconst time = simulationTime;"));
+	const frame = source.slice(source.indexOf("\tconst now = performance.now()"), source.indexOf("\n\trenderState.set([simulationTime"));
 	now = 30000;
 	run(`{${frame}}`);
 	assert.equal(run("isPaused()"), true);
 	assert.equal(run("simulationTime"), 0);
-	assert.equal(run("pendingSimulationTime"), 0);
+	assert.deepEqual(simulations, [0]);
 	assert.equal(steps.length, 0);
 	// Capture runs before the key/click's normal gameplay action.
 	assert.equal(listeners.pointerdown.options.capture, true);
@@ -34,6 +34,7 @@ for (const DEBUG of [false, true]) test(`startup waits for input and preserves d
 	now += 16;
 	run(`{${frame}}`);
 	assert.deepEqual(steps, [0.016], "waiting time is not applied to gameplay");
+	assert.deepEqual(simulations, [0, .016], "CPU simulation starts with the same fresh timestep");
 	now += 8;
 	listeners.keydown.callback();
 	assert.equal(run("lastFrameTime"), 60016, "later input does not reset frame timing");

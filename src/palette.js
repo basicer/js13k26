@@ -45,5 +45,8 @@ for (let i = 1; i < 256; i++) {
 palette.set([255, 200, 70, 255], 864);
 palette[1890] = 240;
 
+// The terminal's red/green screen materials glow in both model variants.
+palette[1024 + 243 * 4 + 2] = palette[1024 + 244 * 4 + 2] = 220;
+
 // Cheap sRGB-ish conversion; gamma 2 is close enough for this palette.
 for (let i = 0; i < 1024; i++) if ((i & 3) < 3) palette[i] = palette[i] ** 2 / 255;

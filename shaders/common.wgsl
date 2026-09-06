@@ -19,7 +19,15 @@ struct Entity {
     walk: f32,
     age: f32,
     solid: f32,
-    padding: array<f32, 3>,
+    hitRadius: f32,
+    hitCenterY: f32,
+    // Positive rate advances to the target; reaching one releases the entity.
+    dissolveRate: f32,
+    // World units per animation step; zero disables walking animation.
+    walkStride: f32,
+    dissolveTarget: f32,
+    gravity: f32,
+    maxHealth: f32,
 };
 
 fn rotation_matrix(rotation: vec3<f32>) -> mat3x3<f32> {
@@ -43,14 +51,6 @@ fn local_transform(entity: Entity, entity_scale: vec3<f32>) -> mat4x4<f32> {
     );
 }
 
-// Full cone width is stored on Entity; the collector caches its half-angle cosine.
-struct SpotLight {
-    position: vec3<f32>,
-    intensity: f32,
-    direction: vec3<f32>,
-    cutoff: f32,
-};
-
 
 struct VertexOutput {
     @builtin(position) clip_position: vec4<f32>,
@@ -68,13 +68,15 @@ struct VoxelHit {
     distance: f32,
     material: f32,
     normal: vec3<f32>,
+    position: vec3<f32>,
+    cell: vec3<i32>,
 };
 
 struct RenderState {
     time: f32,
     aspect: f32,
     fov: f32,
-    dt: f32,
+    padding: f32,
     mouse: vec4<f32>,
 };
 
@@ -92,23 +94,23 @@ var<storage, read> entities: array<Entity>;
 @group(0) @binding(2)
 var palette: texture_storage_2d<rgba8unorm, read>;
 @group(0) @binding(3)
-var<storage, read> spotlights: array<SpotLight>;
+var<storage, read> light_entities: array<u32>;
 
 const MAX_SPOTLIGHTS = 32u;
 
-fn world_transform(index: u32, dt: f32) -> mat4x4<f32> {
-    var entity = step_entity(entities[index], dt);
-    var transform = local_transform(entity, entity.scale);
-    var parent = entity.parent;
+fn world_transform(index: u32) -> mat4x4<f32> {
     var current = index;
-    for (var depth = 0u; depth < 5u && parent > 0.0f; depth++) {
-        let parent_index = u32(parent);
-        if (parent_index >= arrayLength(&entities) || parent_index == current) { break; }
-        entity = step_entity(entities[parent_index], dt);
+    var transform = mat4x4<f32>(
+        vec4<f32>(1.0f, 0.0f, 0.0f, 0.0f),
+        vec4<f32>(0.0f, 1.0f, 0.0f, 0.0f),
+        vec4<f32>(0.0f, 0.0f, 1.0f, 0.0f),
+        vec4<f32>(0.0f, 0.0f, 0.0f, 1.0f),
+    );
+    loop {
+        let entity = entities[current];
         transform = local_transform(entity, entity.scale) * transform;
-        current = parent_index;
-        parent = entity.parent;
+        current = u32(entity.parent);
+        if (current == 0u) { break; }
     }
     return transform;
 }
-
