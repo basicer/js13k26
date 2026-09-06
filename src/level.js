@@ -1,6 +1,5 @@
-import { spawn } from "./entities.js";
+import { spawn, EArray } from "./entities.js";
 
-const solids = [];
 const ground = -30 / 64;
 
 function block(x, z, width, height, depth, material = 0, bottom = ground, solid = true) {
@@ -14,41 +13,46 @@ function block(x, z, width, height, depth, material = 0, bottom = ground, solid 
 		16,
 	);
 	entity[19] = material;
-	if (solid) solids.push([x - width / 2, x + width / 2, z - depth / 2, z + depth / 2, bottom + height]);
+	entity[28] = Number(solid);
+	return entity;
 }
 
-// Open-roof yard with broad lanes between metallic bulkheads and cargo cover.
-for (const side of [-1, 1]) {
-	block(side * 15.5, 0, 1, 2.8, 32);
-	block(0, side * 15.5, 30, 2.8, 1);
-}
-for (const [x, z, width, depth] of [
-	[-6, -5, 5, 1],
-	[5, -5, 1, 5],
-	[-6, 2, 1, 4],
-	[1, 8, 5, 1],
-]) {
-	block(x, z, width, 1.9, depth);
-	block(x, z, width + 0.08, 0.12, depth + 0.08, 248, ground + 1.9, false);
-}
-for (const [x, z] of [
-	[5, 5],
-	[9, 0],
-	[-10, 9],
-]) {
-	block(x, z, 2.5, 1.8, 2.5);
-	block(x, z, 2.6, 0.12, 2.6, 101, ground + 1.8, false);
-	block(x + 0.3, z + 0.2, 1.5, 1, 1.5, 0, ground + 1.92);
+export function setupLevel() {
+	// Open-roof yard with broad lanes between metallic bulkheads and cargo cover.
+	for (const side of [-1, 1]) {
+		block(side * 15.5, 0, 1, 2.8, 32);
+		block(0, side * 15.5, 30, 2.8, 1);
+	}
+	for (const [x, z, width, depth] of [
+		[-6, -5, 5, 1],
+		[5, -5, 1, 5],
+		[-6, 2, 1, 4],
+		[1, 8, 5, 1],
+	]) {
+		block(x, z, width, 1.9, depth);
+		block(x, z, width + 0.08, 0.12, depth + 0.08, 248, ground + 1.9, false);
+	}
+	// Freestanding safety rails along the open camera-side lane.
+	for (const z of [-10, 0, 6]) block(-12, z, 4, 1, 0.2)[0] = 14;
+	// Broad, full-height face behind the interior portal.
+	block(9, 0, 2.5, 2.8, 3.6);
+	for (const [x, z] of [
+		[5, 5],
+		[-10, 9],
+	]) {
+		block(x, z, 2.5, 1.8, 2.5);
+		block(x, z, 2.6, 0.12, 2.6, 101, ground + 1.8, false);
+		block(x + 0.3, z + 0.2, 1.5, 1, 1.5, 0, ground + 1.92);
+	}
 }
 
 export function canStand(x, z, radius = 0.45) {
-	return (
-		Math.abs(x) <= 15 - radius &&
-		Math.abs(z) <= 15 - radius &&
-		!solids.some(
-			([left, right, back, front]) =>
-				x > left - radius && x < right + radius && z > back - radius && z < front + radius,
-		)
+	return !EArray.some(
+		(entity) =>
+			entity[0] &&
+			entity[28] &&
+			Math.abs(x - entity[4]) < Math.abs(entity[12]) / 2 + radius &&
+			Math.abs(z - entity[6]) < Math.abs(entity[14]) / 2 + radius,
 	);
 }
 
@@ -67,14 +71,18 @@ export function clearShot(x, z, targetX, targetZ) {
 
 export function shotFraction(x, z, targetX, targetZ, y = 1.25, targetY = y) {
 	// Intersect the shot segment against each solid box, including its height.
-	return solids.reduce((nearest, [left, right, back, front, top]) => {
+	return EArray.reduce((nearest, entity) => {
+		if (!entity[0] || !entity[28]) return nearest;
 		let near = 0,
 			far = 1;
-		for (const [origin, direction, min, max] of [
-			[x, targetX - x, left, right],
-			[z, targetZ - z, back, front],
-			[y, targetY - y, ground, top],
+		for (const [origin, direction, axis] of [
+			[x, targetX - x, 4],
+			[z, targetZ - z, 6],
+			[y, targetY - y, 5],
 		]) {
+			const half = Math.abs(entity[axis + 8]) / 2;
+			const min = entity[axis] - half,
+				max = entity[axis] + half;
 			if (Math.abs(direction) < 0.00001) {
 				if (origin < min || origin > max) return nearest;
 			} else {

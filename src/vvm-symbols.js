@@ -19,6 +19,7 @@ const constants = {
 	SWAP: 2,
 	VOXEL_MIN: 0,
 	VOXEL_MAX: 63,
+	SIZE_128: 128,
 	CENTER_LO: 31,
 	CENTER_HI: 32,
 	MAT_EMPTY: 0,
@@ -38,6 +39,7 @@ const constants = {
 	MAT_PEACH: 45,
 	MAT_BLOOD: 249,
 	MAT_RAINBOW: 255,
+	MAT_SIGN_GOLD: 216,
 };
 
 // Palette ramps from palette.js. Suffixes are zero-based shade indices.
@@ -110,11 +112,11 @@ export function resolveVoxelConstants(source) {
 					return token;
 				}
 				if (/^[A-Za-z_][A-Za-z_0-9]*:$/.test(token)) return token;
-				if (/^jumpif$/i.test(token)) {
+				if (/^(jumpif|loop|forjump)$/i.test(token)) {
 					jumpTarget = true;
 					return token;
 				}
-				if (/^jumpif:/i.test(token)) fail("Use JUMPIF <label>.");
+				if (/^(jumpif|loop|forjump):/i.test(token)) fail("Use JUMPIF <label>, LOOP <label> or FORJUMP <label>.");
 				const [name, arg, extra] = token.split(":");
 				if (arg !== undefined || Object.hasOwn(COMMAND_NAMES, name.toLowerCase())) {
 					if (!Object.hasOwn(COMMAND_NAMES, name.toLowerCase()) || extra !== undefined)
@@ -128,6 +130,6 @@ export function resolveVoxelConstants(source) {
 			});
 		})
 		.join("\n");
-	if (jumpTarget) throw Error("JUMPIF requires a label.");
+	if (jumpTarget) throw Error("JUMPIF/LOOP/FORJUMP requires a label.");
 	return result;
 }

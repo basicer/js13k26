@@ -1,5 +1,17 @@
 # Voxel assembly branches
 
+`railing.vp` is a tileable 128×64×16 tubular steel guardrail with a middle rail
+and 16 yellow/black repeats per tile, only on its handrail. Kind 14 repeats it in three
+freestanding runs along the camera-side lane; the yellow bulkhead caps are unchanged.
+
+`gg-logo.vp` is a 128×128×32 G&G logo: a single warm-gold
+emissive material across both Gs and the ampersand. Kind 13 displays it in front
+of the starting camera, standing on the floor with a temporary light. Both have
+a 0.1-second TTL that begins when gameplay starts.
+Declare 128-voxel axes with `SIZE_128 SIZE_128 32 VEC SIZE`; `SIZE_128`
+encodes as signed byte -128, which `SIZE` interprets as dimension 128.
+Other literal operands retain their signed-byte behavior.
+
 Define a case-sensitive label with `name:` and branch with `JUMPIF name`.
 Label names start with a letter or underscore and contain letters, digits, or
 underscores. Labels may share a line with instructions; `//` starts a comment.
@@ -28,6 +40,22 @@ and limits execution to 100,000 source tokens to catch infinite loops before
 running the preview. Run the assembler and interpreter regression tests with
 `npm run test:vvm`.
 
+## Immediate vector instructions
+
+`VSTOREI:START 1 2 3` stores a signed-byte XYZ vector directly in the selected
+vector register. It occupies four bytes: opcode 10 plus the register in the low
+three bits, then X, Y, Z. It replaces the old stack-consuming `VSTORE3` opcode.
+
+`STROKEI 4 5 6` occupies four bytes too (opcode 14, swap flag 2, then X, Y, Z).
+It sets END, draws with the current brush/material/radius, then swaps START and
+END. `STROKEI:SWAP` is equivalent. Neither immediate instruction touches the stack.
+
+Existing `1 2 3 VEC VSTORE:START` and `4 5 6 VEC VSTORE:END STROKE:SWAP`
+source sequences fuse automatically. Labels stop fusion, and vectors assembled
+from parameters or earlier stack values retain ordinary `VEC` + `VSTORE`.
+The editor's step boundaries include all three immediate payload bytes.
+Plain and paint strokes remain separate: fusing those too made the release ZIP larger.
+
 ## Boxed flips
 
 `FLIP:X`, `FLIP:Y`, and `FLIP:Z` use opcode 9 with subopcodes 0, 1, and 2.
@@ -45,12 +73,12 @@ FLIP:X
 ```
 
 The unicorn mirrors its body first, then executes one shared leg routine twice.
-Between passes it flips the entire model, moving the first legs to the other
-side while the symmetric body stays unchanged. Parameter 0 selects which side
+Before each pass it flips the entire model: the first flip leaves the symmetric
+body unchanged, and the second moves the first legs to the opposite side. Parameter 0 selects which side
 gets the lifted pose: zero lifts the right side; nonzero lifts the left.
 Pose coordinate lists are pushed in reverse draw order and consumed by the
-shared strokes. Stack flags route the first pass through FLIP and the second
-pass to the exit.
+shared strokes. The remaining pose on the stack makes FORJUMP repeat the routine; an empty
+stack finishes after the second pass.
 
 ## Runtime parameters and model variants
 
@@ -70,14 +98,16 @@ values and validates both paths before replacing a model.
 
 ## Marine parts
 
-The marine uses an empty kind-1 root for movement, aiming, damage, and the
-follow camera. Its four rendered children share the original centered 64³
+The marine uses an empty kind-1 root for movement, damage, and the parented
+follow camera. The root does not rotate; the body owns aiming and the death
+pose. Its four rendered parts share the original centered 64³
 model frame and have zero local translation:
 
 ```text
 Marine (kind 1, empty)
-├─ Legs (kind 8, marine-legs.vp)
+├─ Camera (kind 254, fixed local offset)
 └─ Body (kind 9, marine-body.vp; includes pelvis, backpack, helmet)
+   ├─ Legs (kind 8, marine-legs.vp)
    └─ Arms (kind 10, marine-arms.vp; includes shoulders and hands)
       └─ Gun (kind 11, marine-gun.vp)
 ```
@@ -86,3 +116,45 @@ Parent transforms include scale. Parts use one untiled voxel volume and copy
 the root's damage material, dissolve amount, and hit flash during simulation.
 Each part can be picked and edited independently. The original `marine.vp`
 remains an unbound reference for shape regression tests.
+
+## Counted loops
+
+`LOOP label` peeks at the top scalar. If it is greater than zero, it decrements
+that value in place and jumps; zero and negative values fall through unchanged.
+The counter is never popped. It uses opcode 15 and the same signed 11-bit,
+two-byte relative offset as `JUMPIF`. Labels and editor stepping account for
+the offset payload. The editor rejects missing/non-scalar counters and runaway loops.
+
+A bottom-tested loop starting at 3 executes its body four times, leaving 0:
+
+```text
+3
+again:
+// Body must preserve the counter on top of the stack.
+STROKE
+LOOP again
+```
+
+Steel uses lower roughness and stronger tinted specular highlights.
+
+## Stack-driven loops
+
+`FORJUMP label` jumps if the stack is nonempty and falls through when empty.
+It does not pop or modify any value; zero, negative scalars, and vectors all
+count as occupied. It uses opcode 0 with the same signed 11-bit, two-byte
+relative encoding as `JUMPIF` and `LOOP`. A body must consume values to finish.
+
+The railing stores half its stripe coordinates on the stack, draws one per pass,
+then mirrors the bands to retain sixteen repeats per tile:
+
+```text
+60 52 44 36 28 20 12 4
+stripe:
+61 8 VEC VSTORE:START
+STROKE:PAINT
+FORJUMP stripe
+MIRROR:X
+```
+
+The rainbow portal consumes material/radius pairs through one FORJUMP loop,
+drawing its six colored bands and clearing the center in the original order.

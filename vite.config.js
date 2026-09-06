@@ -121,14 +121,12 @@ var roadroller = () => ({
 		const data = javascript.code;
 		const packer = new Packer([{ data, type: "js", action: "eval" }], {
 			maxMemoryMB: 128,
-			modelRecipBaseCount: 20,
-			modelMaxCount: 4,
+			modelRecipBaseCount: 32,
+			modelMaxCount: 3,
 			numAbbreviations: 0,
-			sparseSelectors: [
-				0, 1, 2, 3, 5, 6, 7, 8, 10, 13, 25, 38, 48, 90, 112, 113, 140, 171, 193, 229,
-			],
+			sparseSelectors: [0, 1, 2, 3, 5, 6, 7, 8, 10, 13, 25, 38, 48, 90, 112, 113, 140, 171, 193, 229],
 			precision: 16,
-			recipLearningRate: 1500,
+			recipLearningRate: 1910,
 			// The packed release owns its single page; game code has its own wrapper.
 			allowFreeVars: true,
 		});

@@ -1,5 +1,5 @@
 import { compileVoxelSource } from "./voxelValidation.js";
-import { OP_PUSHI, OP_JUMPIF } from "../vvm-const.js";
+import { OP_PUSHI, OP_JUMPIF, OP_FORJUMP, OP_LOOP, OP_VSTOREI, OP_STROKEI } from "../vvm-const.js";
 import { resolveVoxelConstants } from "../vvm-symbols.js";
 
 export const voxelPrograms = new Map();
@@ -11,8 +11,14 @@ export function voxelParameterIndices(source) {
 		const indices = new Set();
 		let jumpTarget = false;
 		for (const token of resolveVoxelConstants(source).match(/\S+/g) || []) {
-			if (jumpTarget) { jumpTarget = false; continue; }
-			if (/^jumpif$/i.test(token)) { jumpTarget = true; continue; }
+			if (jumpTarget) {
+				jumpTarget = false;
+				continue;
+			}
+			if (/^(jumpif|loop|forjump)$/i.test(token)) {
+				jumpTarget = true;
+				continue;
+			}
 			const match = /^loadp(?::([0-7]))?$/i.exec(token);
 			if (match) indices.add(Number(match[1] || 0));
 		}
@@ -28,9 +34,9 @@ export function voxelInstructionEnds(bytecode) {
 	for (let pc = 0; pc < bytecode.length;) {
 		const cmd = bytecode[pc++];
 		if (cmd >> 3 === OP_PUSHI) pc += cmd & 7;
-		if (cmd >> 3 === OP_JUMPIF) pc++;
-		if (pc > bytecode.length)
-			throw Error("Incomplete instruction payload.");
+		if (cmd >> 3 === OP_JUMPIF || cmd >> 3 === OP_LOOP || cmd >> 3 === OP_FORJUMP) pc++;
+		if (cmd >> 3 === OP_VSTOREI || cmd >> 3 === OP_STROKEI) pc += 3;
+		if (pc > bytecode.length) throw Error("Incomplete instruction payload.");
 		ends.push(pc);
 	}
 	return ends;
@@ -84,21 +90,12 @@ export function previewVoxelProgram(program) {
 		const bytecode = compileVoxelSource(source, [0, ...parameters.slice(1)]);
 		// Both variants must be safe before replacing either preview texture.
 		compileVoxelSource(source, [1, ...parameters.slice(1)]);
-		const ends =
-			source === program.applied
-				? program.instructionEnds
-				: voxelInstructionEnds(bytecode);
+		const ends = source === program.applied ? program.instructionEnds : voxelInstructionEnds(bytecode);
 		const count = ends.length - 1;
 		const limit =
 			program.instructionLimit[0] === program.instructionEnds.length - 1
 				? count
-				: Math.max(
-						0,
-						Math.min(
-							count,
-							Math.trunc(program.instructionLimit[0]),
-						),
-					);
+				: Math.max(0, Math.min(count, Math.trunc(program.instructionLimit[0])));
 		const start = performance.now();
 		program.run(bytecode.subarray(0, ends[limit]), parameters);
 		program.applied = source;
@@ -138,9 +135,7 @@ export function saveVoxelProgram(program) {
 	storeVoxelDraft(program);
 	let url, link;
 	try {
-		url = URL.createObjectURL(
-			new Blob([program.text[0]], { type: "text/plain;charset=utf-8" }),
-		);
+		url = URL.createObjectURL(new Blob([program.text[0]], { type: "text/plain;charset=utf-8" }));
 		link = document.createElement("a");
 		link.href = url;
 		link.download = program.file.split("/").pop();

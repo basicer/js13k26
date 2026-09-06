@@ -25,11 +25,11 @@ for (let i = 1; i < 256; i++) {
 	else if (i < 145) ((x = 0x03162d), (y = 0xa5f6ff), (t = (i - 125) / 19), (a = 205), (q = 30));
 	else if (i < 157) ((x = 0x18304d), (y = 0xe8fcff), (t = (i - 145) / 11), (a = 45), (q = 20));
 	else if (i < 177) ((x = 0x1d2020), (y = 0x68705c), (t = (i - 157) / 19), (q = 230));
-	else if (i < 189) ((x = 0x20262d), (y = 0xb9cad3), (t = (i - 177) / 11), (m = 210), (q = 80));
+	else if (i < 189) ((x = 0x20262d), (y = 0xb9cad3), (t = (i - 177) / 11), (m = 210), (q = 30));
 	else if (i < 201) ((x = 0x003d4c), (y = 0x46ffff), (t = (i - 189) / 11), (q = 20), (e = 240));
 	else if (i < 217) ((x = 0), (y = 0xffffff), (t = (i - 201) / 15));
 	else if (i < 241) ((x = -2), (t = i * 2.4), (q = 60), (e = 160));
-	else ((x = y = utility[i - 241]), (t = 0), (a = i == 241 ? 32 : 255), (q = 50), (e = i > 248 ? 220 : 0));
+	else ((x = y = utility[i - 241]), (t = 0), (a = i == 241 ? 32 : 255), (q = 50), (e = i > 249 ? 220 : 0));
 
 	let o = i * 4;
 	for (let c = 0; c < 3; c++)
@@ -40,6 +40,10 @@ for (let i = 1; i < 256; i++) {
 	palette[o + 3] = a;
 	palette.set([m, q, e, 255], 1024 + o);
 }
+
+// Warm emissive sign gold, using the unused final gray slot.
+palette.set([255, 200, 70, 255], 864);
+palette[1890] = 240;
 
 // Cheap sRGB-ish conversion; gamma 2 is close enough for this palette.
 for (let i = 0; i < 1024; i++) if ((i & 3) < 3) palette[i] = palette[i] ** 2 / 255;

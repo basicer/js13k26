@@ -160,10 +160,10 @@ fn fs_main(in: VertexOutput) -> FragmentOutput {
     let material = select(select(hit.material, e.matOverride, e.matOverride > 0.0f), clamp(e.dissolvePalette, 0.0f, 255.0f), dissolved);
     var color = textureLoad(palette, vec2<u32>(u32(material), 0));
     if (material == 255.0f) {
-        // Scroll smooth model-space bands using simulation time (paused with the game).
-        let p = voxel_position * 0.08f + vec3<f32>(render_state.time * 0.1f, 0.0f, 0.0f);
-        let hue = fract(p.x + p.y * 0.7f + p.z * 0.5f +
-            0.3f * sin(p.x + p.z * 2.0f) + dissolve_noise(vec3<u32>(0u), in.idx));
+        // Warp model-space bands into flowing marble; simulation time pauses with the game.
+        var p = voxel_position * 0.08f + vec3<f32>(render_state.time * 0.1f, 0.0f, 0.0f);
+        p += 1.2f * sin(p.yzx + sin(p.zxy));
+        let hue = fract(p.x + p.y * 0.7f + p.z * 0.5f + dissolve_noise(vec3<u32>(0u), in.idx));
         let rainbow = clamp(abs(fract(vec3<f32>(hue) + vec3<f32>(0.0f, 0.6666667f, 0.3333333f)) * 6.0f - 3.0f) - 1.0f, vec3<f32>(0.0f), vec3<f32>(1.0f));
         color = vec4<f32>(rainbow * rainbow, color.a);
     }
@@ -172,7 +172,7 @@ fn fs_main(in: VertexOutput) -> FragmentOutput {
     let depth = clip_depth(view_depth) / view_depth;
     let world_normal = normalize(transpose(inverse_entity_transform) * hit.normal);
     return FragmentOutput(
-        vec4<f32>(shade_pbr(color.rgb, world_normal, -world_ray, surface.g, surface.r, hit.distance * world_ray + camera_position, ao), select(1.0f, color.a * (1.0f - clamp(e.transparency, 0.0f, 1.0f)), e.kind >= 128.0f)),
+        vec4<f32>(shade_surface(color.rgb, world_normal, -world_ray, surface.g, surface.r, hit.distance * world_ray + camera_position, ao) + color.rgb * surface.b * 4.0f, select(1.0f, color.a * (1.0f - clamp(e.transparency, 0.0f, 1.0f)), e.kind >= 128.0f)),
         vec2<u32>(in.idx, u32(material)),
         depth,
     );

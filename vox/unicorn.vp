@@ -19,9 +19,7 @@ MAT_WHITE FSTORE:MATERIAL
 STROKE
 
 // Arched neck narrows into the poll; the muzzle slopes forward.
-CAPSULE FSTORE:BRUSH
 6 FSTORE:RADIUS
-MAT_WHITE FSTORE:MATERIAL
 31 34 40 VEC VSTORE:START
 31 43 43 VEC VSTORE:END
 STROKE
@@ -87,7 +85,6 @@ STROKE
 
 // Tail: a continuous cascade with layered colored strands.
 4 FSTORE:RADIUS
-MAT_PINK FSTORE:MATERIAL
 31 34 15 VEC VSTORE:START
 29 32 9 VEC VSTORE:END
 STROKE:SWAP
@@ -111,7 +108,6 @@ STROKE:SWAP
 STROKE
 
 // Golden horn: broad base, slender shaft, bright pointed tip.
-2 FSTORE:RADIUS
 MAT_GOLD FSTORE:MATERIAL
 31 53 51 VEC VSTORE:START
 31 56 53 VEC VSTORE:END
@@ -150,14 +146,18 @@ STROKE:PAINT
 
 MIRROR:X
 
-// Stack schedule: exit second pass, second pose, exit first pass, first pose.
+// Stack schedule: second pose, first pose. FORJUMP repeats while a pose remains.
 // Parameter 0 swaps standing/stride between the left and right sides.
 LOADP:0 JUMPIF phase_one
-1 0 0 1
+0 1
 1 JUMPIF leg_pose
 phase_one:
-1 1 0 0
+1 0
 leg_pose:
+// The mirrored body is unchanged on the first pass; later passes move the legs.
+VLOAD:CLIP_MIN VSTORE:START
+VLOAD:CLIP_MAX VSTORE:END
+FLIP:X
 JUMPIF stride
 // Coordinates are stacked in reverse draw order for the shared routine.
 27 10 43
@@ -229,10 +229,4 @@ VEC VSTORE:END
 STROKE
 
 
-JUMPIF done
-// Move the first legs to the other side; the mirrored body stays unchanged.
-VLOAD:CLIP_MIN VSTORE:START
-VLOAD:CLIP_MAX VSTORE:END
-FLIP:X
-1 JUMPIF leg_pose
-done:
+FORJUMP leg_pose

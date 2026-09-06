@@ -3,6 +3,7 @@ import shaderCode from "../shaders/shader.wgsl";
 import { palette } from "./palette.js";
 import {
 	entities,
+	entityVersion,
 	mergeEntityFrame,
 	entityOverrides,
 	ENTITY_DATA_SIZE,
@@ -17,11 +18,17 @@ import { aimMarineAtCursor, fireMarineGun, setMarineTrigger, updateGame } from "
 let lastFrameTime = performance.now();
 let simulationTime = lastFrameTime / 1000;
 let pendingSimulationTime = 0;
+let started = false;
+
+export const startGame = () => {
+	if (!started) lastFrameTime = performance.now();
+	started = true;
+};
 
 let debugModule;
 export const wantsKeyboard = () => debugModule?.wantsKeyboard();
 export const isFlying = () => debugModule?.isFlying() ?? false;
-export const isPaused = () => debugModule?.isPaused() ?? false;
+export const isPaused = () => !started || (debugModule?.isPaused() ?? false);
 
 if (DEBUG && import.meta.env.DEBUG) {
 	import("./debug/debug.js").then((module) => {
@@ -65,8 +72,10 @@ for (const eventName of ["pointerup", "pointercancel", "lostpointercapture"]) {
 c.addEventListener("pointermove", (event) => {
 	if (isPaused() || isFlying()) return;
 	const bounds = c.getBoundingClientRect();
+	renderState.set([event.clientX - bounds.left, event.clientY - bounds.top, bounds.width, bounds.height], 4);
 	aimMarineAtCursor(event.clientX - bounds.left, event.clientY - bounds.top, bounds.width, bounds.height);
 });
+c.addEventListener("pointerleave", () => (renderState[4] = -1000));
 
 // Bit-packed -1/+1 cube vertices.
 const vertices = new Float32Array(GenArray(24, (i) => (((i / 3) >> (i % 3)) & 1) * 2 - 1));
@@ -75,7 +84,7 @@ const entityInputBuffer = d.createBuffer({
 	"size": entities.byteLength,
 	"usage": GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST,
 });
-const pointLightCounterBuffer = d.createBuffer({
+const spotlightCounterBuffer = d.createBuffer({
 	"size": 4,
 	"usage": GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST,
 });
@@ -93,13 +102,14 @@ const entityReadbacks = GenArray(3, () => ({
 	"busy": false,
 }));
 
-const pointLightBuffer = d.createBuffer({
-	"label": label`Point lights`,
+const spotlightBuffer = d.createBuffer({
+	"label": label`Spotlights`,
 	"size": 32 * 32,
 	"usage": GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST,
 });
 
-const renderState = new Float32Array(4);
+const renderState = new Float32Array(8);
+renderState[4] = -1000;
 const renderStateBuffer = d.createBuffer({
 	"label": label`Render state`,
 	"size": renderState.byteLength,
@@ -258,11 +268,11 @@ const simulationBindGroup = BG(
 	renderStateBuffer,
 	entityInputBuffer,
 	entityBuffer,
-	pointLightBuffer,
-	pointLightCounterBuffer,
+	spotlightBuffer,
+	spotlightCounterBuffer,
 );
 
-const renderBindGroup = BG(pipeline, 0, renderStateBuffer, entityBuffer, paletteTexture.createView(), pointLightBuffer);
+const renderBindGroup = BG(pipeline, 0, renderStateBuffer, entityBuffer, paletteTexture.createView(), spotlightBuffer);
 export async function render(t) {
 	if (DEBUG && debugModule) debugModule.stats.begin();
 	const now = performance.now();
@@ -277,16 +287,17 @@ export async function render(t) {
 	}
 
 	const time = simulationTime;
+	renderState.set([time, c.width / c.height, cameraFov, pendingSimulationTime]);
+	Q.writeBuffer(renderStateBuffer, 0, renderState);
 
 	const readback = entityReadbacks.find((readback) => !readback.busy);
 	if (readback) {
-		renderState.set([time, c.width / c.height, cameraFov, pendingSimulationTime]);
-		Q.writeBuffer(renderStateBuffer, 0, renderState);
+		const version = entityVersion;
 		const submitted = entities.slice();
 		Q.writeBuffer(entityInputBuffer, 0, submitted);
 		const simulation = d.createCommandEncoder();
-		simulation.clearBuffer(pointLightCounterBuffer);
-		simulation.clearBuffer(pointLightBuffer);
+		simulation.clearBuffer(spotlightCounterBuffer);
+		simulation.clearBuffer(spotlightBuffer);
 		const simulationPass = simulation.beginComputePass();
 		simulationPass.setPipeline(simulationPipeline);
 		simulationPass.setBindGroup(0, simulationBindGroup);
@@ -298,7 +309,7 @@ export async function render(t) {
 		readback.busy = true;
 		pendingSimulationTime = 0;
 		readback.buffer.mapAsync(GPUMapMode.READ).then(() => {
-			mergeEntityFrame(submitted, new Float32Array(readback.buffer.getMappedRange()));
+			mergeEntityFrame(submitted, new Float32Array(readback.buffer.getMappedRange()), version);
 			readback.buffer.unmap();
 			readback.busy = false;
 		});
@@ -353,7 +364,7 @@ export async function render(t) {
 		"timestampWrites": DEBUG && debugModule ? debugModule.stats.getTimestampWrites("bloom") : undefined,
 	});
 	bloomPass.setPipeline(bloomPipeline);
-	bloomPass.setBindGroup(0, BG(bloomPipeline, 0, sceneView, bloomSampler));
+	bloomPass.setBindGroup(0, BG(bloomPipeline, 0, sceneView, bloomSampler, renderStateBuffer));
 
 	bloomPass.draw(3);
 	bloomPass.end();

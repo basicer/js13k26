@@ -1,5 +1,5 @@
 import { G, Q, d, c, $, heldKeys, canvasFormat, canvasSrgbFormat } from "./globals.js";
-import { render, wantsKeyboard, isFlying, isPaused } from "./render.js";
+import { render, wantsKeyboard, isFlying, isPaused, startGame } from "./render.js";
 import { reloadMarineGun, selectMarineWeapon, toggleMarineFlashlight } from "./game.js";
 
 import * as sound from "./sfx.js";
@@ -21,8 +21,6 @@ G.configure({
 
 if (DEBUG) console.log("HI");
 
-const gameKey = (key) => key.startsWith("arrow") || "wasdqerfgh".includes(key) || key === "shift";
-
 $.addEventListener("keydown", (event) => {
 	const key = event.key.toLowerCase();
 	if (DEBUG && import.meta.env.DEBUG && wantsKeyboard()) {
@@ -34,7 +32,7 @@ $.addEventListener("keydown", (event) => {
 		event.preventDefault();
 		return;
 	}
-	if (event.repeat || !gameKey(key)) return;
+	if (event.repeat) return;
 
 	if (!isPaused() && !isFlying()) {
 		if (key === "r") reloadMarineGun();
@@ -51,7 +49,6 @@ $.addEventListener("keyup", (event) => {
 		heldKeys.delete(key);
 		return;
 	}
-	if (!gameKey(key)) return;
 	event.preventDefault();
 	heldKeys.delete(key);
 });
@@ -66,5 +63,8 @@ step(performance.now());
 // Queue the track once; browsers that block autoplay resume on first input.
 if (!DEBUG) sound.music1()["loop"] = true;
 for (const event of ["pointerdown", "keydown"]) {
-	$.addEventListener(event, () => zzfxX.resume(), { once: true });
+	$.addEventListener(event, () => {
+		startGame();
+		zzfxX.resume();
+	}, { once: true, capture: true });
 }

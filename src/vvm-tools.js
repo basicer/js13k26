@@ -1,8 +1,30 @@
-import { COMMAND_NAMES, OP_PUSHI, OP_VEC, OP_VSTORE, OP_VSTORE3, OP_JUMPIF } from "./vvm-const.js";
+import { COMMAND_NAMES, OP_PUSHI, OP_VSTOREI, OP_STROKEI } from "./vvm-const.js";
 import { resolveVoxelConstants } from "./vvm-symbols.js";
 
-export function assemble(code) {
+// Explicit immediate syntax is opcode-first; normal source is fused automatically.
+export function expandVoxelImmediates(code) {
 	code = resolveVoxelConstants(code);
+	return code.replace(
+		/(?<!\S)(vstorei|strokei)(?::([0-7]))?\s+(-?\d+)\s+(-?\d+)\s+(-?\d+)(?=\s|$)/gi,
+		(match, op, arg, x, y, z, offset) => {
+			if (/\b(?:jumpif|loop|forjump)\s*$/i.test(code.slice(0, offset))) return match;
+			if (op.toLowerCase() === "strokei" && arg !== undefined && arg !== "2")
+				throw Error("STROKEI always swaps endpoints; use STROKEI or STROKEI:SWAP.");
+			const expanded =
+				x +
+				" " +
+				y +
+				" " +
+				z +
+				" VEC " +
+				(op.toLowerCase() === "vstorei" ? "VSTORE:" + (arg || 0) : "VSTORE:1 STROKE:2");
+			return expanded + "\n".repeat((match.match(/\n/g) || []).length);
+		},
+	);
+}
+
+export function assemble(code) {
+	code = expandVoxelImmediates(code);
 	let cmds = code.trim().split(/\s+/);
 	let bytecode = [];
 	const labels = new Map();
@@ -16,39 +38,45 @@ export function assemble(code) {
 			labels.set(name, bytecode.length);
 			continue;
 		}
-		if (cmd.toLowerCase() === "jumpif") {
+		if (/^(jumpif|loop|forjump)$/i.test(cmd)) {
 			jumps.push({ at: bytecode.length, label: cmds[++i] });
-			bytecode.push(OP_JUMPIF << 3, 0);
+			bytecode.push(COMMAND_NAMES[cmd.toLowerCase()] << 3, 0);
 			continue;
 		}
 		let parts = cmd.split(":");
 
 		if (/^-?\d+$/.test(cmd)) {
 			let values = [];
-			while (i < cmds.length && /^-?\d+$/.test(cmds[i]) && values.length < 7) {
+			while (i < cmds.length && /^-?\d+$/.test(cmds[i])) {
 				const value = Number(cmds[i++]);
 				if (value < -128 || value > 127) throw Error(`Signed byte out of range: ${value}`);
 				values.push(value);
 			}
-			bytecode.push((OP_PUSHI << 3) | values.length, ...values);
+			// Only consume consecutive literal tokens; labels remain fusion barriers.
+			const store = /^vstore(?::([0-7]))?$/i.exec(cmds[i + 1] || "");
+			const fused = values.length >= 3 && /^vec(?::0)?$/i.test(cmds[i] || "") && store;
+			const vector = fused ? values.splice(-3) : null;
+			while (values.length) {
+				const batch = values.splice(0, 7);
+				bytecode.push((OP_PUSHI << 3) | batch.length, ...batch);
+			}
+			if (fused) {
+				const stroke = /^stroke(?::([0-3]))?$/i.exec(cmds[i + 2] || "");
+				// Swap paths win after ZIP compression; fusing plain/paint strokes currently grows it.
+				const draw = Number(store[1] || 0) === 1 && stroke && Number(stroke[1]) === 2;
+				bytecode.push(
+					((draw ? OP_STROKEI : OP_VSTOREI) << 3) | Number(draw ? stroke[1] || 0 : store[1] || 0),
+					...vector,
+				);
+				i += draw ? 3 : 2;
+			}
 			i--;
 			continue;
 		} else {
 			let op = COMMAND_NAMES[parts[0].toLowerCase()],
 				arg = Number(parts[1] || 0);
-			// Fuse at the token level so literal payload bytes can never match opcodes.
-			const next = cmds[i + 1]?.split(":");
-			if (
-				op === OP_VEC &&
-				arg === 0 &&
-				next &&
-				!cmds[i + 1].endsWith(":") &&
-				COMMAND_NAMES[next[0].toLowerCase()] === OP_VSTORE
-			) {
-				op = OP_VSTORE3;
-				arg = Number(next[1] || 0);
-				i++;
-			}
+			if (op === undefined || op === OP_VSTOREI || op === OP_STROKEI)
+				throw Error("Unknown instruction or missing immediate vector: " + cmd);
 			bytecode.push((op << 3) | arg);
 		}
 	}

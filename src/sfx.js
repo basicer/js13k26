@@ -1,6 +1,7 @@
-import { zzfx, zzfxP, zzfxM, zzfxR, zzfxV } from "../vendor/zzfx.js";
+import { zzfx, zzfxP, zzfxM } from "../vendor/zzfx.js";
 import reloadTrack from "../music/reload.zzfxm";
 import hurtTrack from "../music/hurt.zzfxm";
+import shotgunPumpTrack from "../music/shotgun-pump.zzfxm";
 
 let hurtSamples;
 export let hurt = () => {
@@ -25,24 +26,8 @@ export let reload = (seconds = 1.15) => {
 
 let shotgunPumpSamples;
 export let shotgunPump = () => {
-	if (!shotgunPumpSamples) {
-		shotgunPumpSamples = new Float32Array((0.22 * zzfxR) | 0);
-		// Sharp rearward "chick", then a heavier forward locking "chunk".
-		for (const [offset, duration, frequency, gain] of [
-			[0, 0.065, 420, 1.2],
-			[0.11, 0.1, 145, 2],
-		]) {
-			let low = 0;
-			for (let i = 0; i < duration * zzfxR; i++) {
-				const t = i / zzfxR;
-				low += 0.25 * (Math.random() * 2 - 1 - low);
-				const body = Math.sin(2 * Math.PI * frequency * t) * Math.exp(-t * 65);
-				const envelope = Math.min(t / 0.001, 1) * (1 - t / duration) ** 2;
-				shotgunPumpSamples[((offset * zzfxR) | 0) + i] = (low + body * 0.7) * envelope * gain * zzfxV;
-			}
-		}
-	}
-	return zzfxP(shotgunPumpSamples);
+	if (!shotgunPumpSamples) shotgunPumpSamples = zzfxM(...shotgunPumpTrack);
+	return zzfxP(...shotgunPumpSamples);
 };
 
 export let magic = zzfx([, , 539, 0, 0.04, 0.29, 1, 1.92, , , 567, 0.02, 0.02, , , , 0.04]),
@@ -58,7 +43,8 @@ export let magic = zzfx([, , 539, 0, 0.04, 0.29, 1, 1.92, , , 567, 0.02, 0.02, ,
 	spaceholder7 = zzfx([0.4, , 161, 0.36, , 0.21, 3, 2.7, , 23, , , , , , , , 0.8, 0.01, , 998]);
 
 import music1_js from "../music/Main Title.zzfxm";
-export let music1 = () => zzfxP(...zzfxM(...music1_js));
+// This song was authored with the tracker's older, phase-based modulation.
+export let music1 = () => zzfxP(...zzfxM(...music1_js.slice(0, 4), true));
 
 /*
 import ambident1_js from "./music/Ambient1.zzfxm";

@@ -1,0 +1,6 @@
+// Shared particle sphere: P0 = radius, P1 = center on all three axes.
+SPHERE FSTORE:BRUSH
+20 FSTORE:MATERIAL
+LOADP FSTORE:RADIUS
+LOADP:1 LOADP:1 LOADP:1 VEC VSTORE:START
+STROKE

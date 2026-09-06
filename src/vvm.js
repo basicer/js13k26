@@ -1,5 +1,4 @@
 import { GenArray, label, d, Q, c } from "./globals.js";
-import { vec3, vec3_add } from "./math.js";
 import {
 	COMMAND_NAMES,
 	OP_MIRROR,
@@ -9,11 +8,14 @@ import {
 	OP_VEC,
 	OP_VLOAD,
 	OP_VSTORE,
-	OP_VSTORE3,
+	OP_VSTOREI,
+	OP_STROKEI,
 	OP_FLOAD,
 	OP_FSTORE,
 	OP_LOADP,
 	OP_JUMPIF,
+	OP_LOOP,
+	OP_FORJUMP,
 	OP_SIZE,
 } from "./vvm-const.js";
 const VOXEL_SIZE = 64;
@@ -37,23 +39,8 @@ if (DEBUG) buffers.set(empty, new Float32Array(VOXEL_SIZE ** 3 * 4));
 export var cube = DEBUG ? tex(label`cube`) : empty;
 if (DEBUG) buffers.set(cube, new Float32Array(VOXEL_SIZE ** 3 * 4).fill(1));
 
-const sphereCenter = (VOXEL_SIZE - 1) / 2;
-const sphereRadius = VOXEL_SIZE * 0.38;
-
-export var sphere = tex("sphere");
-const sphereVoxels = new Float32Array(VOXEL_SIZE ** 3 * 4);
-// Walk the flat texture once; recover the three voxel coordinates.
-for (let i = 0; i < VOXEL_SIZE ** 3; i++) {
-	const dx = (i % VOXEL_SIZE) - sphereCenter;
-	const dy = (((i / VOXEL_SIZE) | 0) % VOXEL_SIZE) - sphereCenter;
-	const dz = ((i / VOXEL_SIZE ** 2) | 0) - sphereCenter;
-	if (dx * dx + dy * dy + dz * dz <= sphereRadius * sphereRadius) sphereVoxels[i * 4] = 20;
-}
-buffers.set(sphere, sphereVoxels);
-
 export var voxT = GenArray(256, () => [empty, empty]);
 
-voxT[6] = [sphere, sphere];
 // Only the editor needs fallback cubes; release models finish loading before rendering.
 if (DEBUG) voxT[2] = voxT[7] = [cube, cube];
 
@@ -99,23 +86,30 @@ if (DEBUG && import.meta.env.DEBUG) {
 
 export function runByteCode(bytecode, parameter = () => 0) {
 	let pc = 0;
-	let size = vec3(VOXEL_SIZE, VOXEL_SIZE, VOXEL_SIZE);
+	let size = [VOXEL_SIZE, VOXEL_SIZE, VOXEL_SIZE];
 	let buffer = new Float32Array(VOXEL_SIZE ** 3 * 4);
 
-	let reg_vec = GenArray(8, () => vec3());
-	reg_vec[7] = vec3_add(size, vec3(-1, -1, -1));
+	let reg_vec = GenArray(8, () => [0, 0, 0]);
+	reg_vec[7] = size.map((n) => n - 1);
 	let reg_float = [1, 2, 5, 0, 0, 0, 0, 0];
 	let stack = [];
+	const immediate = () => GenArray(3, () => (bytecode[pc++] << 24) >> 24);
 
 	while (pc < bytecode.length) {
 		let cmd = bytecode[pc++];
 		switch (cmd >> 3) {
+			case OP_FORJUMP:
+				stack.push(stack.length);
+			case OP_LOOP:
 			case OP_JUMPIF: {
 				// Signed 11-bit byte offset, relative to the end of this instruction.
 				const offset = ((((cmd & 7) << 8) | bytecode[pc++]) << 21) >> 21;
-				if (stack.pop() !== 0) pc += offset;
+				if (cmd >> 3 === OP_LOOP ? stack[stack.length - 1] > 0 && stack[stack.length - 1]-- : stack.pop())
+					pc += offset;
 				break;
 			}
+			case OP_STROKEI:
+				reg_vec[1] = immediate();
 			case OP_STROKE: {
 				// Flags: 1 paints occupied cells only; 2 swaps endpoints after drawing.
 				let a = reg_vec[0],
@@ -166,26 +160,22 @@ export function runByteCode(bytecode, parameter = () => 0) {
 				break;
 			}
 			case OP_SIZE: {
-				size = stack.pop();
+				size = stack.pop().map((n) => (n === -128 ? 128 : n));
 				buffer = new Float32Array(size[0] * size[1] * size[2] * 4);
-				reg_vec[7] = vec3_add(size, vec3(-1, -1, -1));
+				reg_vec[7] = size.map((n) => n - 1);
 				break;
 			}
 			case OP_VEC:
-			case OP_VSTORE3: {
-				let z = stack.pop(),
-					y = stack.pop(),
-					x = stack.pop();
-				let v = vec3(x, y, z);
-				if (cmd >> 3 === OP_VEC) stack.push(v);
-				else reg_vec[cmd & 7] = v;
+				stack.push(new Float32Array(stack.splice(-3)));
 				break;
-			}
 			case OP_VLOAD: {
 				let val = reg_vec[cmd & 7];
 				stack.push(val);
 				break;
 			}
+			case OP_VSTOREI:
+				reg_vec[cmd & 7] = immediate();
+				break;
 			case OP_VSTORE: {
 				let val = stack.pop();
 				reg_vec[cmd & 7] = val;
@@ -242,11 +232,18 @@ export function runByteCode(bytecode, parameter = () => 0) {
 
 buffers.forEach((_, texture) => flush(texture));
 
+import sphereProgram from "../vox/sphere.vp";
+// VP literals are integers; parameters preserve the original fractional shape.
+export var sphere = runByteCode(Uint8Array.fromBase64(sphereProgram), (index) => (index ? 31.5 : 24.32));
+voxT[6] = [sphere, sphere];
+
 import marineLegs, { debugSource as legsSource } from "../vox/marine-legs.vp";
 import marineBody, { debugSource as bodySource } from "../vox/marine-body.vp";
 import marineArms, { debugSource as armsSource } from "../vox/marine-arms.vp";
 import marineGun, { debugSource as gunSource } from "../vox/marine-gun.vp";
 import unicornPortal, { debugSource as portalSource } from "../vox/unicorn-portal.vp";
+import ggLogo, { debugSource as logoSource } from "../vox/gg-logo.vp";
+import railing, { debugSource as railingSource } from "../vox/railing.vp";
 import program2, { debugSource as source2 } from "../vox/unicorn.vp";
 import program3, { debugSource as source3 } from "../vox/floortile.vp";
 import program4, { debugSource as source4 } from "../vox/walltile.vp";
@@ -269,32 +266,25 @@ export function buildModel(slot, bytecode, parameter = () => 0) {
 	if (!DEBUG) return (voxT[slot] = buildVoxelVariants(bytecode, runByteCode, parameter));
 	const previous = voxT[slot];
 	const created = [];
-	let variants;
-	try {
-		variants = buildVoxelVariants(
-			bytecode,
-			(code, load) => {
-				const texture = runByteCode(code, load);
-				created.push(texture);
-				return texture;
-			},
-			parameter,
-		);
-	} catch (error) {
-		for (const texture of created) {
-			buffers.delete(texture);
-			texture.destroy();
-		}
-		throw error;
-	}
-	voxT[slot] = variants;
-	for (const texture of new Set(previous)) {
-		if (texture !== empty && texture !== cube && texture !== sphere) {
-			buffers.delete(texture);
-			Q.onSubmittedWorkDone().then(() => texture.destroy());
+	voxT[slot] = buildVoxelVariants(
+		bytecode,
+		(code, load) => {
+			const texture = runByteCode(code, load);
+			created.push(texture);
+			return texture;
+		},
+		parameter,
+	);
+
+	if (DEBUG && import.meta.env.DEBUG) {
+		for (const texture of new Set(previous)) {
+			if (texture !== empty && texture !== cube && texture !== sphere) {
+				buffers.delete(texture);
+				Q.onSubmittedWorkDone().then(() => texture.destroy());
+			}
 		}
 	}
-	return variants;
+	return voxT[slot];
 }
 
 // Load authored models.
@@ -305,13 +295,14 @@ export function buildModel(slot, bytecode, parameter = () => 0) {
 		[10, marineArms, armsSource],
 		[11, marineGun, gunSource],
 		[12, unicornPortal, portalSource],
+		[13, ggLogo, logoSource],
+		[14, railing, railingSource],
 		[2, program2, source2],
 		[5, program3, source3],
 		[7, program4, source4],
 	];
 	// Kind 1 stays empty: it is the marine's gameplay and transform root.
 	for (const [slot, program] of models) {
-		if (DEBUG) await wait(1);
 		buildModel(slot, Uint8Array.fromBase64(program));
 	}
 	if (DEBUG && import.meta.env.DEBUG) {

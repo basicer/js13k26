@@ -13,7 +13,7 @@ export function entityInspector(overrides, open) {
 		ImGui.End();
 		return;
 	}
-	let entities = EArray.filter( x => x[0] !== 255); // Filter out empty entities
+	let entities = EArray.filter( x => x[0] !== 0); // Filter out empty entities
 
 	const entityCount = entities.length;
 	if (ImGui.BeginChild("Entity list", new ImVec2(190, 0), 1)) {
@@ -23,7 +23,7 @@ export function entityInspector(overrides, open) {
 			for (let i = clipper.DisplayStart; i < clipper.DisplayEnd; i++) {
 				const kind = Math.round(entities[i][0]);
 				const id = entities[i].id;
-				if (kind === 255) continue; // Skip empty entities
+				if (kind === 0) continue; // Skip empty entities
 				const label = id === 0 ? `0  Camera##entity-${id}` : `${id}  ${marinePartNames[kind] || `Kind ${kind}`}##entity-${id}`;
 				if (ImGui.Selectable(label, selectedEntity === id)) selectedEntity = id;
 			}
@@ -38,7 +38,7 @@ export function entityInspector(overrides, open) {
 
 	const entity = EArray[selectedEntity];
 	const kind = [Math.round(entity[0])];
-	const pointLight = [entity[1]];
+	const spotlight = [entity[1]];
 	const lightAngle = [entity[24]];
 	const parent = [Math.round(entity[2])];
 	const dissolve = [entity[3]];
@@ -53,6 +53,11 @@ export function entityInspector(overrides, open) {
 	const velocity = Array.from(entity.subarray(20, 23));
 	const ttl = [entity[23]];
 	let changed = false;
+	const solid = [!!entity[28]];
+	if (ImGui.Checkbox("Solid box", solid)) {
+		entity[28] = Number(solid[0]);
+		changed = true;
+	}
 	if (ImGui.InputInt("Kind", kind, 1, 10)) {
 		entity[0] = Math.max(0, Math.min(255, kind[0]));
 		changed = true;
@@ -66,8 +71,8 @@ export function entityInspector(overrides, open) {
 		entity[15] = Number(modelVariant[0]);
 		changed = true;
 	}
-	if (ImGui.DragFloat("Light intensity", pointLight, 0.1, 0, 100)) {
-		entity[1] = pointLight[0];
+	if (ImGui.DragFloat("Spotlight intensity", spotlight, 0.1, 0, 100)) {
+		entity[1] = spotlight[0];
 		changed = true;
 	}
 	if (ImGui.SliderFloat("Light cone (rad, 2PI = point)", lightAngle, 0, Math.PI * 2)) {
@@ -101,8 +106,9 @@ export function entityInspector(overrides, open) {
 		entity.set(velocity, 20);
 		changed = true;
 	}
-	if (ImGui.DragFloat("TTL (seconds)", ttl, 0.05)) {
+	if (ImGui.DragFloat("TTL (seconds, 0 = forever)", ttl, 0.05)) {
 		entity[23] = ttl[0];
+		entity[27] = 0;
 		changed = true;
 	}
 	if (ImGui.DragFloat3("Rotation (rad)", rotation, 0.01)) {
@@ -122,7 +128,7 @@ export function entityInspector(overrides, open) {
 		changed = true;
 	}
 	if (ImGui.Button("Clone")) {
-		let empty = EArray.findIndex(e => e[0] === 255);
+		let empty = EArray.findIndex(e => e[0] === 0);
 		console.log("Cloning entity", selectedEntity, "to empty slot", empty);
 		EArray[empty].set(entity);
 		changed = true;

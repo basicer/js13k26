@@ -1,6 +1,7 @@
 import { ImGui, ImGuiImplWeb, ImVec2, ImVec4 } from "@mori2003/jsimgui";
 import { d, c, heldKeys } from "../globals.js";
 import { cameraPosition, cameraRotation } from "../entities.js";
+import { detachCamera, attachCamera } from "./camera.js";
 import { setMarineTrigger } from "../game.js";
 import { palette } from "../palette.js";
 import { entityInspector, selectEntity as setSelectedEntity } from "./entityInspector.js";
@@ -37,11 +38,13 @@ const pause = () => {
 };
 const play = () => {
 	stopLooking();
+	attachCamera();
 	heldKeys.clear();
 	paused = false;
 };
 export function updateCamera(deltaTime) {
 	if (!isFlying() || wantsKeyboard()) return;
+	detachCamera();
 	if (["w", "a", "s", "d", "r", "f", "q", "e", "arrowleft", "arrowright", "arrowup", "arrowdown"].some(key => heldKeys.has(key))) pause();
 	const turnSpeed = 1.5;
 	if (heldKeys.has("arrowleft")) cameraRotation[1] -= turnSpeed * deltaTime;
@@ -98,11 +101,13 @@ let lookY = 0;
 const stopLooking = () => {
 	const pointer = lookPointer;
 	lookPointer = null;
+	if (!paused) attachCamera();
 	if (pointer !== null && c.hasPointerCapture(pointer)) c.releasePointerCapture(pointer);
 };
 c.addEventListener("contextmenu", (event) => event.preventDefault());
 c.addEventListener("pointerdown", (event) => {
 	if (event.button !== 2 || wantsMouse()) return;
+	detachCamera();
 	lookPointer = event.pointerId;
 	lookX = event.clientX;
 	lookY = event.clientY;
@@ -156,7 +161,7 @@ export function debug(passEncoder, entities, entitySize, overrides) {
 			}
 			if (ImGui.MenuItem("Spheres")) {
 				EArray.map((e, id) => {
-					if (id > 1) e[0] = 255;
+					if (id > 1) e[0] = 0;
 				});
 				for (let i = 1; i < 256; i++) {
 					let e = spawn(6);

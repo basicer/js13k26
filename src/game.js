@@ -1,54 +1,16 @@
 import { heldKeys, cameraFov } from "./globals.js";
-import { cameraPosition, cameraRotation, spawn } from "./entities.js";
+import { cameraEntity, cameraPosition, cameraRotation, spawn, EArray, setupEntities } from "./entities.js";
 import * as sound from "./sfx.js";
-import { canStand, moveActor, clearShot, shotFraction } from "./level.js";
+import { canStand, moveActor, clearShot, shotFraction, setupLevel } from "./level.js";
 
-const unicorns = [];
-const portals = [];
-// Wall centers and yaw; local +Z faces into the yard.
+// Wall centers and yaw; keep the camera-side (-X) wall free of portals.
 const portalLocations = [
 	[3, -15, 0],
 	[15, 4, Math.PI / 2],
 	[6, 15, Math.PI],
-	[-15, 4, -Math.PI / 2],
-	[-15, -7, -Math.PI / 2],
 	[-7, -15, 0],
+	[7.5, 0, Math.PI / 2], // Camera-facing side of the interior pillar at (9, 0).
 ];
-
-const player = spawn(1);
-player[4] = -2;
-
-player[11] = 255; // Dissolve into the procedural rainbow material.
-
-// Parts share the original centered model frame; parent links supply the pose.
-const marineParts = [8, 9, 10, 11].map((kind) => spawn(kind));
-const [marineLegs, marineBody, marineArms, marineGun] = marineParts;
-marineLegs[2] = marineBody[2] = player.id;
-marineArms[2] = marineBody.id;
-marineGun[2] = marineArms.id;
-marineGun[4] = 0.0475;
-marineGun[5] = 0.1328125;
-marineGun[6] = 0.22375;
-marineGun[12] = 0.17;
-marineGun[13] = 0.25;
-marineGun[14] = 0.56;
-marineGun[1] = 8.4;
-marineGun[24] = Math.PI / 6; // 30-degree flashlight cone along the gun's +Z.
-
-for (const part of marineParts) {
-	part[11] = 255;
-	part[16] = part[17] = part[18] = 0;
-}
-marineGun[16] = marineGun[17] = marineGun[18] = 1;
-
-for (const [x, z, yaw] of portalLocations) {
-	const portal = spawn(12);
-	portal.set([x, 0.15625, z], 4);
-	portal[9] = yaw;
-	portal.set([2.2, 2, 0.45], 12);
-	portal[16] = portal[17] = portal[18] = 0;
-	portals.push({ entity: portal, health: 50 });
-}
 
 function spawnUnicorn(x, z) {
 	if (!canStand(x, z)) return false;
@@ -58,16 +20,16 @@ function spawnUnicorn(x, z) {
 
 	unicorn[6] = z;
 	unicorn[11] = 249;
-	unicorns.push({ entity: unicorn, health: 4, walk: 0 });
+	unicorn[25] = 4;
+	sound.wobble();
 	return true;
 }
 
-// Start with a herd, then replace enemies as they are eliminated.
-function spawnFromPortal({ entity }) {
+// Start with a herd; each surviving gate then spawns on its own age timer.
+function spawnFromPortal(entity) {
 	// Leave enough room for the unicorn's collision radius in front of the wall.
 	return spawnUnicorn(entity[4] - Math.sin(entity[9]), entity[6] + Math.cos(entity[9]));
 }
-for (const portal of portals) spawnFromPortal(portal);
 
 // Capacity, reload seconds, shot interval, pellet count.
 const weapons = [
@@ -75,21 +37,85 @@ const weapons = [
 	[30, 2.5875, 0.08, 1],
 	[8, 2.3, 0.7, 12],
 ];
-let selectedWeapon = 1; // Start with the existing rifle; number keys select 1-3.
-for (const entry of weapons) entry[4] = entry[0];
-let weapon = weapons[selectedWeapon];
-let triggerConsumed = false;
-let shotgunPumpPending = false;
-let shotCooldown = 0;
-let spawnCooldown = 1.5;
-let triggerHeld = false;
-let emptyClickPlayed = false;
+let player, marineParts, marineLegs, marineBody, marineArms, marineGun;
+let selectedWeapon, weapon, triggerConsumed, shotgunPumpPending, shotCooldown, triggerHeld, emptyClickPlayed;
+let reloadCooldown, marineWalk, marineLegYaw, marineHealth, hurtCooldown;
 
-let reloadCooldown = 0;
-let marineWalk = 0;
-let marineLegYaw = 0;
-let marineHealth = 5;
-let hurtCooldown = 0;
+export function setupGame() {
+	setupEntities();
+	setupLevel();
+	heldKeys.clear();
+	player = spawn(1);
+	// Translation-only root: body aiming and death poses must not rotate the camera.
+	player[4] = -2;
+	cameraEntity[2] = player.id;
+
+	// Startup is paused, so the splash's lifetime begins with the first input.
+	const logo = spawn(13);
+	// Large, slightly reclined floor sculpture, matching the startup composition.
+	logo.set([-0.7, 0.894, 0], 4);
+	logo.set([-0.32, cameraRotation[1], 0], 8);
+	logo.set([5.25, 5.25, 1.3], 12);
+	logo[16] = logo[17] = logo[18] = 0;
+	logo[23] = 0.1;
+	const logoLight = spawn(1);
+	logoLight.set([-5, 2, 1], 4);
+	logoLight[1] = 8;
+	logoLight[23] = 0.1;
+
+	player[11] = 255; // Dissolve into the procedural rainbow material.
+
+	// Parts share the original centered model frame; body carries the overall pose.
+	marineParts = [8, 9, 10, 11].map((kind) => spawn(kind));
+	[marineLegs, marineBody, marineArms, marineGun] = marineParts;
+	marineBody[2] = player.id;
+	marineLegs[2] = marineBody.id;
+	marineArms[2] = marineBody.id;
+	marineGun[2] = marineArms.id;
+	marineGun[4] = 0.0475;
+	marineGun[5] = 0.1328125;
+	marineGun[6] = 0.22375;
+	marineGun[12] = 0.17;
+	marineGun[13] = 0.25;
+	marineGun[14] = 0.56;
+	marineGun[1] = 8.4;
+	marineGun[24] = Math.PI / 6; // 30-degree flashlight cone along the gun's +Z.
+
+	for (const part of marineParts) {
+		part[11] = 255;
+		part[16] = part[17] = part[18] = 0;
+	}
+	marineGun[16] = marineGun[17] = marineGun[18] = 1;
+
+	for (const [x, z, yaw] of portalLocations) {
+		const portal = spawn(12);
+		// Local +Z points out of the arch, toward its spawn area.
+		portal[1] = 2.1;
+		portal[24] = 2.772;
+		portal.set([x, 0.1875, z], 4);
+		portal[9] = yaw;
+		portal.set([3.6, 3, 0.45], 12);
+		portal[16] = portal[17] = portal[18] = 0;
+		portal[25] = 50;
+	}
+
+	for (const entity of EArray) if (entity[0] === 12) spawnFromPortal(entity);
+	selectedWeapon = 1; // Start with the existing rifle; number keys select 1-3.
+	for (const entry of weapons) entry[4] = entry[0];
+	weapon = weapons[selectedWeapon];
+	triggerConsumed = false;
+	shotgunPumpPending = false;
+	shotCooldown = 0;
+	triggerHeld = false;
+	emptyClickPlayed = false;
+
+	reloadCooldown = 0;
+	marineWalk = 0;
+	marineLegYaw = 0;
+	marineHealth = 5;
+	hurtCooldown = 0;
+}
+setupGame();
 
 const random = (minimum = 0, range = 1) => minimum + Math.random() * range;
 const isSprinting = () =>
@@ -114,6 +140,7 @@ function temporarySphere(x, y, z, scale, material, light, lifetime, velocity, tr
 	entity[16] = entity[17] = entity[18] = 0;
 	entity[19] = material;
 	entity[1] = light;
+	entity[3] = light ? 0 : 0.5;
 	entity[23] = lifetime;
 	if (velocity) entity.set(velocity, 20);
 }
@@ -137,7 +164,7 @@ export function selectMarineWeapon(number) {
 
 export function fireMarineGun() {
 	if (selectedWeapon !== 1 && triggerConsumed) return;
-	if (!marineHealth || isSprinting() || reloadCooldown > 0 || (DEBUG && player[0] === 255)) return;
+	if (!marineHealth || isSprinting() || reloadCooldown > 0 || (DEBUG && player[0] === 0)) return;
 	if (weapon[4] === 0) {
 		if (!emptyClickPlayed) sound.emptyClick();
 		emptyClickPlayed = true;
@@ -151,12 +178,12 @@ export function fireMarineGun() {
 	sound.gunshot();
 	weapon[4]--;
 
-	const [forwardX, forwardZ] = marineFacing(player[9]);
+	const [forwardX, forwardZ] = marineFacing(marineBody[9]);
 	// The compact gun's transform keeps its bore at the established muzzle point.
 	const muzzleX = player[4] + (forwardX * 30 * player[14] + forwardZ * player[12]) / 64;
 	const muzzleY = player[5] + (10.5 / 64) * player[13];
 	const muzzleZ = player[6] + (forwardZ * 30 * player[14] - forwardX * player[12]) / 64;
-	// A very short-lived emissive sphere doubles as the muzzle flash and a point light.
+	// A very short-lived emissive sphere doubles as the muzzle flash and a spotlight.
 	temporarySphere(muzzleX, muzzleY, muzzleZ, 0.14, 246, 12, 0.035);
 
 	for (let pellet = 0; pellet < weapon[3]; pellet++) {
@@ -194,9 +221,8 @@ function firePellet(muzzleX, muzzleY, muzzleZ, forwardX, forwardZ, assist, forwa
 	if (!clearShot(player[4], player[6], muzzleX, muzzleZ)) range = 0;
 	let closest = range,
 		targetDirect = false;
-	for (const unicorn of unicorns) {
-		const entity = unicorn.entity;
-		if (!unicorn.health) continue;
+	for (const entity of EArray) {
+		if (entity[0] !== 2 || !entity[25]) continue;
 		const dx = entity[4] - muzzleX;
 		const dz = entity[6] - muzzleZ;
 		// Two degrees of edge forgiveness, capped at 0.18 extra world units.
@@ -213,25 +239,25 @@ function firePellet(muzzleX, muzzleY, muzzleZ, forwardX, forwardZ, assist, forwa
 			(!assist || clearShot(muzzleX, muzzleZ, entity[4], entity[6])) &&
 			(direct > targetDirect || (direct === targetDirect && distance < closest))
 		) {
-			target = unicorn;
+			target = entity;
 			closest = distance;
 			targetDirect = direct;
 		}
 	}
-	for (const portal of portals) {
-		if (!portal.health) continue;
-		const entity = portal.entity;
+	for (const entity of EArray) {
+		if (entity[0] !== 12 || !entity[25]) continue;
 		const [nx, nz] = marineFacing(entity[9]);
-		const dx = muzzleX - entity[4], dz = muzzleZ - entity[6];
+		const dx = muzzleX - entity[4],
+			dz = muzzleZ - entity[6];
 		const direction = forwardX * nx + forwardZ * nz;
 		if (direction >= -0.00001) continue;
 		// Hit the visible face ahead of the wall, using the rounded arch outline.
 		const distance = (0.1125 - dx * nx - dz * nz) / direction;
 		if (distance < 0 || distance >= range || (targetDirect && distance >= closest)) continue;
-		const x = ((dx + forwardX * distance) * nz - (dz + forwardZ * distance) * nx) * 32 / entity[12] - 0.5;
-		const y = (muzzleY + forwardY * distance - entity[5]) * 48 / entity[13];
-		if (y < -12 || x * x + Math.max(0, y - 8.5) ** 2 > 12.5 ** 2) continue;
-		target = portal;
+		const x = (((dx + forwardX * distance) * nz - (dz + forwardZ * distance) * nx) * 64) / entity[12] - 0.5;
+		const y = ((muzzleY + forwardY * distance - entity[5]) * 64) / entity[13];
+		if (y < -8 || x * x + Math.max(0, y - 0.5) ** 2 > 24.5 ** 2) continue;
+		target = entity;
 		closest = distance;
 		targetDirect = true;
 	}
@@ -257,7 +283,7 @@ function firePellet(muzzleX, muzzleY, muzzleZ, forwardX, forwardZ, assist, forwa
 			tracer[9] = Math.atan2(-traceX, traceZ);
 			tracer[8] = -Math.asin(forwardY);
 			tracer[19] = 242;
-			tracer.set([forwardX * 45, forwardY * 45, forwardZ * 45, (distance - length) / 45], 20);
+			tracer.set([forwardX * 45, forwardY * 45, forwardZ * 45, (distance - length) / 45 || -1], 20);
 		}
 	}
 	if (!target) {
@@ -279,17 +305,17 @@ function firePellet(muzzleX, muzzleY, muzzleZ, forwardX, forwardZ, assist, forwa
 		}
 		return;
 	}
-	if (target.entity[0] === 12) {
-		target.health--;
+	if (target[0] === 12) {
+		target[25]--;
 		return;
 	}
 	for (let i = 0; i < 28; i++) {
 		const angle = random(0, Math.PI * 2);
 		const spread = random(0.35, 1.15);
 		temporarySphere(
-			target.entity[4],
-			target.entity[5],
-			target.entity[6],
+			target[4],
+			target[5],
+			target[6],
 			random(0.06, 0.04),
 			249,
 			0,
@@ -298,15 +324,16 @@ function firePellet(muzzleX, muzzleY, muzzleZ, forwardX, forwardZ, assist, forwa
 			0.5,
 		);
 	}
-	target.health--;
+	target[25]--;
 	// Surviving hits stain 10%, 20%, then 30%; death preserves those stains.
-	if (target.health > 0) target.entity[3] = (4 - target.health) * 0.1;
-	if (target.health <= 0) {
+	if (target[25] > 0) target[3] = (4 - target[25]) * 0.1;
+	if (target[25] <= 0) {
 		// Roll onto the side, keeping the head-to-tail axis level.
-		target.entity[8] = 0;
-		target.entity[23] = 5;
-		target.entity[10] = Math.PI / 2;
-		target.entity[5] = -20 / 64;
+		target[8] = 0;
+		target[23] = 5;
+		target[27] = 0;
+		target[10] = Math.PI / 2;
+		target[5] = -20 / 64;
 	}
 }
 
@@ -319,7 +346,7 @@ export function setMarineTrigger(held) {
 }
 
 export function reloadMarineGun() {
-	if (!marineHealth || isSprinting() || reloadCooldown > 0 || weapon[4] === weapon[0] || (DEBUG && player[0] === 255))
+	if (!marineHealth || isSprinting() || reloadCooldown > 0 || weapon[4] === weapon[0] || (DEBUG && player[0] === 0))
 		return;
 	reloadCooldown = weapon[1];
 	shotgunPumpPending = false;
@@ -342,19 +369,22 @@ export function aimMarineAtCursor(x, y, width, height) {
 	const rayY = sinPitch + cosPitch * viewY;
 	const rayZ = -cosYaw * forward + sinYaw * viewX;
 	if (rayY >= -0.001) return;
-	const distance = (player[5] + (10.5 / 64) * player[13] - cameraPosition[1]) / rayY;
+	const distance = ((10.5 / 64 - cameraPosition[1]) * player[13]) / rayY;
 	if (distance <= 0) return;
-	player[9] = lookAtYaw(
-		cameraPosition[0] + rayX * distance - player[4],
-		cameraPosition[2] + rayZ * distance - player[6],
+	marineBody[9] = lookAtYaw(
+		cameraPosition[0] * player[12] + rayX * distance,
+		cameraPosition[2] * player[14] + rayZ * distance,
 	);
 }
 
 export function updateGame(deltaTime, freeCamera = false) {
-	for (const portal of portals) {
+	for (const portal of EArray) {
+		if (portal[0] !== 12) continue;
+		if (marineHealth && portal[25] && portal[27] > 25 && spawnFromPortal(portal)) portal[27] = 0;
 		// Living portals erode only up to 30%; the final hit starts full collapse.
-		const dissolve = portal.health > 0 ? (1 - portal.health / 50) * 0.3 : 1;
-		portal.entity[3] = Math.min(dissolve, portal.entity[3] + deltaTime * 0.5);
+		const dissolve = portal[25] > 0 ? (1 - portal[25] / 50) * 0.3 : 1;
+		portal[3] = Math.min(dissolve, portal[3] + deltaTime * 0.5);
+		portal[1] = 2.1 * (1 - portal[3]);
 	}
 	const sprinting = !freeCamera && isSprinting();
 	hurtCooldown = Math.max(0, hurtCooldown - deltaTime);
@@ -373,16 +403,9 @@ export function updateGame(deltaTime, freeCamera = false) {
 		if (reloadCooldown <= 0) weapon[4] = weapon[0];
 	}
 	if (!sprinting && triggerHeld && selectedWeapon === 1) fireMarineGun();
-	spawnCooldown -= deltaTime;
-	const livingUnicorns = unicorns.filter((unicorn) => unicorn.health).length;
-	const activePortals = portals.filter((portal) => portal.health > 0);
-	if (marineHealth > 0 && spawnCooldown <= 0 && livingUnicorns < 6 && activePortals.length) {
-		spawnFromPortal(activePortals[(Math.random() * activePortals.length) | 0]);
-		spawnCooldown = 1.25;
-	}
 	const moveX = Number(heldKeys.has("d")) - Number(heldKeys.has("a"));
 	const moveZ = Number(heldKeys.has("w")) - Number(heldKeys.has("s"));
-	let legTarget = player[9];
+	let legTarget = marineBody[9];
 	if (!freeCamera && marineHealth > 0 && (moveX || moveZ)) {
 		const [forwardX, forwardZ] = heading(cameraRotation[1]);
 		const rightX = Math.cos(cameraRotation[1]);
@@ -400,33 +423,32 @@ export function updateGame(deltaTime, freeCamera = false) {
 	}
 	if (marineHealth > 0 && !freeCamera) {
 		// Backpedal instead of turning the feet around behind the torso.
-		let target = wrapAngle(legTarget - player[9]);
+		let target = wrapAngle(legTarget - marineBody[9]);
 		if (Math.abs(target) > Math.PI / 2 + 0.000001) target -= Math.sign(target) * Math.PI;
 		target = clampLeg(target);
-		const current = clampLeg(wrapAngle(marineLegYaw - player[9]));
+		const current = clampLeg(wrapAngle(marineLegYaw - marineBody[9]));
 		marineLegs[9] = current + (target - current) * (1 - Math.exp(-12 * deltaTime));
-		marineLegYaw = player[9] + marineLegs[9];
+		marineLegYaw = marineBody[9] + marineLegs[9];
 	}
 
-	for (const unicorn of unicorns) {
-		const entity = unicorn.entity;
-		if (!unicorn.health || !marineHealth) continue;
+	for (const entity of EArray) {
+		if (entity[0] !== 2 || !entity[25] || !marineHealth) continue;
 		const dx = player[4] - entity[4];
 		const dz = player[6] - entity[6];
 		const distance = Math.hypot(dx, dz);
-		if (distance > 1.4) {
-			const step = Math.min(1.755 * deltaTime, distance - 1.2);
+		if (distance > 1) {
+			const step = Math.min(1.755 * deltaTime, distance - 0.8);
 			const x = entity[4],
 				z = entity[6];
 			moveActor(entity, (dx / distance) * step, (dz / distance) * step);
 			// Alternate hooves every 0.35 world units actually walked.
-			unicorn.walk = (unicorn.walk + Math.hypot(entity[4] - x, entity[6] - z) / 0.35) % 2;
-			entity[15] = unicorn.walk | 0;
+			entity[26] = (entity[26] + Math.hypot(entity[4] - x, entity[6] - z) / 0.35) % 2;
+			entity[15] = entity[26] | 0;
 			entity[9] = lookAtYaw(dx, dz);
 		}
 		if (
 			hurtCooldown === 0 &&
-			Math.hypot(player[4] - entity[4], player[6] - entity[6]) <= 1.4 &&
+			Math.hypot(player[4] - entity[4], player[6] - entity[6]) <= 1 &&
 			clearShot(player[4], player[6], entity[4], entity[6])
 		) {
 			marineHealth--;
@@ -436,11 +458,12 @@ export function updateGame(deltaTime, freeCamera = false) {
 			player[19] = 117;
 			if (marineHealth) sound.hurt();
 			if (!marineHealth) {
+				setTimeout(setupGame, 5000);
 				sound.explode();
 				triggerHeld = false;
 				reloadCooldown = 0;
 				player[19] = 0;
-				player[8] = Math.PI / 2;
+				marineBody[8] = Math.PI / 2;
 				player[5] = 0;
 			} else {
 				// Surviving hits push the marine away, respecting walls and cover.
@@ -463,10 +486,4 @@ export function updateGame(deltaTime, freeCamera = false) {
 	for (const part of marineParts) {
 		for (const slot of [3, 11, 19]) part[slot] = player[slot];
 	}
-	// Holding right mouse in debug mode temporarily owns the camera.
-	if (freeCamera) return;
-	const [forwardX, forwardZ] = heading(cameraRotation[1]);
-	cameraPosition[0] = player[4] - forwardX * 8;
-	cameraPosition[1] = player[5] + 4.7;
-	cameraPosition[2] = player[6] - forwardZ * 8;
 }

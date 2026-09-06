@@ -1,6 +1,6 @@
 struct Entity {
     kind: f32,
-    point_light: f32,
+    spotlight: f32,
     parent: f32,
     dissolve: f32,
     pos: vec3<f32>,
@@ -12,9 +12,13 @@ struct Entity {
     tile: vec3<f32>,
     matOverride: f32,
     velocity: vec3<f32>,
-    // Preserve CPU float bits; +Infinity must never enter shader arithmetic.
-    ttl: u32,
+    // Zero lives forever; negative lifetimes expire on the next simulation step.
+    ttl: f32,
     light_angle: f32,
+    health: f32,
+    walk: f32,
+    age: f32,
+    solid: f32,
     padding: array<f32, 3>,
 };
 
@@ -71,6 +75,7 @@ struct RenderState {
     aspect: f32,
     fov: f32,
     dt: f32,
+    mouse: vec4<f32>,
 };
 
 const NEAR_PLANE = 0.1f;
@@ -87,9 +92,9 @@ var<storage, read> entities: array<Entity>;
 @group(0) @binding(2)
 var palette: texture_storage_2d<rgba8unorm, read>;
 @group(0) @binding(3)
-var<storage, read> point_lights: array<SpotLight>;
+var<storage, read> spotlights: array<SpotLight>;
 
-const MAX_POINT_LIGHTS = 32u;
+const MAX_SPOTLIGHTS = 32u;
 
 fn world_transform(index: u32, dt: f32) -> mat4x4<f32> {
     var entity = step_entity(entities[index], dt);

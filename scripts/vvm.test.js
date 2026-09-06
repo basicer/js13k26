@@ -3,6 +3,7 @@ import { readFileSync, readdirSync } from "node:fs";
 import test from "node:test";
 import vm from "node:vm";
 import { assemble } from "../src/vvm-tools.js";
+import { palette } from "../src/palette.js";
 import * as opcodes from "../src/vvm-const.js";
 import { compileVoxelSource } from "../src/debug/voxelValidation.js";
 import { voxelInstructionEnds, voxelParameterIndices } from "../src/debug/voxelPrograms.js";
@@ -84,9 +85,45 @@ test("JUMPIF encodes signed offsets from the end of its two bytes", () => {
 	assert.deepEqual([...assemble("0 JUMPIF end end:")], [57, 0, 96, 0]);
 });
 
+test("FORJUMP checks stack occupancy without consuming or testing the top value", () => {
+	assert.deepEqual([...assemble("FORJUMP end end:")], [0, 0]);
+	assert.deepEqual(voxelInstructionEnds(assemble("FORJUMP end end:")), [0, 2]);
+	assert.equal(run("FORJUMP end 9 FSTORE:MATERIAL end: BOX FSTORE:BRUSH STROKE")[0], 9);
+	for (const value of [0, -1, 9])
+		assert.equal(run(`${value} FORJUMP end 7 FSTORE:MATERIAL end: FSTORE:MATERIAL BOX FSTORE:BRUSH STROKE`)[0], value & 255);
+	assert.equal(run("2 3 4 VEC FORJUMP end 9 FSTORE:MATERIAL end: VSTORE:START 0 FSTORE:RADIUS SPHERE FSTORE:BRUSH STROKE")[(4 * 64 * 64 + 3 * 64 + 2) * 4], 1);
+	let visits = 0;
+	runBytes(compileVoxelSource("1 2 3 each: FSTORE:7 LOADP:7 FSTORE:6 FORJUMP each"), () => { visits++; return 0; });
+	assert.equal(visits, 3);
+	assert.throws(() => assemble("FORJUMP absent"), /Undefined label/);
+	assert.throws(() => assemble("FORJUMP"), /requires a label/);
+	assert.throws(() => compileVoxelSource("0 again: FORJUMP again"), /infinite loop/);
+	assert.throws(() => assemble(`FORJUMP end ${"FLOAD ".repeat(1024)} end:`), /out of range/);
+	assert.deepEqual(voxelParameterIndices("FORJUMP loadp loadp:"), []);
+});
+
+test("LOOP peeks, decrements positive counters, and preserves zero and negative values", () => {
+	for (const count of [-2, 0, 1, 3]) {
+		let calls = 0;
+		const bytes = compileVoxelSource(`${count} again: LOADP:7 FSTORE:7 LOOP again FSTORE:MATERIAL BOX FSTORE:BRUSH STROKE`);
+		const result = runBytes(bytes, () => { calls++; return 0; });
+		assert.equal(calls, Math.max(0, count) + 1);
+		assert.equal(result[0], Math.min(0, count) & 255);
+	}
+	assert.deepEqual([...assemble("0 LOOP end end:")], [57, 0, 120, 0]);
+	assert.deepEqual(voxelInstructionEnds(assemble("0 LOOP end end:")), [0, 2, 4]);
+	assert.equal(run("1 LOOP end 9 FSTORE:MATERIAL end: FSTORE:MATERIAL BOX FSTORE:BRUSH STROKE")[0], 0);
+	assert.throws(() => compileVoxelSource("LOOP end end:"), /expects a number/);
+	assert.throws(() => compileVoxelSource("1 2 3 VEC LOOP end end:"), /expects a number/);
+	assert.throws(() => assemble("1 LOOP missing"), /Undefined label/);
+	assert.throws(() => assemble("1 LOOP"), /requires a label/);
+	assert.throws(() => compileVoxelSource("again: 1 LOOP again"), /infinite loop/);
+	assert.deepEqual(voxelParameterIndices("0 LOOP loadp loadp:"), []);
+});
+
 test("labels respect literal batching, vector fusion, comments and line breaks", () => {
 	const bytes = assemble("1 JUMPIF done // branch\n 1 2 3 VEC VSTORE:START done: 4");
-	assert.equal(bytes[3], 5);
+	assert.equal(bytes[3], 4);
 	assert.deepEqual([...assemble("1 split: 2")], [57, 1, 57, 2]);
 	assert.deepEqual([...assemble("1 2 3 VEC vstore: VSTORE:0")], [59, 1, 2, 3, 16, 32]);
 	assert.deepEqual([...assemble("0 JUMPIF // target on next line\n end\nend:")], [57, 0, 96, 0]);
@@ -100,6 +137,84 @@ test("SIZE creates compact volumes and literal payloads are signed bytes", () =>
 	assert.throws(() => compileVoxelSource("-1 1 1 VEC SIZE"), /Model size/);
 	assert.throws(() => compileVoxelSource("128"), /Literal out of range/);
 });
+
+test("immediate vectors occupy four bytes and editor stepping skips their payloads", () => {
+	for (let register = 0; register < 8; register++) {
+		const bytes = assemble(`VSTOREI:${register} -128 88 127`);
+		assert.deepEqual([...bytes], [(opcodes.OP_VSTOREI << 3) | register, 128, 88, 127]);
+		assert.deepEqual(voxelInstructionEnds(bytes), [0, 4]);
+		assert.throws(() => voxelInstructionEnds(bytes.slice(0, 3)), /Incomplete/);
+	}
+	assert.deepEqual([...assemble("STROKEI -1 88 96")], [(opcodes.OP_STROKEI << 3) | 2, 255, 88, 96]);
+	assert.deepEqual(assemble("STROKEI 1 2 3"), assemble("1 2 3 VEC VSTORE:END STROKE:SWAP"));
+	assert.throws(() => compileVoxelSource("STROKEI:PAINT 1 2 3"), /always swaps/);
+	assert.throws(() => compileVoxelSource("STROKEI 1 2"), /missing immediate/);
+	assert.throws(() => compileVoxelSource("VSTOREI 64 0 0"), /declared model size/);
+});
+
+test("high-resolution railing keeps polished steel below its frequent caution bands", () => {
+ const rail = run(readFileSync(new URL("../vox/railing.vp", import.meta.url), "utf8"));
+ assert.equal(rail.length, 128 * 64 * 16 * 4);
+ const at = (x,y,z) => rail[((z * 64 + y) * 128 + x) * 4];
+ assert.equal(at(64,15,8),0);
+ assert.equal(at(64,47,8),0);
+ assert.equal(at(0,15,8),188);
+ assert.equal(at(64,31,8),188);
+ for(let x=4;x<64;x+=8) { assert.equal(at(x,61,8),5); assert.equal(at(127-x,61,8),5); }
+ for(let x=0;x<64;x+=8) { assert.equal(at(x,61,8),242); assert.equal(at(127-x,61,8),242); }
+ for(let y=0;y<64;y++) for(let z=0;z<16;z++) assert.equal(!!at(0,y,z),!!at(127,y,z));
+});
+
+test("fusion preserves stack prefixes, dynamic vectors and branch entry points", () => {
+	const code = "9 8 7 6 5 4 3 2 1 2 3 VEC VSTORE:START FSTORE:MATERIAL STROKEI 4 5 6 STROKEI 7 8 9";
+	assert.deepEqual(Buffer.from(run(code).buffer), Buffer.from(run(code.replaceAll("VEC", "barrier: VEC").replace("STROKEI 4 5 6", "4 5 6 stop: VEC VSTORE:END STROKE:SWAP")).buffer));
+	assert.equal(run("LOADP 2 3 VEC VSTORE:START 0 FSTORE:RADIUS SPHERE FSTORE:BRUSH STROKE", [1.5]).some(Boolean), false);
+	assert.deepEqual([...assemble("1 2 3 VEC boundary: VSTORE:END STROKE:SWAP")], [59, 1, 2, 3, 16, 33, 10]);
+	assert.doesNotThrow(() => compileVoxelSource("0 JUMPIF strokei 1 2 3 VEC VSTORE:START strokei:"));
+});
+
+test("fused and unfused programs produce identical voxels for every model and pose", () => {
+	for (const file of readdirSync(new URL("../vox/", import.meta.url)).filter(file => file.endsWith(".vp"))) {
+		const source = readFileSync(new URL(`../vox/${file}`, import.meta.url), "utf8");
+		let label = 0;
+		const unfused = source.replace(/\bVEC\b/g, () => `fusion_barrier_${label++}: VEC`);
+		for (const pose of [0, 1])
+			assert.deepEqual(Buffer.from(run(source, [pose]).buffer), Buffer.from(run(unfused, [pose]).buffer), `${file}, pose ${pose}`);
+	}
+});
+
+test("SIZE_128 allocates full-size axes while ordinary literals remain signed", () => {
+	const buffer = run("SIZE_128 SIZE_128 32 VEC SIZE BOX FSTORE:BRUSH 127 127 31 VEC VSTORE:START VLOAD:START VSTORE:END STROKE");
+	assert.equal(buffer.length, 128 * 128 * 32 * 4);
+	assert.equal(buffer[buffer.length - 4], 1);
+	assert.equal(run("SIZE_128 FSTORE:MATERIAL BOX FSTORE:BRUSH STROKE")[0], 128);
+});
+
+test("G&G logo is one connected angular sign with a single emissive material", () => {
+ const logo = run(readFileSync(new URL("../vox/gg-logo.vp", import.meta.url), "utf8"));
+ assert.equal(logo.length, 128 * 128 * 32 * 4);
+ const materials = new Set(), occupied = new Set();
+ let minZ = 32, maxZ = 0, bottom = Infinity;
+ for (let i = 0; i < logo.length; i += 4) {
+  if (!logo[i]) continue;
+  materials.add(logo[i]); occupied.add(i / 4);
+  const y = Math.floor(i / 4 / 128) % 128, z = Math.floor(i / 4 / 16384);
+  minZ = Math.min(minZ, z); maxZ = Math.max(maxZ, z);
+  for (const dz of [0, 1])
+   bottom = Math.min(bottom, .894 + Math.cos(-.32) * (y / 128 - .5) * 5.25 - Math.sin(-.32) * ((z + dz) / 32 - .5) * 1.3);
+ }
+ assert.deepEqual([...materials], [216]);
+ assert.ok(maxZ - minZ >= 4, "rounded strokes have real depth");
+ assert.ok(Math.abs(bottom + 30 / 64) < .001, "lowest tilted voxel rests on the floor");
+ const queue = [occupied.values().next().value]; occupied.delete(queue[0]);
+ for (let head = 0; head < queue.length; head++) {
+  const i = queue[head], x = i % 128, y = Math.floor(i / 128) % 128, z = Math.floor(i / 16384);
+  for (const n of [x > 0 ? i - 1 : -1, x < 127 ? i + 1 : -1, y > 0 ? i - 128 : -1, y < 127 ? i + 128 : -1, z > 0 ? i - 16384 : -1, z < 31 ? i + 16384 : -1])
+   if (occupied.delete(n)) queue.push(n);
+ }
+ assert.equal(occupied.size, 0, "every occupied voxel belongs to the connected G&G");
+});
+
 
 test("all eleven offset bits and signed range boundaries", () => {
 	for (const n of [255, 256, 1023]) {
@@ -218,17 +333,36 @@ test("FLIP swaps voxels only inside its box on each axis, including empty cells"
 	assert.throws(() => compileVoxelSource("FLIP:3"), /Invalid subopcode/);
 });
 
+test("sphere program exactly matches the original procedural particle volume", () => {
+	const actual = run(readFileSync(new URL("../vox/sphere.vp", import.meta.url), "utf8"), [24.32, 31.5]);
+	const expected = new Float32Array(64 ** 3 * 4);
+	for (let z = 0; z < 64; z++) for (let y = 0; y < 64; y++) for (let x = 0; x < 64; x++) {
+		if ((x - 31.5) ** 2 + (y - 31.5) ** 2 + (z - 31.5) ** 2 <= (64 * 0.38) ** 2)
+			expected[((z * 64 + y) * 64 + x) * 4] = 20;
+	}
+	assert.deepEqual(Buffer.from(actual.buffer), Buffer.from(expected.buffer));
+});
+
 test("marine gun uses a compact voxel volume", () => {
 	const gun = run(readFileSync(new URL("../vox/marine-gun.vp", import.meta.url), "utf8"));
 	assert.equal(gun.length, 16 * 20 * 32 * 4);
 	assert.ok(gun.some(value => value !== 0));
 });
 
-test("unicorn portal has a compact 255-material core", () => {
+test("high-resolution portal preserves all six bands and the recessed rainbow core", () => {
 	const portal = run(readFileSync(new URL("../vox/unicorn-portal.vp", import.meta.url), "utf8"));
-	assert.equal(portal.length, 32 * 48 * 8 * 4);
-	assert.equal(portal[((4 * 48 + 24) * 32 + 16) * 4], 255);
-	assert.deepEqual([4, 5, 6, 7, 8, 9].map(x => portal[((4 * 48 + 20) * 32 + x) * 4]), [243, 246, 242, 244, 245, 250]);
+	assert.equal(portal.length, 120 * 120 * 8 * 4);
+	assert.equal(portal[((4 * 120 + 68) * 120 + 60) * 4], 255);
+	const bands = [15, 19, 22, 26, 30, 34].map(x => portal[((4 * 120 + 60) * 120 + x) * 4]);
+	assert.deepEqual(bands, [218, 223, 228, 225, 232, 221]);
+	for (const material of bands) assert.ok(palette[1024 + material * 4 + 2] > 0);
+});
+
+test("editor validates coordinates against each model's declared dimensions", () => {
+	assert.doesNotThrow(() => compileVoxelSource("120 120 8 VEC SIZE 119 119 7 VEC VSTORE:START"));
+	assert.throws(() => compileVoxelSource("120 120 8 VEC SIZE 120 119 7 VEC VSTORE:START"), /model size/);
+	assert.throws(() => compileVoxelSource("120 120 8 VEC SIZE 119 119 8 VEC VSTORE:START"), /model size/);
+	assert.throws(() => compileVoxelSource("64 0 0 VEC VSTORE:START"), /model size/);
 });
 
 test("marine legs have opposite P0 poses with stable hip attachments", () => {
