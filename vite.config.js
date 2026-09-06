@@ -1,7 +1,7 @@
 import { defineConfig } from "vite";
 import path from "node:path";
 import { readdir, stat, readFile, writeFile } from "node:fs/promises";
-import { readFileSync } from "node:fs";
+import { readFileSync, write } from "node:fs";
 import { execFileSync } from "node:child_process";
 import vm from "node:vm";
 import { parseAst } from "rolldown/parseAst";
@@ -238,7 +238,9 @@ var DEBUG = true;
 				console.warn(stdErr);
 				if (exitCode === 0) {
 					stdOut = stdOut.replace(/export{};\s*$/g, "");
-					resolve({ code: stdOut, map: null });
+					writeFile(tmpobj.name + ".out.js", stdOut, "utf-8").then(() => {
+						resolve({ code: stdOut, map: null });
+					});
 				} else {
 					reject(new Error(stdErr));
 				}

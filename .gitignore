@@ -2,6 +2,6 @@ syntax:glob
 node_modules
 dist
 tmp.js
-
+tmp.js.out.js
 
 dist-unpacked
