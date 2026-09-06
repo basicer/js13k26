@@ -2,6 +2,9 @@ import * as E from "./entities-const.js";
 import { spawn, EArray } from "./entities.js";
 
 const ground = -30 / 64;
+// Four printable bytes per bulkhead: x + 16, z + 16, width, depth.
+// This is an eight-room station around a long, cross-shaped service corridor.
+const plan = "0@1PO@1P@0P1@OP14=51<=51D=51L=514C51<C51DC51LC51861;@61;H61;8J1;@J1;HJ1;";
 
 function block(x, z, width, height, depth, material = 0, bottom = ground, solid = true) {
 	const entity = spawn(7);
@@ -19,44 +22,18 @@ function block(x, z, width, height, depth, material = 0, bottom = ground, solid 
 }
 
 export function setupLevel() {
-	// Open-roof yard with broad lanes between metallic bulkheads and cargo cover.
-	for (const side of [-1, 1]) {
-		block(side * 15.5, 0, 1, 2.8, 32);
-		block(0, side * 15.5, 30, 2.8, 1);
+	for (let i = 0; i < plan.length;) {
+		block(plan.charCodeAt(i++) - 64, plan.charCodeAt(i++) - 64, plan.charCodeAt(i++) - 48, 2.8, plan.charCodeAt(i++) - 48);
 	}
-	for (const [x, z, width, depth] of [
-		[-6, -5, 5, 1],
-		[5, -5, 1, 5],
-		[-6, 2, 1, 4],
-		[1, 8, 5, 1],
-	]) {
-		block(x, z, width, 1.9, depth);
-		block(x, z, width + 0.08, 0.12, depth + 0.08, 248, ground + 1.9, false);
+	// Set dressing uses the same printable coordinate offset as the structural plan.
+	for (const z of "6@F") block(-12, z.charCodeAt() - 64, 4, 1, .2)[E.KIND] = 14;
+	for (let i = 0, crates = "=A8EH8LG"; i < crates.length;) {
+		const crate = block(crates.charCodeAt(i++) - 64, crates.charCodeAt(i++) - 64, .75, .75, .75);
+		crate[E.KIND] = 16; crate[E.HEALTH] = crate[E.MAX_HEALTH] = 4; crate[E.DISSOLVE_RATE] = .5;
 	}
-	// Freestanding safety rails along the open camera-side lane.
-	for (const z of [-10, 0, 6]) block(-12, z, 4, 1, 0.2)[E.KIND] = 14;
-	// Broad, full-height face behind the interior portal.
+	for (let i = 0, pylons = "46<6DJLJ"; i < pylons.length;) block(pylons.charCodeAt(i++) - 64, pylons.charCodeAt(i++) - 64, 1.5, 2.8, 1.5);
+	// Reactor shroud: a deep pillar behind the central portal, not a featureless divider.
 	block(9, 0, 2.5, 2.8, 3.6);
-	for (const [x, z] of [
-		[5, 5],
-		[-10, 9],
-	]) {
-		block(x, z, 2.5, 1.8, 2.5);
-		block(x, z, 2.6, 0.12, 2.6, 101, ground + 1.8, false);
-		block(x + 0.3, z + 0.2, 1.5, 1, 1.5, 0, ground + 1.92);
-	}
-	// Small freestanding crates supplement the original cargo cover.
-	for (const [x, z] of [[-3, -3], [-8, 5], [2, -8], [8, 7]]) {
-		const crate = block(x, z, 0.75, 0.75, 0.75);
-		crate[E.KIND] = 16;
-		crate[E.HEALTH] = crate[E.MAX_HEALTH] = 4;
-		crate[E.DISSOLVE_RATE] = .5;
-	}
-	// Flush against the front face of the nearby bulkhead.
-	const console = spawn(15);
-	console.set([-4.5, 0.6, -4.375], E.POS);
-	console.set([1.25, 1, 0.25], E.SCALE);
-	console[E.TILE_X] = console[E.TILE_Y] = console[E.TILE_Z] = 0;
 }
 
 export function canStand(x, z, radius = 0.45) {

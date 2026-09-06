@@ -21,108 +21,42 @@ function level() {
 	return { ...context, blocks };
 }
 
-test("arena leaves starting positions clear and excludes obstacles and outside spawns", () => {
-	const { canStand, blocks } = level();
-	assert.equal(blocks.length, 27);
-	for (const [x, z] of [[-2, 0], [3, -2], [11, 4], [6, 10], [-11, 4], [-11, -7], [1, -11]]) {
-		assert.ok(canStand(x, z), `Starting position ${x}, ${z}`);
-	}
-	for (const [x, z] of [[5, 5], [-6, -5], [16, 0], [0, -16]]) assert.ok(!canStand(x, z));
-});
-
-test("switch panel mounts flush on the bulkhead with no pedestal", () => {
+test("compact plan expands into an enclosed station with a cross-corridor", () => {
 	const { blocks, canStand } = level();
-	const panel = blocks.find(e => e[E.KIND] === 15);
-	const wall = blocks.find(e => e[E.KIND] === 7 && e[E.POS_X] === -6 && e[E.POS_Z] === -5);
-	assert.equal(panel[E.POS_Z] - panel[E.SCALE_Z] / 2, wall[E.POS_Z] + wall[E.SCALE_Z] / 2);
-	assert.equal(panel[E.ROT_Y], 0);
-	assert.deepEqual(Array.from(panel.slice(E.SCALE, E.SCALE + 3)), [1.25, 1, .25]);
-	assert.deepEqual(Array.from(panel.slice(E.TILE, E.TILE + 3)), [0, 0, 0]);
-	assert.equal(panel[E.MODEL_VARIANT], 0);
-	assert.equal(canStand(-4, -2), true, "old pedestal no longer blocks the lane");
+	assert.equal(blocks.length, 30);
+	const walls = blocks.filter(e => e[E.KIND] === 7);
+	assert.equal(walls.length, 23);
+	for (const wall of walls) {
+		assert.ok(Math.abs(wall[E.SCALE_Y] - 2.8) < 1e-6);
+		for (const repeat of wall.subarray(E.TILE, E.TILE + 3)) assert.ok(Number.isInteger(repeat) && repeat >= 1);
+	}
+	for (const [x, z] of [[-2, 0], [-8, -2], [0, 2], [14, 0]]) assert.ok(canStand(x, z));
+	for (const [x, z] of [[15, 0], [0, 15], [8, 0], [-8, -10]]) assert.ok(!canStand(x, z));
+	assert.equal(blocks.filter(e => e[E.KIND] === 16).length, 4);
+	assert.equal(blocks.filter(e => e[E.KIND] === 14).length, 3);
 });
 
-test("bulkheads use the wall palette with whole panels on each axis", () => {
-	const { blocks } = level();
-	const walls = blocks.filter(entity => entity[0] === 7 && entity[19] === 0);
-	assert.equal(walls.length, 13);
-	for (const entity of walls) {
-		assert.equal(entity[0], 7);
-		for (const repeat of entity.subarray(16, 19)) {
-			assert.ok(Number.isInteger(repeat) && repeat >= 1);
-		}
-	}
-	assert.deepEqual(Array.from(blocks[0].subarray(16, 19)), [1, 1, 16]);
-	assert.deepEqual(Array.from(blocks[1].subarray(16, 19)), [15, 1, 1]);
-});
-
-test("original cargo remains intact and four small crates are separate solid geometry", () => {
-	const { blocks, canStand, clearShot } = level();
-	const crates = blocks.filter(e => e[E.KIND] === 16);
-	assert.equal(crates.length, 4);
-	for (const [x, z] of [[5, 5], [-10, 9]]) {
-		const base = blocks.find(e => e[E.KIND] === 7 && e[E.POS_X] === x && e[E.POS_Z] === z && e[E.MAT_OVERRIDE] === 0);
-		const cap = blocks.find(e => e[E.KIND] === 7 && e[E.POS_X] === x && e[E.POS_Z] === z && e[E.MAT_OVERRIDE] === 101);
-		const top = blocks.find(e => e[E.KIND] === 7 && Math.abs(e[E.POS_X] - x - .3) < 1e-6 && Math.abs(e[E.POS_Z] - z - .2) < 1e-6);
-		assert.ok(base && cap && top);
-		assert.ok(Math.abs(base[E.SCALE_X] - 2.5) < 1e-6 && Math.abs(base[E.SCALE_Y] - 1.8) < 1e-6);
-		assert.ok(Math.abs(cap[E.SCALE_X] - 2.6) < 1e-6 && Math.abs(cap[E.SCALE_Y] - .12) < 1e-6);
-		assert.ok(Math.abs(top[E.POS_Y] - (-30 / 64 + 1.92 + .5)) < 1e-6);
-	}
-	for (const crate of crates) {
-		for (const size of crate.slice(E.SCALE, E.SCALE + 3)) assert.ok(Math.abs(size - .75) < 1e-6);
-		assert.ok(Math.abs(crate[E.POS_Y] - crate[E.SCALE_Y] / 2 + 30 / 64) < 1e-6);
-		assert.equal(canStand(crate[E.POS_X], crate[E.POS_Z]), false);
-		assert.equal(clearShot(crate[E.POS_X] - 1, crate[E.POS_Z], crate[E.POS_X] + 1, crate[E.POS_Z]), true, "low crates do not obstruct chest-height shots");
-		assert.equal(crate[E.SOLID], 1);
-		assert.equal(crate[E.MAT_OVERRIDE], 0);
-		assert.deepEqual(Array.from(crate.slice(E.TILE, E.TILE + 3)), [1, 1, 1]);
-	}
-});
-
-test("movement cannot tunnel through cover or perimeter and can slide along a wall", () => {
-	const { moveActor, canStand } = level();
+test("rooms stay separated but corridor doors are traversable", () => {
+	const { moveActor } = level();
 	const actor = new Float32Array(E.STRIDE);
-	actor[4] = -6;
-	actor[6] = -7;
-	moveActor(actor, 0, 6);
-	assert.ok(actor[6] < -5.9);
-	assert.ok(canStand(actor[4], actor[6]));
-	moveActor(actor, 1, 1);
-	assert.ok(actor[4] > -5.1);
-	assert.ok(actor[6] < -5.9);
+	actor[E.POS_X] = -9;
+	actor[E.POS_Z] = -1;
+	moveActor(actor, 0, -12);
+	assert.ok(actor[E.POS_Z] < -5, "the service door opens into the lower rooms");
 	moveActor(actor, -100, 0);
-	assert.ok(actor[4] >= -14.55);
+	assert.ok(actor[E.POS_X] > -15.6, "the exterior bulkhead still contains actors");
 });
 
-test("freestanding railings leave the original yellow wall caps intact", () => {
- const { blocks, canStand } = level();
- const rails = blocks.filter(e => e[0] === 14);
- assert.equal(rails.length, 3);
- for (const rail of rails) {
-  assert.equal(rail[19], 0);
-  assert.ok(Math.abs(rail[5] - rail[13] / 2 + 30 / 64) < .00001);
-  assert.equal(rail[17], 1);
-  assert.equal(rail[16], 2);
-  assert.ok(!canStand(rail[4], rail[6]));
- }
- const caps = blocks.filter(e => e[19] === 248);
- assert.equal(caps.length, 4);
- assert.ok(caps.every(e => e[0] === 7 && Math.abs(e[13] - .12) < .00001));
-});
-
-test("shots stop at cover in either direction, while open lanes remain clear", () => {
+test("walls stop shots while the central corridor remains clear", () => {
 	const { clearShot } = level();
-	assert.ok(!clearShot(-6, -7, -6, -3));
-	assert.ok(!clearShot(-6, -3, -6, -7));
-	assert.ok(!clearShot(3, 5, 7, 5));
-	assert.ok(!clearShot(3, 3, 7, 7));
-	assert.ok(clearShot(-2, 0, 4, -1));
-	assert.ok(clearShot(-2, -7, -2, 5));
+	assert.ok(!clearShot(-2, 0, 12, 0), "the reactor bulkhead divides the spine");
+	assert.ok(!clearShot(-12, -10, -4, -10), "room dividers block side-to-side fire");
+	assert.ok(clearShot(-6, 0, 6, 0), "the long corridor has an open sightline");
 });
 
 test("collision follows live entity movement, resizing, solidity and deletion", () => {
 	const { block, blocks, canStand, clearShot } = level();
+	blocks.forEach(entity => entity[E.KIND] = 0);
 	block(0, -10, 2, 2, 2);
 	const box = blocks.at(-1);
 	assert.equal(canStand(0, -10), false);
@@ -142,6 +76,7 @@ test("collision follows live entity movement, resizing, solidity and deletion", 
 
 test("shots use the entity's actual bottom, and removed walls no longer constrain movement", () => {
 	const { block, blocks, canStand, shotFraction } = level();
+	blocks.forEach(entity => entity[E.KIND] = 0);
 	block(0, -10, 2, 1, 2, 0, 2);
 	assert.equal(shotFraction(-2, -10, 2, -10, 1, 1), 1);
 	assert.equal(shotFraction(-2, -10, 2, -10, 2.5, 2.5), .25);
