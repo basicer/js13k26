@@ -29,6 +29,16 @@ function runBytes(bytecode, parameter) {
 	return vm.runInContext(interpreter + "\nbuffers.get(runByteCode(bytecode, parameter))", context, { timeout: 1000 });
 }
 
+test("window bulkhead has transparent cyan glass and a continuous steel frame", () => {
+	const grid = run(readFileSync(new URL("../vox/wall-window.vp", import.meta.url), "utf8"));
+	const at = (x,y,z) => grid[((z*64+y)*64+x)*4];
+	for (let x=0; x<64; x++) {
+		for (const [y,z] of [[4,4],[32,32],[59,59]]) assert.equal(at(x,y,z),241);
+		for (const [y,z] of [[3,32],[60,32],[32,3],[32,60],[0,0],[63,63]]) assert.equal(at(x,y,z),179);
+	}
+	assert.equal(palette[241 * 4 + 3], 32);
+});
+
 test("wooden crate has steel edge bands, parallel inset boards, and one diagonal per face", () => {
 	const grid = run(readFileSync(new URL("../vox/wooden-crate.vp", import.meta.url), "utf8"));
 	assert.equal(grid.length, 32 ** 3 * 4);

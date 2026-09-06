@@ -2,8 +2,7 @@
 // Each face motif is extruded through the block, so cuts remain metallic.
 BOX FSTORE:BRUSH
 MAT_STEEL_2 FSTORE:MATERIAL
-0 0 0 VEC VSTORE:START
-63 63 63 VEC VSTORE:END
+VLOAD:CLIP_MAX VSTORE:END
 STROKE
 
 // Front and back: inset steel plate, perimeter bevel and service details.

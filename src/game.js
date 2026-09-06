@@ -2,16 +2,23 @@ import * as E from "./entities-const.js";
 import { heldKeys } from "./globals.js";
 import { cameraEntity, cameraRotation, spawn, EArray, setupEntities } from "./entities.js";
 import * as sound from "./sfx.js";
-import { canStand, moveActor, clearShot, shotFraction, entityShotFraction, setupLevel } from "./level.js";
+import { canStand, moveActor, clearShot, shotFraction, entityShotFraction, setupLevel, sections } from "./level.js";
 
-// Wall centers and yaw; keep the camera-side (-X) wall free of portals.
-const portalLocations = [
-	[3, -15, 0],
-	[15, 4, Math.PI / 2],
-	[6, 15, Math.PI],
-	[-7, -15, 0],
-	[7.5, 0, Math.PI / 2], // Camera-facing side of the interior pillar at (9, 0).
-];
+function placeActor(type, x, z, parent) {
+	if (type === 11) return spawnUnicorn(x, z);
+	const portal = spawn(12);
+	// Local +Z points out of the arch, toward its spawn area.
+	portal[E.SPOTLIGHT] = 2.1;
+	portal[E.LIGHT_ANGLE] = 2.772;
+	portal.set([x, 0.1875, z], E.POS);
+	portal[E.ROT_Y] = Math.PI / 2;
+	portal.set([3.6, 3, 0.45], E.SCALE);
+	portal[E.TILE_X] = portal[E.TILE_Y] = portal[E.TILE_Z] = 0;
+	portal[E.HEALTH] = portal[E.MAX_HEALTH] = 50;
+	portal[E.DISSOLVE_RATE] = .5;
+	portal[E.HIT_RADIUS] = 24.5 / 64;
+	portal[E.PARENT] = parent;
+}
 
 function spawnUnicorn(x, z) {
 	if (!canStand(x, z)) return false;
@@ -29,10 +36,10 @@ function spawnUnicorn(x, z) {
 	return true;
 }
 
-// Start with a herd; each surviving gate then spawns on its own age timer.
+// Surviving gates reinforce the placed defenders on their own age timers.
 function spawnFromPortal(entity) {
-	// Leave enough room for the unicorn's collision radius in front of the wall.
-	return spawnUnicorn(entity[E.POS_X] - Math.sin(entity[E.ROT_Y]), entity[E.POS_Z] + Math.cos(entity[E.ROT_Y]));
+	// All plan portals face -X; leave one unit of clearance from the wall.
+	return spawnUnicorn(entity[E.POS_X] - 1, entity[E.POS_Z]);
 }
 
 // Capacity, reload seconds, shot interval, pellet count.
@@ -47,26 +54,29 @@ let reloadCooldown, marineLegYaw, marineHealth, hurtCooldown;
 
 export function setupGame() {
 	setupEntities();
-	setupLevel();
+	setupLevel(placeActor);
 	heldKeys.clear();
 	player = spawn(1);
 	// Translation-only root: body aiming and death poses must not rotate the camera.
-	player[E.POS_X] = -2;
+	player[E.POS_X] = -11;
+	player[E.POS_Z] = -11;
 	player[E.WALK_STRIDE] = .65;
 	cameraEntity[E.PARENT] = player.id;
 
 	// Startup is paused, so the splash's lifetime begins with the first input.
 	const logo = spawn(13);
 	// Large, slightly reclined floor sculpture, matching the startup composition.
-	logo.set([-0.7, 0.894, 0], E.POS);
+	logo.set([-11.7, 0.894, -11], E.POS);
 	logo.set([-0.32, cameraRotation[1], 0], E.ROT);
 	logo.set([5.25, 5.25, 1.3], E.SCALE);
 	logo[E.TILE_X] = logo[E.TILE_Y] = logo[E.TILE_Z] = 0;
 	logo[E.TTL] = 0.1;
+	logo[E.PARENT] = sections[0].id;
 	const logoLight = spawn(1);
-	logoLight.set([-5, 2, 1], E.POS);
+	logoLight.set([-14, 2, -10], E.POS);
 	logoLight[E.SPOTLIGHT] = 8;
 	logoLight[E.TTL] = 0.1;
+	logoLight[E.PARENT] = sections[0].id;
 
 	player[E.DISSOLVE_PALETTE] = 255; // Dissolve into the procedural rainbow material.
 
@@ -101,21 +111,6 @@ export function setupGame() {
 	muzzleFlash[E.TRANSPARENCY] = 1;
 
 
-	for (const [x, z, yaw] of portalLocations) {
-		const portal = spawn(12);
-		// Local +Z points out of the arch, toward its spawn area.
-		portal[E.SPOTLIGHT] = 2.1;
-		portal[E.LIGHT_ANGLE] = 2.772;
-		portal.set([x, 0.1875, z], E.POS);
-		portal[E.ROT_Y] = yaw;
-		portal.set([3.6, 3, 0.45], E.SCALE);
-		portal[E.TILE_X] = portal[E.TILE_Y] = portal[E.TILE_Z] = 0;
-		portal[E.HEALTH] = portal[E.MAX_HEALTH] = 50;
-		portal[E.DISSOLVE_RATE] = .5;
-		portal[E.HIT_RADIUS] = 24.5 / 64;
-	}
-
-	for (const entity of EArray) if (entity[E.KIND] === 12) spawnFromPortal(entity);
 	selectedWeapon = 1; // Start with the existing rifle; number keys select 1-3.
 	for (const entry of weapons) entry[4] = entry[0];
 	weapon = weapons[selectedWeapon];
@@ -146,11 +141,12 @@ const wrapAngle = (angle) => Math.atan2(Math.sin(angle), Math.cos(angle));
 const marineFacing = (yaw) => [-Math.sin(yaw), Math.cos(yaw)];
 
 // Configurable bursts share emission, fading, gravity, and floor settling.
-function particleBurst(position, count, scale, materials, lifetime, velocity, spread, transparency = 0) {
+function particleBurst(position, count, scale, materials, lifetime, velocity, spread, transparency = 0, parent = player[E.PARENT]) {
 	for (let i = 0; i < count; i++) {
 		const entity = spawn(transparency > 0 ? 134 : 6);
 		if (!entity) return;
 		entity.set(position, E.POS);
+		entity[E.PARENT] = parent;
 		entity[E.TRANSPARENCY] = transparency;
 		entity[E.SCALE_X] = entity[E.SCALE_Y] = entity[E.SCALE_Z] = random(scale, scale * .6);
 		entity[E.TILE_X] = entity[E.TILE_Y] = entity[E.TILE_Z] = 0;
@@ -268,6 +264,7 @@ function firePellet(muzzleX, muzzleY, muzzleZ, forwardX, forwardZ, forwardY = 0)
 				],
 				E.POS,
 			);
+			tracer[E.PARENT] = player[E.PARENT];
 			tracer.set([0.035, 0.035, length], E.SCALE);
 			tracer[E.ROT_Y] = Math.atan2(-traceX, traceZ);
 			tracer[E.ROT_X] = -Math.asin(forwardY);
@@ -294,6 +291,7 @@ function firePellet(muzzleX, muzzleY, muzzleZ, forwardX, forwardZ, forwardY = 0)
 				const gun = spawn(11);
 				if (gun) {
 					gun.set([target[E.POS_X], target[E.POS_Y] - Math.abs(target[E.SCALE_Y]) / 2 + .085, target[E.POS_Z]], E.POS);
+					gun[E.PARENT] = target[E.PARENT];
 					gun.set([.17, .25, .56], E.SCALE);
 					gun[E.ROT_Z] = Math.PI / 2;
 					gun[E.TILE_X] = gun[E.TILE_Y] = gun[E.TILE_Z] = 1;
@@ -302,7 +300,7 @@ function firePellet(muzzleX, muzzleY, muzzleZ, forwardX, forwardZ, forwardY = 0)
 		}
 		return;
 	}
-	particleBurst(target.subarray(E.POS, E.POS + 3), 28, .06, [249], .9, [0, .7, 0], [2, .8, 2], .5);
+	particleBurst(target.subarray(E.POS, E.POS + 3), 28, .06, [249], .9, [0, .7, 0], [2, .8, 2], .5, target[E.PARENT]);
 	if (target[E.HEALTH] > 0) updateDamageDissolve(target, target[E.HEALTH], 4);
 	if (target[E.HEALTH] <= 0) {
 		// Roll onto the side, keeping the head-to-tail axis level.

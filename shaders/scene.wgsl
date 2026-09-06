@@ -47,17 +47,27 @@ fn vs_main(
 @group(1) @binding(0) var vox: texture_3d<f32>;
 @group(1) @binding(1) var vox1: texture_3d<f32>;
 
-fn voxel_at(cell: vec3<i32>, volume_size: vec3<i32>, grid_size: vec3<f32>, variant: bool) -> f32 {
+// Dissolved-to-air cells are empty for both traversal and ambient occlusion.
+// The ray keeps walking until it reaches a surviving interior face.
+fn voxel_at(cell: vec3<i32>, volume_size: vec3<i32>, grid_size: vec3<f32>, entity_id: u32) -> f32 {
     if (any(cell < vec3<i32>(0)) || any(vec3<f32>(cell) >= grid_size)) { return 0.0f; }
-    if (variant) { return textureLoad(vox1, cell % volume_size, 0).x; }
-    return textureLoad(vox, cell % volume_size, 0).x;
+    let e = entities[entity_id];
+    var material: f32;
+    if (e.modelVariant >= 0.5f) { material = textureLoad(vox1, cell % volume_size, 0).x; }
+    else { material = textureLoad(vox, cell % volume_size, 0).x; }
+    if (material == 0.0f) { return 0.0f; }
+    // Stable 4x4x4 chunks either become air or take the replacement palette.
+    if (e.dissolve > 0.0f && dissolve_noise(vec3<u32>(cell) / vec3<u32>(4u), entity_id) < clamp(e.dissolve, 0.0f, 1.0f)) {
+        return clamp(e.dissolvePalette, 0.0f, 255.0f);
+    }
+    return select(material, e.matOverride, e.matOverride > 0.0f);
 }
 
 fn voxel_cell(position: vec3<f32>, grid_size: vec3<f32>) -> vec3<i32> {
     return clamp(vec3<i32>(floor(position)), vec3<i32>(0), vec3<i32>(ceil(grid_size)) - vec3<i32>(1));
 }
 
-fn voxel_search(ray_origin: vec3<f32>, ray_direction: vec3<f32>, volume_size: vec3<i32>, grid_size: vec3<f32>, variant: bool) -> VoxelHit {
+fn voxel_search(ray_origin: vec3<f32>, ray_direction: vec3<f32>, volume_size: vec3<i32>, grid_size: vec3<f32>, entity_id: u32) -> VoxelHit {
     let safe_direction = select(ray_direction, vec3<f32>(0.000001f), abs(ray_direction) < vec3<f32>(0.000001f));
     let inverse_direction = 1.0f / safe_direction;
     let first_bounds = -ray_origin * inverse_direction;
@@ -80,7 +90,7 @@ fn voxel_search(ray_origin: vec3<f32>, ray_direction: vec3<f32>, volume_size: ve
     var normal = vec3<f32>(0.0f);
     normal[entry_axis] = -f32(step[entry_axis]);
     for (var step_count = 0u; step_count < u32(ceil(grid_size.x) + ceil(grid_size.y) + ceil(grid_size.z)); step_count++) {
-        let material = voxel_at(cell, volume_size, grid_size, variant);
+        let material = voxel_at(cell, volume_size, grid_size, entity_id);
         if (material > 0.0f) {
             // Preserve the original hit-position epsilon and cell rounding for AO/dissolve.
             let position = (ray_origin + ray_direction * (distance + 0.0001f)) * grid_size;
@@ -109,7 +119,6 @@ fn dissolve_noise(chunk: vec3<u32>, entity_id: u32) -> f32 {
 @fragment
 fn fs_main(in: VertexOutput) -> FragmentOutput {
     let e = entities[in.idx];
-    let variant = e.modelVariant >= 0.5f;
     if (e.dissolve >= 1.0f && e.dissolvePalette <= 0.0f) { discard; }
     let camera_transform = world_transform(0u);
     let camera_position = camera_transform[3].xyz;
@@ -135,26 +144,23 @@ fn fs_main(in: VertexOutput) -> FragmentOutput {
         scale * 64.0f / vec3<f32>(volume_size),
         e.tile == vec3<f32>(-2.0f),
     );
-    let hit = voxel_search(inverse_entity_transform * (camera_position - entity_transform[3].xyz) + vec3<f32>(0.5f), inverse_entity_transform * world_ray, volume_size, grid_size, variant);
+    let hit = voxel_search(inverse_entity_transform * (camera_position - entity_transform[3].xyz) + vec3<f32>(0.5f), inverse_entity_transform * world_ray, volume_size, grid_size, in.idx);
     if (hit.material == 0.0f) { discard; }
     let voxel_position = hit.position;
     let cell = hit.cell;
-    // The same 4x4x4 mask either removes chunks or replaces their material.
-    let dissolved = e.dissolve > 0.0f && dissolve_noise(vec3<u32>(cell) / vec3<u32>(4u), in.idx) < clamp(e.dissolve, 0.0f, 1.0f);
-    if (dissolved && e.dissolvePalette <= 0.0f) { discard; }
     let normal = vec3<i32>(hit.normal);
     let corner = select(vec3<i32>(-1), vec3<i32>(1), fract(voxel_position) > vec3<f32>(0.5f));
     let side_a = select(vec3<i32>(1, 0, 0), vec3<i32>(0, 1, 0), normal.x != 0) * corner;
     let side_b = select(vec3<i32>(0, 1, 0), vec3<i32>(0, 0, 1), normal.z == 0) * corner;
     let outside = cell + normal;
     var ao = 1.0f - 0.18f * (
-        min(voxel_at(outside + side_a, volume_size, grid_size, variant), 1.0f) +
-        min(voxel_at(outside + side_b, volume_size, grid_size, variant), 1.0f) +
-        min(voxel_at(outside + side_a + side_b, volume_size, grid_size, variant), 1.0f)
+        min(voxel_at(outside + side_a, volume_size, grid_size, in.idx), 1.0f) +
+        min(voxel_at(outside + side_b, volume_size, grid_size, in.idx), 1.0f) +
+        min(voxel_at(outside + side_a + side_b, volume_size, grid_size, in.idx), 1.0f)
     );
     
 
-    let material = select(select(hit.material, e.matOverride, e.matOverride > 0.0f), clamp(e.dissolvePalette, 0.0f, 255.0f), dissolved);
+    let material = hit.material;
     var color = textureLoad(palette, vec2<u32>(u32(material), 0));
     if (material == 255.0f) {
         // Warp model-space bands into flowing marble; simulation time pauses with the game.
@@ -169,7 +175,8 @@ fn fs_main(in: VertexOutput) -> FragmentOutput {
     let view_depth = hit.distance * dot(world_ray, camera_direction);
     return FragmentOutput(
         vec4<f32>(shade_surface(color.rgb, normalize(transpose(inverse_entity_transform) * hit.normal), -world_ray, surface.g, surface.r, hit_position, ao) + color.rgb * surface.b * 4.0f, select(1.0f, color.a * (1.0f - clamp(e.transparency, 0.0f, 1.0f)), e.kind >= 128.0f)),
-        vec2<u32>(in.idx, u32(clamp((hit_position.x + 32.0f) * 1024.0f, 0.0f, 65535.0f)) + u32(clamp((hit_position.z + 32.0f) * 1024.0f, 0.0f, 65535.0f)) * 65536u),
+        // 128-unit centered cursor range at 1/256 precision; high bit of each lane is unused.
+        vec2<u32>(in.idx, u32(clamp((hit_position.x + 64.0f) * 256.0f, 0.0f, 32767.0f)) + u32(clamp((hit_position.z + 64.0f) * 256.0f, 0.0f, 32767.0f)) * 65536u),
         clip_depth(view_depth) / view_depth,
     );
 }

@@ -2,13 +2,19 @@ import * as E from "./entities-const.js";
 import { spawn, EArray } from "./entities.js";
 
 const ground = -30 / 64;
-// Four printable bytes per bulkhead: x + 16, z + 16, width, depth.
-// This is an eight-room station around a long, cross-shaped service corridor.
-const plan = "0@1PO@1P@0P1@OP14=51<=51D=51L=514C51<C51DC51LC51861;@61;H61;8J1;@J1;HJ1;";
+// Typed rectangles: 0 wall / 1 window / 8 floor + x,z,width,depth; other types carry x,z only.
+// 9 creates the next section: start, hallway, cargo, elevator, boss (no fields).
+// : portal facing -X, ; unicorn; place these after their section scenery.
+// 6 rail (+Z), 2 crate, 3 pylon, 4 reactor, 5 console, 7 light.
+// Start (-11,-11) → bent hall (-3,-9) → cargo (0,0) → lift (8,2) → boss (9,10).
+// Shared bulkheads seal the perimeter; every threshold has 3+ units of clearance.
+const plan = "985588015180518105981092120981223724775598<5648=9440<3610?7180:7211;9147=9;=:98@@::1;@1:0B;610?E810E=140ED122=?2>?2BB2CB2BC3A>7@B:D=;=B;C=;B@98HB660H?610KB165JA7HB98IJ<:0EE411CJ1:0IO<10OJ1:0ME413FI3LI4IM7IG7IL:NG:NL;FG;LG;FL;LL";
 
-function block(x, z, width, height, depth, material = 0, bottom = ground, solid = true) {
+// Section roots only translate vertically; child X/Z remain in map coordinates.
+export const sections = [];
+function block(x, z, width, height, depth, bottom = ground) {
+	// Level construction runs immediately after the entity pool is reset.
 	const entity = spawn(7);
-	if (!entity) return;
 	entity.set([x, bottom + height / 2, z], E.POS);
 	entity.set([width, height, depth], E.SCALE);
 	// Whole panels meet both ends of every block; approximately two world units each.
@@ -16,33 +22,49 @@ function block(x, z, width, height, depth, material = 0, bottom = ground, solid 
 		[width, height, depth].map((size) => Math.max(1, Math.round(size / 2))),
 		E.TILE,
 	);
-	entity[E.MAT_OVERRIDE] = material;
-	entity[E.SOLID] = Number(solid);
+	entity[E.SOLID] = 1;
 	return entity;
 }
 
-export function setupLevel() {
-	for (let i = 0; i < plan.length;) {
-		block(plan.charCodeAt(i++) - 64, plan.charCodeAt(i++) - 64, plan.charCodeAt(i++) - 48, 2.8, plan.charCodeAt(i++) - 48);
+export function setupLevel(place) {
+	sections.length = 0;
+	let parent = 0, i = 0;
+	const read = () => plan.charCodeAt(i++) - 48;
+	while (i < plan.length) {
+		const type = read();
+		if (type === 9) {
+			const section = spawn(1);
+			sections.push(section);
+			parent = section.id;
+			continue;
+		}
+		const x = read() - 16, z = read() - 16;
+		if (type > 9) { place(type, x, z, parent); continue; }
+		const sizes = [[0,2.8,0],[0,2.8,0],[.75,.75,.75],[1.5,2.8,1.5],[2.5,2.8,3.6],[1,1,1],[6,1,.2],[.1,.1,.1],[0,4/64,0]][type];
+		if (type < 2 || type === 8) { sizes[0] = read(); sizes[2] = read(); }
+		const entity = block(x, z, ...sizes);
+		entity[E.KIND] = [7,145,16,7,7,15,14,6,5][type];
+		if (type === 2) { entity[E.HEALTH] = entity[E.MAX_HEALTH] = 4; entity[E.DISSOLVE_RATE] = .5; }
+		if (type === 5) { entity[E.POS_X] += .25; entity[E.POS_Z] -= .4; entity[E.POS_Y] = .6; }
+		if (type === 5 || type === 6) entity[E.ROT_Y] = Math.PI / 2;
+		if (type > 6) {
+			entity[E.POS_Y] = type === 7 ? 2 : -.5;
+			entity[E.SOLID] = 0;
+		}
+		if (type === 7) entity[E.SPOTLIGHT] = 3.5;
+		if (type === 5 || type > 6) entity.fill(type === 8 ? -2 : 0, E.TILE, E.TILE + 3);
+		entity[E.PARENT] = parent;
 	}
-	// Set dressing uses the same printable coordinate offset as the structural plan.
-	for (const z of "6@F") block(-12, z.charCodeAt() - 64, 4, 1, .2)[E.KIND] = 14;
-	for (let i = 0, crates = "=A8EH8LG"; i < crates.length;) {
-		const crate = block(crates.charCodeAt(i++) - 64, crates.charCodeAt(i++) - 64, .75, .75, .75);
-		crate[E.KIND] = 16; crate[E.HEALTH] = crate[E.MAX_HEALTH] = 4; crate[E.DISSOLVE_RATE] = .5;
-	}
-	for (let i = 0, pylons = "46<6DJLJ"; i < pylons.length;) block(pylons.charCodeAt(i++) - 64, pylons.charCodeAt(i++) - 64, 1.5, 2.8, 1.5);
-	// Reactor shroud: a deep pillar behind the central portal, not a featureless divider.
-	block(9, 0, 2.5, 2.8, 3.6);
 }
 
 export function canStand(x, z, radius = 0.45) {
 	return !EArray.some(
-		(entity) =>
-			entity[E.KIND] &&
-			entity[E.SOLID] &&
-			Math.abs(x - entity[E.POS_X]) < Math.abs(entity[E.SCALE_X]) / 2 + radius &&
-			Math.abs(z - entity[E.POS_Z]) < Math.abs(entity[E.SCALE_Z]) / 2 + radius,
+		(entity) => {
+			const dx = x - entity[E.POS_X], dz = z - entity[E.POS_Z], c = Math.cos(entity[E.ROT_Y]), s = Math.sin(entity[E.ROT_Y]);
+			return entity[E.KIND] && entity[E.SOLID] &&
+				Math.abs(dx * c + dz * s) < Math.abs(entity[E.SCALE_X]) / 2 + radius &&
+				Math.abs(dz * c - dx * s) < Math.abs(entity[E.SCALE_Z]) / 2 + radius;
+		},
 	);
 }
 
@@ -65,7 +87,7 @@ export function clearShot(x, z, targetX, targetZ) {
 }
 
 // The segment parameter is preserved through inverse rotation and scale.
-// Gameplay colliders are independent world entities, not articulated render parts.
+// Gameplay uses map-local colliders; visual section offsets do not affect hits.
 export function entityShotFraction(entity, origin, direction) {
 	if (!entity[E.SCALE_X] || !entity[E.SCALE_Y] || !entity[E.SCALE_Z]) return 1;
 	const rays = [origin.map((n, i) => n - entity[E.POS + i]), [...direction]];

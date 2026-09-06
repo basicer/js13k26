@@ -15,8 +15,8 @@ occupy the entity's local box and, when `HIT_RADIUS > 0`, its local sphere at
 the same segment parameter. `HIT_CENTER_Y` offsets that sphere vertically.
 The fields use lanes 29 and 30; the entity stride remains 32. Rotation and
 nonuniform scale are applied to the ray, so a scaled sphere becomes a world
-ellipsoid. Current gameplay colliders are unparented; articulated render parts
-do not participate. Solid scenery, the floor, and living damageable targets
+ellipsoid. Gameplay colliders ignore visual section offsets;
+articulated render parts do not participate. Solid scenery, the floor, and living damageable targets
 share the intersection routine. Radius zero means box-only, not disabled.
 Movement and voxel picking are independent. Single-shot aim forgiveness and
 the portal-specific arch/front-face test have been removed.
@@ -28,11 +28,45 @@ an unchanged repack to reproduce the release ZIP exactly.
 `node scripts/packing-benchmark.mjs` compares Roadroller configurations without
 changing the production artifact. Both scripts use scratch files outside `dist`.
 
+`npm run layout:preview` decodes the typed `plan` in `src/level.js` and writes
+`reports/level-layout.svg`: a top-down guide showing bulkheads, set dressing,
+and the intended route. Run it before changing level records to visually check
+the layout without launching the game.
 
-## Inspecting the production bundle without Roadroller
+The route is Start (-11,-11) → bent hallway (-3,-9) → Cargo (0,0) →
+Elevator (8,2) → Boss Room (9,10). Cargo has destructible crate clusters
+and a sightline-breaking pylon; the final arena has two flank pylons and a
+rear reactor. The elevator is a static staging chamber with a console.
+Room geometry, dressing, portals and initial unicorns live in the packed string.
+Keep the preview route and labels aligned when editing.
+Type 8 records encode floor rectangles with the same x,z,width,depth fields
+as walls. Six floor rectangles cover the rooms and bent hallway; exterior space has
+no floor. The start room has the G&G splash and no enemy portal.
+Type 1 uses those same rectangle fields for `wall-window.vp` (transparent kind 145, model 17),
+replacing the unused horizontal-rail record. The cyan glass window faces local X;
+use it on walls running along Z. Window walls retain the original map collider.
+`node --test scripts/level.test.js` checks traversal in both directions,
+sealed boundaries, mandatory thresholds, and clear gate spawn positions.
 
-Run `npm run build:unpacked` to emit `dist-unpacked/index.html` with the Closure-optimized game directly in its inline script. Shader minification, model assembly, and production feature stripping remain enabled. ECT/advzip also produce `dist-unpacked/index.zip`; this inspection build reports its size without enforcing the 13 KiB release limit. Normal `npm run build` still uses Roadroller and enforces the limit, and its `dist` output is preserved by inspection builds.
+Type 9 is a single-character marker that creates the next parent section:
+0 Start, 1 Hallway, 2 Cargo, 3 Elevator,
+4 Boss Room. `sections` exported from `src/level.js` holds the five invisible
+kind-1 roots. Every placed floor, wall, prop, light and portal is a child.
+Unicorns and the marine root remain unparented, including gate-spawned unicorns. Articulated
+models and the camera keep their existing hierarchy beneath the actor.
+Records `:` (type 10) and `;` (type 11) place a portal facing -X and a unicorn.
+Put each section's scenery first, then its portals and unicorns, before the
+next section marker. Scenery and portals inherit the most recently created section;
+there is no spatial lookup. The game supplies the actor factory to `setupLevel`.
 
-Alternatively set `ROADROLLER=0` when invoking the production build (PowerShell: `$env:ROADROLLER="0"; npm run build`; clear it afterward with `Remove-Item Env:ROADROLLER`). This also writes to `dist-unpacked`.
+Section roots currently support **vertical translation only**: leave X/Z,
+rotation and scale unchanged. Raise Cargo with `sections[2][E.POS_Y] = height`
+and Boss Room with `sections[4][E.POS_Y] = height`. The unparented actors
+stay on their original plane. All heights start at
+zero; this change does not trigger or animate the elevator sequence.
+The shared Cargo/Boss bulkhead is split so each piece follows its own room.
 
-Raw sizes in the inline script show how much generated code each section contributes. They are not additive contributions to the compressed ZIP: shared dictionaries and Roadroller change the cost of each section.
+Section height is visual only. Gameplay collision, shooting, spawning and AI
+use the original map-local coordinates and do not inspect section height.
+Actors remain unparented as they move. Drops and effects inherit their source's parent;
+gravity also stays local. The SVG uses distinct floor colors for ownership.

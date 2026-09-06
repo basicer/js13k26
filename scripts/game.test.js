@@ -65,6 +65,43 @@ function game() {
 	return { run, touch, sounds, timers };
 }
 
+test("start room contains the splash and no enemy gate", () => {
+	const { run } = game();
+	assert.equal(run("getPortals().length"), 3);
+	assert.equal(run("getPortals().some(e => e[E.POS_X] < -7 && e[E.POS_Z] < -7)"), false);
+	assert.equal(run("EArray.some(e => e[E.KIND] === 13 && e[E.POS_X] < -7 && e[E.POS_X] > -15 && e[E.POS_Z] === -11)"), true);
+	assert.equal(run("EArray.some(e => e[E.KIND] === 6 && e[E.SCALE_X] === 1 && e[E.SPOTLIGHT] > 0)"), false);
+});
+
+test("initial defenders spawn at every authored position with clear footing", () => {
+	const { run } = game();
+	assert.equal(run("initialUnicorns"), 8);
+	run("setupGame();");
+	assert.equal(run("getUnicorns().length"), 8);
+	assert.equal(run("getUnicorns().every(e => canStand(e[E.POS_X],e[E.POS_Z]) && e[E.PARENT] === 0)"), true);
+	assert.equal(run("getPortals().every(e => Math.sin(e[E.ROT_Y]) > .99 && canStand(e[E.POS_X]-1,e[E.POS_Z]))"), true);
+});
+
+test("sections move rendering while combat and effects keep map-local coordinates", () => {
+	const { run } = game();
+	run("setupGame(); player.set([8,0,2], E.POS); sections[2][E.POS_Y] = sections[4][E.POS_Y] = 8;");
+	let entities = run("EArray");
+	assert.equal(run("player[E.PARENT]"),0);
+	assert.equal(worldPoint(entities,run("player"),[0,0,0])[1],0);
+	for (const enemy of run("getUnicorns()")) assert.equal(worldPoint(entities,enemy,[0,0,0])[1],0);
+	for (const gate of run("getPortals()")) assert.equal(worldPoint(entities,gate,[0,0,0])[1],gate[E.POS_Y]+8);
+	run("globalThis.gate = getPortals()[0]; spawnFromPortal(gate);");
+	assert.equal(run("getUnicorns().at(-1)[E.PARENT]"),0);
+	assert.equal(run("getUnicorns().at(-1)[E.POS_Y]"),0);
+	run("globalThis.crate = EArray.find(e => e[E.KIND] === 16 && e[E.PARENT] === sections[2].id); crate[E.HEALTH] = 1; firePellet(crate[E.POS_X],.1,crate[E.POS_Z]-1,0,1);");
+	assert.equal(run("EArray.some(e => e[E.KIND] === 11 && e[E.PARENT] === sections[2].id)"),true);
+	run("particleBurst([0,0,1],1,.1,[249],1,[0,0,0],[0,0,0],0,sections[2].id);");
+	assert.equal(run("effects().at(-1)[E.POS_Y]"),0);
+	assert.equal(worldPoint(entities,run("effects().at(-1)"),[0,0,0])[1],8);
+	run("setupGame();");
+	assert.equal(run("sections.every(e => e[E.POS_Y] === 0)"),true);
+});
+
 test("only a fatal hit schedules one restart after five seconds", () => {
 	const { run, touch, timers } = game();
 	touch();
@@ -159,7 +196,7 @@ test("wall portals face inward and spawn the initial herd and replacements clear
 	assert.equal(run("EArray.filter(e => e[0] === 2).every(e => canStand(e[4], e[6]))"), true);
 	run("getUnicorns().forEach(e => e[0] = 0); getPortals()[0][27] = 26; updateGame(0);");
 	assert.equal(run("getUnicorns().length"), 1);
-	assert.equal(run("portalLocations.some(([x, z, yaw]) => Math.abs(getUnicorns()[0][4] - (x - Math.sin(yaw))) < 0.00001 && Math.abs(getUnicorns()[0][6] - (z + Math.cos(yaw))) < 0.00001)"), true);
+	assert.equal(run("getPortals().map(e => [e[E.POS_X],e[E.POS_Z],e[E.ROT_Y]]).some(([x, z, yaw]) => Math.abs(getUnicorns()[0][4] - (x - Math.sin(yaw))) < 0.00001 && Math.abs(getUnicorns()[0][6] - (z + Math.cos(yaw))) < 0.00001)"), true);
 	assert.equal(run("canStand(getUnicorns()[0][4], getUnicorns()[0][6])"), true);
 });
 
@@ -779,8 +816,9 @@ test("floor uses the same box intersection and dead targets or effects do not in
 
 test("crates drop one marine gun on the fatal hit while the crate finishes dissolving", () => {
 	const { run } = game();
+	const crateCount = run("EArray.filter(e => e[E.KIND] === 16).length");
 	run(`getUnicorns().forEach(e => e[0] = 0);
-		globalThis.crate = EArray.find(e => e[E.KIND] === 16);
+		globalThis.crate = EArray.find(e => e[E.KIND] === 16); globalThis.crateParent = crate[E.PARENT];
 		player[E.POS_X] = crate[E.POS_X]; player[E.POS_Z] = crate[E.POS_Z] - 1;
 		globalThis.shootCrate = () => firePellet(player[E.POS_X], .1, player[E.POS_Z], 0, 1);`);
 	assert.equal(run("EArray.filter(e => e[E.KIND] === 16).every(e => e[E.HEALTH] === 4 && e[E.DISSOLVE_PALETTE] === 0)"), true);
@@ -795,14 +833,14 @@ test("crates drop one marine gun on the fatal hit while the crate finishes disso
 	run("globalThis.position = Array.from(crate.subarray(E.POS, E.POS + 3)); shootCrate();");
 	assert.equal(run("crate[E.HEALTH]"), 0);
 	assert.equal(run("crate[E.KIND]"), 16, "the model remains during collapse");
-	run("globalThis.droppedGun = EArray.find(e => e[E.KIND] === 11 && !e[E.PARENT]);");
+	run("globalThis.droppedGun = EArray.find(e => e[E.KIND] === 11 && e[E.PARENT] === crateParent);");
 	assert.equal(run("!!droppedGun && droppedGun !== crate"), true, "gun exists immediately, before advancing the dissolve");
 	assert.equal(run("droppedGun[E.POS_X] === position[0] && droppedGun[E.POS_Z] === position[2]"), true);
 	assert.ok(Math.abs(run("droppedGun[E.POS_Y] - droppedGun[E.SCALE_X] / 2") - (-30/64)) < 1e-6, "gun lies on its side at the droppedGun base");
 	assert.deepEqual(Array.from(run("droppedGun.subarray(E.SCALE,E.SCALE+3)")), Array.from(new Float32Array([.17,.25,.56])));
 	assert.deepEqual(Array.from(run("droppedGun.subarray(E.TILE,E.TILE+3)")), [1,1,1], "whole gun model, no tiling");
 	assert.ok(Math.abs(run("droppedGun[E.ROT_Z]") - Math.PI/2) < 1e-6);
-	for (const slot of [E.HEALTH,E.SOLID,E.DISSOLVE,E.DISSOLVE_PALETTE,E.PARENT,E.SPOTLIGHT,E.TTL])
+	for (const slot of [E.HEALTH,E.SOLID,E.DISSOLVE,E.DISSOLVE_PALETTE,E.SPOTLIGHT,E.TTL])
 		assert.equal(run(`droppedGun[${slot}]`), 0, "drop has no droppedGun damage, collision, parent, or weapon light");
 	run("globalThis.drop = Array.from(droppedGun);");
 	assert.equal(run("canStand(...[position[0],position[2]])"), true, "no invisible movement obstacle after destruction");
@@ -815,8 +853,8 @@ test("crates drop one marine gun on the fatal hit while the crate finishes disso
 	assert.equal(run("crate.every(n => n === 0)"), true, "crate slot clears after collapse");
 	run("shootCrate(); updateGame(10, true); updateEntities(10);");
 	assert.deepEqual(Array.from(run("droppedGun")).filter((_, i) => i !== E.AGE), Array.from(run("drop")).filter((_, i) => i !== E.AGE), "gun persists through crate cleanup");
-	assert.equal(run("EArray.filter(e => e[E.KIND] === 11 && !e[E.PARENT]).length"), 1, "no second drop after collapse");
-	assert.equal(run("EArray.filter(e => e[E.KIND] === 16).length"), 3, "other crates stay intact");
+	assert.equal(run("EArray.filter(e => e[E.KIND] === 11 && e[E.PARENT] === crateParent).length"), 1, "no second drop after collapse");
+	assert.equal(run("EArray.filter(e => e[E.KIND] === 16).length"), crateCount - 1, "other crates stay intact");
 });
 
 test("crate cover protects a target until the fatal pellet; subsequent pellets pass through", () => {

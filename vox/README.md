@@ -1,5 +1,10 @@
 # Voxel assembly branches
 
+`wall-window.vp` is a simple 64³ steel frame, model 17 (transparent entity kind 145). A cyan glass window
+runs through X at Y=4–59 and Z=4–59, retaining a sill, lintel and side posts.
+The level uses it on camera-side hallway, cargo and boss-room walls. This is
+a transparent infill; existing wall movement and shot colliders remain intact.
+
 `wooden-crate.vp` is a layered 32³ wooden shipping crate, entity kind 16. Parallel boards
 sit one voxel behind two-voxel steel edge bands and one narrow steel diagonal strap per
 face. Small raised steel rivets fasten both ends of each board. Narrow plank joints reveal dark backing one voxel deeper. Four separate

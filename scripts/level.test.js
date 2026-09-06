@@ -9,6 +9,7 @@ function level() {
 	const context = vm.createContext({ E, EArray: blocks,
 		spawn: kind => {
 			const entity = new Float32Array(E.STRIDE);
+			entity.id = blocks.length + 1;
 			entity[0] = kind;
 			entity[12] = entity[13] = entity[14] = 1;
 			blocks.push(entity);
@@ -17,41 +18,108 @@ function level() {
 	});
 	vm.runInContext(readFileSync(new URL("../src/level.js", import.meta.url), "utf8")
 		.replace(/^import .*;\r?\n/gm, "").replaceAll("export ", ""), context);
-	context.setupLevel();
-	return { ...context, blocks };
+	const placements = [];
+	context.setupLevel((type,x,z,parent) => placements.push({type,x,z,parent}));
+	return { ...context, blocks, placements, sections: vm.runInContext("sections", context) };
 }
 
-test("compact plan expands into an enclosed station with a cross-corridor", () => {
-	const { blocks, canStand } = level();
-	assert.equal(blocks.length, 30);
-	const walls = blocks.filter(e => e[E.KIND] === 7);
-	assert.equal(walls.length, 23);
-	for (const wall of walls) {
-		assert.ok(Math.abs(wall[E.SCALE_Y] - 2.8) < 1e-6);
-		for (const repeat of wall.subarray(E.TILE, E.TILE + 3)) assert.ok(Number.isInteger(repeat) && repeat >= 1);
+const route = [[-11,-11],[-3,-11],[-3,-4],[-1,-3],[0,1],[8,1],[9,3],[9,7],[9,10]];
+
+test("camera-side window walls preserve the room barriers and section parents", () => {
+	const { blocks, sections, canStand } = level();
+	const windows = blocks.filter(e => e[E.KIND] === 145);
+	assert.equal(windows.length,3);
+	for (const [x,z,section] of [[-5,-7,1],[-5,0,2],[3,10,4]]) {
+		const wall = windows.find(e => e[E.POS_X] === x && e[E.POS_Z] === z);
+		assert.equal(wall[E.PARENT],sections[section].id);
+		assert.equal(wall[E.SOLID],1);
+		assert.equal(canStand(x,z),false);
 	}
-	for (const [x, z] of [[-2, 0], [-8, -2], [0, 2], [14, 0]]) assert.ok(canStand(x, z));
-	for (const [x, z] of [[15, 0], [0, 15], [8, 0], [-8, -10]]) assert.ok(!canStand(x, z));
-	assert.equal(blocks.filter(e => e[E.KIND] === 16).length, 4);
-	assert.equal(blocks.filter(e => e[E.KIND] === 14).length, 3);
 });
 
-test("rooms stay separated but corridor doors are traversable", () => {
-	const { moveActor } = level();
-	const actor = new Float32Array(E.STRIDE);
-	actor[E.POS_X] = -9;
-	actor[E.POS_Z] = -1;
-	moveActor(actor, 0, -12);
-	assert.ok(actor[E.POS_Z] < -5, "the service door opens into the lower rooms");
-	moveActor(actor, -100, 0);
-	assert.ok(actor[E.POS_X] > -15.6, "the exterior bulkhead still contains actors");
+test("the entire route is walkable with actor clearance in both directions", () => {
+	const { moveActor, canStand, blocks } = level();
+	for (const points of [route, [...route].reverse()]) {
+		const actor = new Float32Array(E.STRIDE);
+		actor[E.POS_X] = points[0][0]; actor[E.POS_Z] = points[0][1];
+		for (const [x,z] of points.slice(1)) {
+			moveActor(actor, x-actor[E.POS_X], z-actor[E.POS_Z]);
+			assert.ok(Math.hypot(actor[E.POS_X]-x, actor[E.POS_Z]-z) < .01, "blocked route at " + [x,z]);
+		}
+	}
+	for (const [x,z] of route) assert.ok(canStand(x,z,.65), "room for actors at " + [x,z]);
+	for (const wall of blocks.filter(e => e[E.KIND] === 7)) {
+		assert.ok(Math.abs(wall[E.SCALE_Y] - 2.8) < 1e-6);
+		for (const repeat of wall.subarray(E.TILE,E.TILE+3)) assert.ok(Number.isInteger(repeat) && repeat >= 1);
+	}
 });
 
-test("walls stop shots while the central corridor remains clear", () => {
-	const { clearShot } = level();
-	assert.ok(!clearShot(-2, 0, 12, 0), "the reactor bulkhead divides the spine");
-	assert.ok(!clearShot(-12, -10, -4, -10), "room dividers block side-to-side fire");
-	assert.ok(clearShot(-6, 0, 6, 0), "the long corridor has an open sightline");
+test("the perimeter is sealed and all four thresholds are mandatory", () => {
+	const { canStand, blocks } = level();
+	const floors = blocks.filter(e => e[E.KIND] === 5);
+	// Flood at half-unit spacing with the same collision radius as gameplay.
+	const flood = (sealed = () => false) => {
+		const visited = new Set(), queue = [[-22,-22]];
+		for (let i=0; i<queue.length; i++) {
+			const [x,z] = queue[i], key = x+","+z;
+			if (visited.has(key) || sealed(x/2,z/2) || !canStand(x/2,z/2)) continue;
+			assert.ok(Math.abs(x)<32 && Math.abs(z)<32, "route leaks outside the floor at " + key);
+			assert.ok(floors.some(e => Math.abs(x/2-e[E.POS_X]) <= e[E.SCALE_X]/2 && Math.abs(z/2-e[E.POS_Z]) <= e[E.SCALE_Z]/2), "missing floor at " + key);
+			visited.add(key);
+			queue.push([x+1,z],[x-1,z],[x,z+1],[x,z-1]);
+		}
+		return visited;
+	};
+	const connected = flood();
+	for (const [x,z] of route) assert.ok(connected.has(x*2+","+z*2));
+	for (const seal of [
+		(x,z) => x === -7 && z >= -13 && z <= -9,
+		(x,z) => z === -5 && x >= -5 && x <= -1,
+		(x,z) => x === 5 && z >= -1 && z <= 3,
+		(x,z) => z === 5 && x >= 7 && x <= 11,
+	]) assert.ok(!flood(seal).has("18,20"), "a threshold can be bypassed");
+});
+
+test("packed floor sections stop downward shots without covering exterior space", () => {
+	const { blocks, shotFraction } = level();
+	const floors = blocks.filter(e => e[E.KIND] === 5);
+	assert.equal(floors.length, 6);
+	for (const floor of floors) {
+		assert.equal(floor[E.SOLID], 0);
+		assert.equal(floor[E.POS_Y] + floor[E.SCALE_Y]/2, -30/64);
+	}
+	assert.ok(shotFraction(-11,-11,-11,-11,1,-1) < 1);
+	assert.equal(shotFraction(-11,0,-11,0,1,-1), 1, "empty space has no floor");
+});
+
+test("bulkheads break long sightlines and gate spawn points are clear", () => {
+	const { clearShot, canStand, placements } = level();
+	assert.ok(!clearShot(-11,-11,-16,-11));
+	assert.ok(!clearShot(-11,-11,0,1), "the bent hall conceals cargo");
+	assert.ok(!clearShot(0,1,9,10), "the lift conceals the boss arena");
+	assert.ok(clearShot(-3,-11,-3,-4));
+	for (const {x,z} of placements.filter(e => e.type === 10)) assert.ok(canStand(x-1,z), "blocked gate at " + [x,z]);
+});
+
+test("section height is visual and leaves hit tests and movement unchanged", () => {
+	const { sections, blocks, canStand, shotFraction, spawn, moveActor } = level();
+	assert.equal(sections.length,5);
+	assert.ok(blocks.filter(e => e[E.KIND] !== 1).every(e => sections.some(s => s.id === e[E.PARENT])));
+	const hit = shotFraction(3,-3,6,-3,.5);
+	assert.ok(hit < 1);
+	const actor = spawn(1);
+	actor[E.POS_X] = 0; actor[E.POS_Z] = 1;
+	actor[E.PARENT] = sections[2].id;
+	sections[2][E.POS_Y] = sections[4][E.POS_Y] = 8;
+	assert.equal(canStand(5,-3),false,"raised walls keep the original map collider");
+	assert.equal(shotFraction(3,-3,6,-3,.5),hit);
+	assert.equal(shotFraction(3,-3,6,-3,8.5),1,"visual height is not added to the hit test");
+	moveActor(actor,8,0);
+	assert.equal(actor[E.PARENT],sections[2].id,"movement keeps the originally assigned section");
+	assert.equal(actor[E.POS_Y],0);
+	moveActor(actor,-8,0);
+	assert.equal(actor[E.PARENT],sections[2].id,"visual height does not block a threshold");
+	assert.equal(actor[E.POS_Y],0);
 });
 
 test("collision follows live entity movement, resizing, solidity and deletion", () => {
@@ -77,7 +145,7 @@ test("collision follows live entity movement, resizing, solidity and deletion", 
 test("shots use the entity's actual bottom, and removed walls no longer constrain movement", () => {
 	const { block, blocks, canStand, shotFraction } = level();
 	blocks.forEach(entity => entity[E.KIND] = 0);
-	block(0, -10, 2, 1, 2, 0, 2);
+	block(0, -10, 2, 1, 2, 2);
 	assert.equal(shotFraction(-2, -10, 2, -10, 1, 1), 1);
 	assert.equal(shotFraction(-2, -10, 2, -10, 2.5, 2.5), .25);
 	blocks.forEach(entity => entity[0] = 0);

@@ -15,6 +15,7 @@
 		"test:vvm": "node --test scripts/vvm.test.js",
 		"test:shaders": "node --test tools/wgsl-minify/test/minify.test.js tools/wgsl-minify/test/integration.test.js",
 		"test:shaders:bundle": "node scripts/check-shader-bundle.mjs",
+		"layout:preview": "node scripts/level-layout.mjs",
 		"postinstall": "patch-package"
 	},
 	"author": "Rob Blanckaert",

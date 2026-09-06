@@ -344,5 +344,5 @@ export async function pickEntity(x, y) {
 	const [packed, position] = new Uint32Array(readback.getMappedRange());
 	readback.unmap();
 	readback.destroy();
-	return packed === 0xffffffff ? [-1, -1] : [packed, (position & 65535) / 1024 - 32, (position >>> 16) / 1024 - 32];
+	return packed === 0xffffffff ? [-1, -1] : [packed, (position & 65535) / 256 - 64, (position >>> 16) / 256 - 64];
 }

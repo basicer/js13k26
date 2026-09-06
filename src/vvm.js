@@ -249,6 +249,7 @@ import woodenCrate, { debugSource as crateSource } from "../vox/wooden-crate.vp"
 import program2, { debugSource as source2 } from "../vox/unicorn.vp";
 import program3, { debugSource as source3 } from "../vox/floortile.vp";
 import program4, { debugSource as source4 } from "../vox/walltile.vp";
+import windowWall, { debugSource as windowSource } from "../vox/wall-window.vp";
 
 let wait = (n) => new Promise((resolve) => setTimeout(resolve, n));
 
@@ -312,6 +313,7 @@ export function buildModel(slot, bytecode, parameter = () => 0) {
 		[2, program2, source2],
 		[5, program3, source3],
 		[7, program4, source4],
+		[17, windowWall, windowSource],
 	];
 	// Kind 1 stays empty: it is the marine's gameplay and transform root.
 	for (const [slot, program] of models) {

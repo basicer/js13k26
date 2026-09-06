@@ -55,16 +55,6 @@ export function setupEntities() {
 	cameraPosition.set([-9.2 * Math.cos(cameraRotation[0]), -9.2 * Math.sin(cameraRotation[0]), 0]);
 	cameraEntity.set([1, 1, 1], E.SCALE);
 
-	const floor = spawn(5);
-	floor[E.POS_Y] = -32 / 64;
-	floor[E.SCALE_X] = 32;
-	floor[E.SCALE_Y] = 4 / 64;
-	floor[E.SCALE_Z] = 32;
-
-	let light = spawn(6);
-	light[E.POS_Z] = 2;
-	light[E.POS_Y] = 2;
-	light[E.SPOTLIGHT] = 5;
 }
 
 // An invalid entity ID terminates the light list, including when it is empty.
