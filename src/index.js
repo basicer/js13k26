@@ -2,7 +2,7 @@ import { G, Q, d, c, $, heldKeys, canvasFormat, canvasSrgbFormat } from "./globa
 import { render, wantsKeyboard, isFlying, isPaused, startGame } from "./render.js";
 import { reloadMarineGun, selectMarineWeapon, toggleMarineFlashlight } from "./game.js";
 
-import * as sound from "./sfx.js";
+import { music1 } from "./sfx.js";
 import { zzfxX } from "../vendor/zzfx.js";
 
 Object.assign(c.style, {
@@ -53,15 +53,15 @@ $.addEventListener("keyup", (event) => {
 	heldKeys.delete(key);
 });
 
-let step = async (dt) => {
-	await render(dt);
+let step = () => {
+	render();
 	requestAnimationFrame(step);
 };
 if (DEBUG) console.log("Starting render loop");
-step(performance.now());
+step();
 
 // Queue the track once; browsers that block autoplay resume on first input.
-if (!DEBUG) sound.music1()["loop"] = true;
+if (!DEBUG) music1()["loop"] = true;
 for (const event of ["pointerdown", "keydown"]) {
 	$.addEventListener(event, () => {
 		startGame();

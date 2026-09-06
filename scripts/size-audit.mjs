@@ -38,7 +38,7 @@ const settings = vm.runInNewContext(`(${config.slice(settingsNode.start, setting
 const nodes = nodesOf(code), text = n => code.slice(n.start, n.end);
 const declarations = nodes.filter(n => n.type === 'VariableDeclarator');
 const functions = nodes.filter(n => n.type === 'FunctionDeclaration');
-const labels = Array(code.length).fill('Renderer, input and shared JS');
+const labels = Array(code.length).fill('Shared runtime and uncategorized');
 function tag(start, end, label) {
   if (!(start >= 0 && end >= start && end <= code.length)) throw Error(`Invalid range: ${label}`);
   labels.fill(label, start, end);
@@ -49,38 +49,60 @@ function find(predicate) {
   return node;
 }
 const palette = find(s => /new Uint8Array\(2048\)/.test(s));
-const entities = find(s => /new Float32Array\(53200\)/.test(s));
+const entities = find(s => /new Float32Array\(68400\)/.test(s));
 const textures = find(s => /dimension:[`"]3d/.test(s));
 const audio = find(s => s.includes('AudioContext'));
-const stand = functions.find(n => text(n).includes('<=15-') && text(n).includes('.some('));
-if (!stand) throw Error('Collision classifier did not match');
-const solidsName = /!([\w$]+)\.some/.exec(text(stand))?.[1];
-const solids = find((s, n) => n.id.name === solidsName);
-const player = find((s, n) => n.init?.type === 'CallExpression' && n.init.callee.type === 'Identifier'
-  && n.init.arguments.length === 1 && n.init.arguments[0].value === 1);
-const renderStart = declarations.filter(n => text(n).includes('performance.now()')).at(-1);
+const bootstrap = find(s => s.includes('=document'));
+const inputState = find(s => s.includes('k.has(`shift`)'));
+const gpuBuffers = find(s => s.includes('new Float32Array(A(24'));
+const shaderModule = find(s => s.includes('createShaderModule'));
+const pipeline = find(s => s.includes('createRenderPipeline'));
+const animation = find(s => s.includes('requestAnimationFrame'));
+tag(bootstrap.start, palette.start, 'Browser and WebGPU bootstrap');
+tag(inputState.start, gpuBuffers.start, 'Input, camera and interaction state');
+tag(gpuBuffers.start, shaderModule.start, 'GPU buffers, textures and geometry');
+tag(pipeline.start, animation.start, 'Render pipelines and bind groups');
+for (const n of nodes.filter(n => n.type === 'ExpressionStatement' && n.start > 0 && text(n).includes('addEventListener')))
+  tag(n.start, n.end, 'Input, camera and interaction state');
 tag(palette.start, entities.start, 'Palette generation');
 tag(entities.start, textures.start, 'Entity storage and initialization');
 tag(textures.start, audio.start, 'Voxel textures and startup');
-tag(audio.start, solids.start, 'Audio synthesis and cues');
-tag(solids.start, player.start, 'Level layout and collision');
-tag(player.start, renderStart.start, 'Gameplay');
-const interpreter = functions.findIndex(n => text(n).includes('switch(') && text(n).includes('>>3'));
-const spawnEnemy = functions.findIndex(n => text(n).includes('[11]=249') && text(n).includes('.push({'));
-const updateGame = functions.findIndex(n => text(n).includes('[19]=') && text(n).includes('117') && text(n).includes('Math.max(0'));
-if (interpreter < 0 || spawnEnemy < 4 || updateGame < spawnEnemy) throw Error('Function classifiers did not match');
-for (const n of functions.slice(interpreter, interpreter + 3)) tag(n.start, n.end, 'Voxel interpreter and variants');
-for (const n of functions.slice(spawnEnemy - 4, spawnEnemy)) tag(n.start, n.end, 'Level layout and collision');
-for (const n of functions.slice(spawnEnemy, updateGame + 1)) tag(n.start, n.end, 'Gameplay');
-for (const n of functions.filter(n => text(n).includes('.every(') && text(n).includes('.subarray(')))
-  tag(n.start, n.end, 'Entity storage and initialization');
+// Closure rearranges declarations, so tag individual audio declarations rather
+// than assuming they form one contiguous region.
+for (const n of declarations.filter(n => /AudioContext|createBufferSource|44100/.test(text(n))))
+  tag(n.start, n.end, 'Audio synthesis and cues');
+function tagFunction(label, predicate) {
+  const node = functions.find(n => predicate(text(n)));
+  if (!node) throw Error(`Function classifier did not match: ${label}`);
+  tag(node.start, node.end, label);
+}
+tagFunction('Voxel interpreter and variants', s => s.includes('switch(') && s.includes('>>3'));
+tagFunction('Level layout and collision', s => s.includes('15.5') && s.includes('2.8'));
+tagFunction('Level layout and collision', s => s.includes('.some(') && s.includes('Math.abs'));
+tagFunction('Level layout and collision', s => s.includes('Math.cos(e[c])') && s.includes('t.map('));
+tagFunction('Level layout and collision', s => s.includes('L.reduce(') && s.includes('Math.min('));
+tagFunction('Gameplay', s => s.includes('Math.hypot(') && s.includes('/.2'));
+tagFunction('Gameplay', s => s.includes('[11]=249') && s.includes('Se()'));
+tagFunction('Render frame', s => s.includes('performance.now()'));
+tagFunction('Gameplay', s => s.includes('Z&&n[25]') && s.includes('Math.max(0'));
+tagFunction('Gameplay', s => s.includes('e(),o(),k.clear()'));
+tagFunction('Gameplay', s => s.includes('s>0?134:6'));
+tagFunction('Gameplay', s => s.includes('K!==1&&Oe'));
+tagFunction('Gameplay', s => s.includes('r*18') && s.includes('for(var d of L)'));
+tagFunction('Entity storage and initialization', s => s.includes('N.fill(0)') && s.includes('te.clear()'));
+tagFunction('Entity storage and initialization', s => s.includes('z.fill(-1)') && s.includes('r[27]'));
+tagFunction('Render-target resizing', s => s.includes('getBoundingClientRect'));
+tagFunction('Render frame', s => s.includes('createRenderPass') || s.includes('beginRenderPass'));
+tagFunction('GPU picking', s => s.includes('copyTextureToBuffer') && s.includes('mapAsync'));
 for (const n of nodes.filter(n => n.type === 'TemplateLiteral' || n.type === 'Literal')) {
   const s = text(n);
   if (s.includes('@vertex') || s.includes('@compute')) {
     tag(n.start, n.end, s.includes('vs_main') && s.includes('vs_post') ? 'Shader: unified' : s.includes('vs_main') ? 'Shader: voxel renderer' : s.includes('vs_post') ? 'Shader: postprocess' : 'Shader: entity/light compute');
   }
 }
-for (const name of ['marine-legs', 'marine-body', 'marine-arms', 'marine-gun', 'unicorn', 'floortile', 'walltile']) {
+const voxelFiles = [...fs.readFileSync('src/vvm.js', 'utf8').matchAll(/\.\.\/vox\/([^"']+\.vp)/g)].map(match => match[1]);
+for (const file of voxelFiles) {
+  const name = file.slice(0, -3);
   const encoded = Buffer.from(assemble(fs.readFileSync(`vox/${name}.vp`, 'utf8'))).toString('base64');
   let count = 0;
   for (let i = code.indexOf(encoded); i !== -1; i = code.indexOf(encoded, i + encoded.length)) {

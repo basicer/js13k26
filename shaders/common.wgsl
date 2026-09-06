@@ -37,8 +37,7 @@ fn rotation_matrix(rotation: vec3<f32>) -> mat3x3<f32> {
     let base_right = vec3<f32>(cos(rotation.y), 0.0f, sin(rotation.y));
     let base_up = cross(base_right, forward);
     let right = base_right * cos(rotation.z) + base_up * sin(rotation.z);
-    let up = base_up * cos(rotation.z) - base_right * sin(rotation.z);
-    return mat3x3<f32>(right, up, -forward);
+    return mat3x3<f32>(right, base_up * cos(rotation.z) - base_right * sin(rotation.z), -forward);
 }
 
 fn local_transform(entity: Entity, entity_scale: vec3<f32>) -> mat4x4<f32> {
@@ -78,6 +77,7 @@ struct RenderState {
     fov: f32,
     padding: f32,
     mouse: vec4<f32>,
+    light_entities: array<vec4<u32>, 8>,
 };
 
 const NEAR_PLANE = 0.1f;
@@ -93,9 +93,6 @@ var<uniform> render_state: RenderState;
 var<storage, read> entities: array<Entity>;
 @group(0) @binding(2)
 var palette: texture_storage_2d<rgba8unorm, read>;
-@group(0) @binding(3)
-var<storage, read> light_entities: array<u32>;
-
 const MAX_SPOTLIGHTS = 32u;
 
 fn world_transform(index: u32) -> mat4x4<f32> {

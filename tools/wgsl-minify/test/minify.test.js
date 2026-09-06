@@ -85,10 +85,10 @@ test("type aliases cannot capture shorthand substitutions", () => {
 	);
 });
 
-test("literal shortening retains type and does not change leading-zero literals", () => {
+test("literal shortening retains type and does not change integer leading-zero literals", () => {
 	assert.equal(
-		minifyWgsl("1.0f 0.00f 01.0f 1.0 1.0h"),
-		"1f 0f 01.0f 1.0 1.0h",
+		minifyWgsl("1.0f 0.00f 0.5f 01.0f 1.0 1.0h"),
+		"1f 0f .5f 01.0f 1.0 1.0h",
 	);
 });
 

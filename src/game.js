@@ -1,6 +1,6 @@
 import * as E from "./entities-const.js";
-import { heldKeys, cameraFov } from "./globals.js";
-import { cameraEntity, cameraPosition, cameraRotation, spawn, EArray, setupEntities } from "./entities.js";
+import { heldKeys } from "./globals.js";
+import { cameraEntity, cameraRotation, spawn, EArray, setupEntities } from "./entities.js";
 import * as sound from "./sfx.js";
 import { canStand, moveActor, clearShot, shotFraction, entityShotFraction, setupLevel } from "./level.js";
 
@@ -330,28 +330,9 @@ export function reloadMarineGun() {
 	sound.reload(weapon[1]);
 }
 
-export function aimMarineAtCursor(x, y, width, height) {
-	if (!marineHealth) return;
-	const [pitch, yaw] = cameraRotation;
-	const sinYaw = Math.sin(yaw),
-		cosYaw = Math.cos(yaw);
-	const sinPitch = Math.sin(pitch),
-		cosPitch = Math.cos(pitch);
-	const fovScale = Math.tan((cameraFov * Math.PI) / 360);
-	const viewX = ((2 * x - width) / height) * fovScale;
-	const viewY = (1 - (2 * y) / height) * fovScale;
-	// Expand the camera basis directly; its right vector has no Y component.
-	const forward = cosPitch - sinPitch * viewY;
-	const rayX = sinYaw * forward + cosYaw * viewX;
-	const rayY = sinPitch + cosPitch * viewY;
-	const rayZ = -cosYaw * forward + sinYaw * viewX;
-	if (rayY >= -0.001) return;
-	const distance = ((10.5 / 64 - cameraPosition[1]) * player[E.SCALE_Y]) / rayY;
-	if (distance <= 0) return;
-	marineBody[E.ROT_Y] = lookAtYaw(
-		cameraPosition[0] * player[E.SCALE_X] + rayX * distance,
-		cameraPosition[2] * player[E.SCALE_Z] + rayZ * distance,
-	);
+export function aimMarineAtCursor(index, x, z) {
+	if (marineHealth && z !== undefined && (EArray[index][E.KIND] >> 2) != 2)
+		marineBody[E.ROT_Y] = lookAtYaw(x - player[E.POS_X], z - player[E.POS_Z]);
 }
 
 export function updateGame(deltaTime, freeCamera = false) {

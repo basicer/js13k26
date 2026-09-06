@@ -224,10 +224,10 @@ var DEBUG = true;
 			language_in: "ECMASCRIPT_2020",
 			language_out: "ECMASCRIPT_2020",
 			chunk_output_type: "ES_MODULES",
-			externs: "externs.js",
 			define: "'DEBUG=false'",
 			warningLevel: "VERBOSE",
 			assume_function_wrapper: true,
+			rewrite_polyfills: false,
 		});
 
 		return new Promise((resolve, reject) => {

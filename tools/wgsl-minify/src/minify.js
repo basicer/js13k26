@@ -237,6 +237,7 @@ function joinTokens(tokens) {
 			previous &&
 			((/[\p{XID_Continue}]$/u.test(previous) &&
 				/^[\p{XID_Continue}]/u.test(token)) ||
+				(NUMBER.test(previous) && token.startsWith(".")) ||
 				joined.startsWith("//") ||
 				joined.startsWith("/*") ||
 				tokenAt(joined) !== previous)
@@ -260,10 +261,11 @@ export function minifyWgsl(source, { preserveNames = [] } = {}) {
 	);
 	const tokens = rename(original, declared, protectedNames);
 	return joinTokens(
-		compactTypes(tokens, declared).map((token) =>
-			/^(0|[1-9]\d*)\.0+f$/.test(token)
-				? token.replace(/\.0+f$/, "f")
-				: token,
-		),
+		compactTypes(tokens, declared).map((token) => {
+			if (/^(0|[1-9]\d*)\.0+f$/.test(token))
+				return token.replace(/\.0+f$/, "f");
+			// WGSL accepts a fractional literal without its otherwise redundant 0.
+			return token.replace(/^0\.(?=\d)/, ".");
+		}),
 	);
 }

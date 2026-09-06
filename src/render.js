@@ -10,7 +10,6 @@ import {
 	ENTITY_DATA_SIZE,
 	ENTITY_COUNT,
 	EArray,
-	entityVersion,
 } from "./entities.js";
 import { voxT } from "./vvm.js";
 import { aimMarineAtCursor, fireMarineGun, setMarineTrigger, updateGame } from "./game.js";
@@ -18,6 +17,7 @@ import { aimMarineAtCursor, fireMarineGun, setMarineTrigger, updateGame } from "
 let lastFrameTime = performance.now();
 let simulationTime = lastFrameTime / 1000;
 let started = false;
+let cursorReadback, cursorHit = [-1, -1];
 
 export const startGame = () => {
 	if (!started) lastFrameTime = performance.now();
@@ -33,47 +33,32 @@ if (DEBUG && import.meta.env.DEBUG) {
 	import("./debug/debug.js").then((module) => { debugModule = module; });
 }
 
-// Pick before arming the weapon, including when the mouse is held down.
-let click = 0;
-c.addEventListener("pointerdown", async (event) => {
+// The cursor probe is intentionally allowed to be a frame or two old.
+c.addEventListener("pointerdown", (event) => {
 	if (event.button !== 0 || (DEBUG && debugModule?.wantsMouse())) return;
-	const request = ++click, version = entityVersion;
 	setMarineTrigger(false);
 	c.setPointerCapture(event.pointerId);
-	const bounds = c.getBoundingClientRect();
-	try {
-		const [index] = await pickEntity(
-			((event.clientX - bounds.left) * c.width) / bounds.width,
-			((event.clientY - bounds.top) * c.height) / bounds.height,
-		);
-		if (request !== click || version !== entityVersion) return;
-		if (isPaused()) {
-			if (DEBUG && index >= 0) debugModule?.selectEntity(index);
-			return;
-		}
-		const entity = EArray[index];
-		if (entity?.[E.KIND] === 15) entity[E.MODEL_VARIANT] ^= 1;
-		else {
-			setMarineTrigger(c.hasPointerCapture(event.pointerId));
-			fireMarineGun();
-		}
-	} catch (error) {
-		if (DEBUG) console.error("Entity selection failed", error);
+	const [index] = cursorHit;
+	if (isPaused()) {
+		if (DEBUG && index >= 0) debugModule?.selectEntity(index);
+		return;
+	}
+	const entity = EArray[index];
+	if (entity?.[E.KIND] === 15) entity[E.MODEL_VARIANT] ^= 1; // Console toggle
+	else {
+		setMarineTrigger(c.hasPointerCapture(event.pointerId));
+		fireMarineGun();
 	}
 });
 
 for (const eventName of ["pointerup", "pointercancel", "lostpointercapture"]) {
-	c.addEventListener(eventName, (event) => {
-		if (event.type === "pointercancel") click++;
-		setMarineTrigger(false);
-	});
+	c.addEventListener(eventName, () => setMarineTrigger(false));
 }
 
 c.addEventListener("pointermove", (event) => {
 	if (isPaused() || isFlying()) return;
 	const bounds = c.getBoundingClientRect();
 	renderState.set([event.clientX - bounds.left, event.clientY - bounds.top, bounds.width, bounds.height], 4);
-	aimMarineAtCursor(event.clientX - bounds.left, event.clientY - bounds.top, bounds.width, bounds.height);
 });
 c.addEventListener("pointerleave", () => (renderState[4] = -1000));
 
@@ -84,12 +69,8 @@ const entityBuffer = d.createBuffer({
 	"size": entities.byteLength,
 	"usage": GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST,
 });
-const spotlightBuffer = d.createBuffer({
-	"size": lightEntities.byteLength,
-	"usage": GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST,
-});
-
-const renderState = new Float32Array(8);
+const renderState = new Float32Array(40);
+const renderLights = new Uint32Array(renderState.buffer, 32);
 renderState[4] = -1000;
 const renderStateBuffer = d.createBuffer({
 	"label": label`Render state`,
@@ -133,7 +114,7 @@ const shader = d.createShaderModule({ "code": shaderCode });
 let scaleDown = 0;
 function resizeCanvas() {
 	const bounds = c.getBoundingClientRect();
-	const pixelRatio = devicePixelRatio * 2 ** -scaleDown;
+	const pixelRatio = window.devicePixelRatio * 2 ** -scaleDown;
 	const width = Math.max(1, Math.round(bounds.width * pixelRatio));
 	const height = Math.max(1, Math.round(bounds.height * pixelRatio));
 	if (c.width === width && c.height === height && depthTexture && sceneTexture && entityIndexTexture) return;
@@ -239,8 +220,8 @@ const BG = (pipeline, id, ...array) =>
 		})),
 	});
 
-const renderBindGroup = BG(pipeline, 0, renderStateBuffer, entityBuffer, paletteTexture.createView(), spotlightBuffer);
-export async function render(t) {
+const renderBindGroup = BG(pipeline, 0, renderStateBuffer, entityBuffer, paletteTexture.createView());
+export function render() {
 	if (DEBUG && debugModule) debugModule.stats.begin();
 	const now = performance.now();
 	const deltaTime = (now - lastFrameTime) / 1000;
@@ -254,16 +235,16 @@ export async function render(t) {
 
 	updateEntities(isPaused() ? 0 : deltaTime);
 	renderState.set([simulationTime, c.width / c.height, cameraFov]);
+	renderLights.set(lightEntities);
 	Q.writeBuffer(renderStateBuffer, 0, renderState);
 	Q.writeBuffer(entityBuffer, 0, entities);
-	Q.writeBuffer(spotlightBuffer, 0, lightEntities);
 
 	let canvasTexture = G.getCurrentTexture();
 	let target = canvasTexture.createView({ format: canvasSrgbFormat });
 
 	const e = d.createCommandEncoder();
 
-	let pass = e.beginRenderPass({
+	let passDescriptor = {
 		"colorAttachments": [
 			{
 				"view": sceneView,
@@ -283,8 +264,9 @@ export async function render(t) {
 			"depthLoadOp": "clear",
 			"depthStoreOp": "store",
 		},
-		"timestampWrites": DEBUG && debugModule ? debugModule.stats.getTimestampWrites("graphics") : undefined,
-	});
+	};
+	if (DEBUG && debugModule) passDescriptor.timestampWrites = debugModule.stats.getTimestampWrites("graphics");
+	let pass = e.beginRenderPass(passDescriptor);
 	pass.setBindGroup(0, renderBindGroup);
 	pass.setPipeline(pipeline);
 	pass.setVertexBuffer(0, vertexBuffer);
@@ -296,7 +278,7 @@ export async function render(t) {
 	}
 	pass.end();
 
-	const bloomPass = e.beginRenderPass({
+	let bloomPassDescriptor = {
 		"colorAttachments": [
 			{
 				"view": target,
@@ -304,8 +286,9 @@ export async function render(t) {
 				"storeOp": "store",
 			},
 		],
-		"timestampWrites": DEBUG && debugModule ? debugModule.stats.getTimestampWrites("bloom") : undefined,
-	});
+	};
+	if (DEBUG && debugModule) bloomPassDescriptor.timestampWrites = debugModule.stats.getTimestampWrites("bloom");
+	const bloomPass = e.beginRenderPass(bloomPassDescriptor);
 	bloomPass.setPipeline(bloomPipeline);
 	bloomPass.setBindGroup(0, BG(bloomPipeline, 0, sceneView, bloomSampler));
 
@@ -331,6 +314,12 @@ export async function render(t) {
 
 	if (DEBUG && debugModule) debugModule.stats.end(e);
 	Q.submit([e.finish()]);
+	if (!cursorReadback && renderState[4] >= 0)
+		cursorReadback = pickEntity(renderState[4] * c.width / renderState[6], renderState[5] * c.height / renderState[7]).then((hit) => {
+			cursorReadback = 0;
+			cursorHit = hit;
+			aimMarineAtCursor(hit[0], hit[1], hit[2]);
+		});
 
 	if (DEBUG && debugModule) debugModule.stats.update();
 }
@@ -351,9 +340,9 @@ export async function pickEntity(x, y) {
 		[1, 1],
 	);
 	Q.submit([encoder.finish()]);
-	await readback.mapAsync(GPUMapMode.READ);
-	const hit = new Uint32Array(readback.getMappedRange()).slice(0, 2);
+	await readback.mapAsync(1 /* GPUMapMode.READ */);
+	const [packed, position] = new Uint32Array(readback.getMappedRange());
 	readback.unmap();
 	readback.destroy();
-	return hit[0] === 0xffffffff ? [-1, -1] : hit;
+	return packed === 0xffffffff ? [-1, -1] : [packed, (position & 65535) / 1024 - 32, (position >>> 16) / 1024 - 32];
 }

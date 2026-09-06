@@ -4,7 +4,6 @@ fn vs_main(
     @location(0) pos: vec3<f32>
 ) -> VertexOutput {
     let entity_index = idx & 65535u;
-    let current_vox_kind = idx >> 16u;
     var out: VertexOutput;
     out.idx = entity_index;
 
@@ -12,7 +11,7 @@ fn vs_main(
     // belongs to a different texture before they reach rasterization.
     let entity_kind = u32(entities[entity_index].kind);
     let transparency = entities[entity_index].transparency;
-    if (entity_index == 0u || entity_kind >= 254u || (entity_kind & 127u) != current_vox_kind || transparency >= 1.0f) {
+    if (entity_index == 0u || entity_kind >= 254u || (entity_kind & 127u) != (idx >> 16u) || transparency >= 1.0f) {
         out.clip_position = vec4<f32>(0.0f, 0.0f, 2.0f, 1.0f);
         return out;
     }
@@ -74,23 +73,20 @@ fn voxel_search(ray_origin: vec3<f32>, ray_direction: vec3<f32>, volume_size: ve
     let step = select(vec3<i32>(-1), vec3<i32>(1), ray_direction >= vec3<f32>(0.0f));
     let cell_size = 1.0f / grid_size;
     let delta_distance = abs(cell_size / safe_direction);
-    let boundary = (vec3<f32>(cell) + select(vec3<f32>(0.0f), vec3<f32>(1.0f), safe_direction >= vec3<f32>(0.0f))) * cell_size;
-    var side_distance = distance + (boundary - point) / safe_direction;
+    var side_distance = distance + ((vec3<f32>(cell) + select(vec3<f32>(0.0f), vec3<f32>(1.0f), safe_direction >= vec3<f32>(0.0f))) * cell_size - point) / safe_direction;
     // A solid boundary voxel is hit before DDA advances: use the box entry face.
     let entry_axis = select(select(2u, 1u, bounds_near.y >= bounds_near.z), 0u,
         bounds_near.x >= max(bounds_near.y, bounds_near.z));
     var normal = vec3<f32>(0.0f);
     normal[entry_axis] = -f32(step[entry_axis]);
-    let max_steps = u32(ceil(grid_size.x) + ceil(grid_size.y) + ceil(grid_size.z));
-    for (var step_count = 0u; step_count < max_steps; step_count++) {
+    for (var step_count = 0u; step_count < u32(ceil(grid_size.x) + ceil(grid_size.y) + ceil(grid_size.z)); step_count++) {
         let material = voxel_at(cell, volume_size, grid_size, variant);
         if (material > 0.0f) {
             // Preserve the original hit-position epsilon and cell rounding for AO/dissolve.
             let position = (ray_origin + ray_direction * (distance + 0.0001f)) * grid_size;
             return VoxelHit(distance, material, normal, position, voxel_cell(position, grid_size));
         }
-        let smallest = side_distance < min(side_distance.yzx, side_distance.zxy);
-        let mask = select(vec3<f32>(0.0f), vec3<f32>(1.0f), smallest);
+        let mask = select(vec3<f32>(0.0f), vec3<f32>(1.0f), side_distance < min(side_distance.yzx, side_distance.zxy));
         distance = dot(side_distance, mask);
         cell += step * vec3<i32>(mask);
         side_distance += delta_distance * mask;
@@ -120,15 +116,6 @@ fn fs_main(in: VertexOutput) -> FragmentOutput {
     let camera_direction = -normalize(camera_transform[2].xyz);
     let scale = abs(e.scale);
     let volume_size = vec3<i32>(textureDimensions(vox));
-    let repeats = select(
-        select(
-            select(vec3<f32>(1.0f), e.tile, e.tile > vec3<f32>(0.0f)),
-            scale,
-            e.tile == vec3<f32>(-1.0f),
-        ),
-        scale * 64.0f / vec3<f32>(volume_size),
-        e.tile == vec3<f32>(-2.0f),
-    );
     let entity_transform = world_transform(in.idx);
     let linear_transform = mat3x3<f32>(entity_transform[0].xyz, entity_transform[1].xyz, entity_transform[2].xyz);
     let cofactor = cross(linear_transform[1], linear_transform[2]);
@@ -139,23 +126,26 @@ fn fs_main(in: VertexOutput) -> FragmentOutput {
     )) * (1.0f / dot(linear_transform[0], cofactor));
 
     let world_ray = normalize(in.world_position - camera_position);
-    let ray_origin = inverse_entity_transform * (camera_position - entity_transform[3].xyz) + vec3<f32>(0.5f);
-    let ray_direction = inverse_entity_transform * world_ray;
-    let grid_size = vec3<f32>(volume_size) * repeats;
-    let hit = voxel_search(ray_origin, ray_direction, volume_size, grid_size, variant);
+    let grid_size = vec3<f32>(volume_size) * select(
+        select(
+            select(vec3<f32>(1.0f), e.tile, e.tile > vec3<f32>(0.0f)),
+            scale,
+            e.tile == vec3<f32>(-1.0f),
+        ),
+        scale * 64.0f / vec3<f32>(volume_size),
+        e.tile == vec3<f32>(-2.0f),
+    );
+    let hit = voxel_search(inverse_entity_transform * (camera_position - entity_transform[3].xyz) + vec3<f32>(0.5f), inverse_entity_transform * world_ray, volume_size, grid_size, variant);
     if (hit.material == 0.0f) { discard; }
     let voxel_position = hit.position;
     let cell = hit.cell;
     // The same 4x4x4 mask either removes chunks or replaces their material.
-    let dissolve_chunk = vec3<u32>(cell) / vec3<u32>(4u);
-    let dissolved = e.dissolve > 0.0f && dissolve_noise(dissolve_chunk, in.idx) < clamp(e.dissolve, 0.0f, 1.0f);
+    let dissolved = e.dissolve > 0.0f && dissolve_noise(vec3<u32>(cell) / vec3<u32>(4u), in.idx) < clamp(e.dissolve, 0.0f, 1.0f);
     if (dissolved && e.dissolvePalette <= 0.0f) { discard; }
     let normal = vec3<i32>(hit.normal);
-    let tangent = select(vec3<i32>(1, 0, 0), vec3<i32>(0, 1, 0), normal.x != 0);
-    let bitangent = select(vec3<i32>(0, 1, 0), vec3<i32>(0, 0, 1), normal.z == 0);
     let corner = select(vec3<i32>(-1), vec3<i32>(1), fract(voxel_position) > vec3<f32>(0.5f));
-    let side_a = tangent * corner;
-    let side_b = bitangent * corner;
+    let side_a = select(vec3<i32>(1, 0, 0), vec3<i32>(0, 1, 0), normal.x != 0) * corner;
+    let side_b = select(vec3<i32>(0, 1, 0), vec3<i32>(0, 0, 1), normal.z == 0) * corner;
     let outside = cell + normal;
     var ao = 1.0f - 0.18f * (
         min(voxel_at(outside + side_a, volume_size, grid_size, variant), 1.0f) +
@@ -175,12 +165,11 @@ fn fs_main(in: VertexOutput) -> FragmentOutput {
         color = vec4<f32>(rainbow * rainbow, color.a);
     }
     let surface = textureLoad(palette, vec2<u32>(u32(material), 1));
+    let hit_position = hit.distance * world_ray + camera_position;
     let view_depth = hit.distance * dot(world_ray, camera_direction);
-    let depth = clip_depth(view_depth) / view_depth;
-    let world_normal = normalize(transpose(inverse_entity_transform) * hit.normal);
     return FragmentOutput(
-        vec4<f32>(shade_surface(color.rgb, world_normal, -world_ray, surface.g, surface.r, hit.distance * world_ray + camera_position, ao) + color.rgb * surface.b * 4.0f, select(1.0f, color.a * (1.0f - clamp(e.transparency, 0.0f, 1.0f)), e.kind >= 128.0f)),
-        vec2<u32>(in.idx, u32(material)),
-        depth,
+        vec4<f32>(shade_surface(color.rgb, normalize(transpose(inverse_entity_transform) * hit.normal), -world_ray, surface.g, surface.r, hit_position, ao) + color.rgb * surface.b * 4.0f, select(1.0f, color.a * (1.0f - clamp(e.transparency, 0.0f, 1.0f)), e.kind >= 128.0f)),
+        vec2<u32>(in.idx, u32(clamp((hit_position.x + 32.0f) * 1024.0f, 0.0f, 65535.0f)) + u32(clamp((hit_position.z + 32.0f) * 1024.0f, 0.0f, 65535.0f)) * 65536u),
+        clip_depth(view_depth) / view_depth,
     );
 }
