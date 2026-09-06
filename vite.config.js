@@ -64,7 +64,7 @@ var zzfxm = () => ({
 		if (!/\.zzfxm$/.test(id)) return undefined;
 		let code = readFileSync(id).toString("utf-8");
 		code = code.replace(/[{][^}]*[}]/gm, "{}");
-		console.log(code);
+		// console.log(code);
 		return `export default ${code};`;
 	},
 });
@@ -195,6 +195,9 @@ var closure = () => ({
 			"GPUShaderStage.VERTEX": 1,
 			"GPUShaderStage.FRAGMENT": 2,
 			"GPUShaderStage.COMPUTE": 4,
+
+			"GPUMapMode.READ": 1,
+			"GPUMapMode.WRITE": 2,
 		};
 
 		for (const [key, value] of Object.entries(WEBGPU_CONSTANTS)) {

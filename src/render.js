@@ -340,7 +340,7 @@ export async function pickEntity(x, y) {
 		[1, 1],
 	);
 	Q.submit([encoder.finish()]);
-	await readback.mapAsync(1 /* GPUMapMode.READ */);
+	await readback.mapAsync(GPUMapMode.READ);
 	const [packed, position] = new Uint32Array(readback.getMappedRange());
 	readback.unmap();
 	readback.destroy();
