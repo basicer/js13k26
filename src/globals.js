@@ -3,7 +3,7 @@ if (import.meta.env.DEBUG) {
 }
 
 // 56% more magnification than the original 60-degree view (1.3 * 1.2).
-export const cameraFov = (Math.atan(Math.tan(Math.PI / 6) / 1.56) * 360) / Math.PI;
+export const cameraFov = 40.62;
 
 export let $ = document,
 	c = DEBUG ? $.getElementById("canvas") || $.createElement("canvas") : $.createElement("canvas"),
@@ -17,6 +17,5 @@ export let $ = document,
 	canvasFormat = navigator.gpu.getPreferredCanvasFormat(),
 	canvasSrgbFormat = `${canvasFormat}-srgb`,
 	heldKeys = new Set(),
-	GenArray = (N, F) => new Array(N).fill(0).map((_, i) => F(i)),
-	label = String.raw;
+	GenArray = (N, F) => new Array(N).fill(0).map((_, i) => F(i));
 if (!c.parentElement || !DEBUG) $.body.appendChild(c);

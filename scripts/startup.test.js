@@ -10,7 +10,7 @@ for (const DEBUG of [false, true]) test(`startup waits for input and preserves d
 	const steps = [], simulations = [], listeners = {};
 	const context = vm.createContext({
 		DEBUG, performance: { now: () => now }, updateGame: dt => steps.push(dt), updateEntities: dt => simulations.push(dt),
-		zzfxX: { resume: () => resumed++ },
+		zzfxX: { resume: () => resumed++ }, startStory() {},
 		$: { addEventListener: (name, callback, options) => { listeners[name] = { callback, options }; } },
 	});
 	const run = code => vm.runInContext(code, context);

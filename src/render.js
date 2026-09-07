@@ -1,4 +1,4 @@
-import { $, d, c, Q, G, GenArray, canvasSrgbFormat, cameraFov, label } from "./globals.js";
+import { $, d, c, Q, G, GenArray, canvasSrgbFormat, cameraFov } from "./globals.js";
 import * as E from "./entities-const.js";
 import shaderCode from "../shaders/shader.wgsl";
 import { palette } from "./palette.js";
@@ -14,13 +14,23 @@ import {
 import { voxT } from "./vvm.js";
 import { aimMarineAtCursor, fireMarineGun, setMarineTrigger, updateGame } from "./game.js";
 
+const story = $.body.appendChild($.createElement("pre"));
+story.style.cssText = "position:fixed;top:66%;width:100%;color:#dff;font-size:30px;text-align:center;text-shadow:2px 0#067,-2px 0#704";
+story.textContent = "\n\nGlitter & Gunpowder\n\nWASD/R/CLICK";
+let storyText = "", storyAt;
+export const flash = (text) => (storyText = text, storyAt = 0);
+const startStory = () => setInterval(() => story.textContent = ++storyAt < storyText.length + 85 ? storyText.slice(0, storyAt) : "", 35);
+
 let lastFrameTime = performance.now();
 let simulationTime = lastFrameTime / 1000;
 let started = false;
 let cursorReadback, cursorHit = [-1, -1];
 
 export const startGame = () => {
-	if (!started) lastFrameTime = performance.now();
+	if (!started) {
+		lastFrameTime = performance.now();
+		startStory();
+	}
 	started = true;
 };
 
@@ -73,13 +83,11 @@ const renderState = new Float32Array(40);
 const renderLights = new Uint32Array(renderState.buffer, 32);
 renderState[4] = -1000;
 const renderStateBuffer = d.createBuffer({
-	"label": label`Render state`,
 	"size": renderState.byteLength,
 	"usage": GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST,
 });
 
 var paletteTexture = d.createTexture({
-	"label": label`Palette texture`,
 	"size": [256, 2],
 	"format": "rgba8unorm",
 	"usage": GPUTextureUsage.STORAGE_BINDING | GPUTextureUsage.COPY_DST,
@@ -94,12 +102,10 @@ let entityIndexTexture;
 let entityIndexView;
 
 const vertexBuffer = d.createBuffer({
-	"label": label`Cell vertices`,
 	"size": vertices.byteLength,
 	"usage": GPUBufferUsage.VERTEX | GPUBufferUsage.COPY_DST,
 });
 const indexBuffer = d.createBuffer({
-	"label": label`Cell indices`,
 	"size": 36 * 2,
 	"usage": GPUBufferUsage.INDEX | GPUBufferUsage.COPY_DST,
 });
@@ -129,7 +135,6 @@ function resizeCanvas() {
 	});
 	sceneTexture?.destroy();
 	sceneTexture = d.createTexture({
-		"label": label`Bloom scene texture`,
 		"size": [width, height],
 		// Keep lighting values above 1.0 until the final tone-mapping pass.
 		"format": "rgba16float",
@@ -138,7 +143,6 @@ function resizeCanvas() {
 	sceneView = sceneTexture.createView();
 	entityIndexTexture?.destroy();
 	entityIndexTexture = d.createTexture({
-		"label": label`Entity index texture`,
 		"size": [width, height],
 		"format": "rg32uint",
 		"usage": GPUTextureUsage.RENDER_ATTACHMENT | GPUTextureUsage.COPY_SRC,
@@ -329,7 +333,6 @@ export async function pickEntity(x, y) {
 	const pixelX = Math.max(0, Math.min(c.width - 1, Math.floor(x)));
 	const pixelY = Math.max(0, Math.min(c.height - 1, Math.floor(y)));
 	const readback = d.createBuffer({
-		"label": "Entity index readback",
 		"size": 256,
 		"usage": GPUBufferUsage.COPY_DST | GPUBufferUsage.MAP_READ,
 	});

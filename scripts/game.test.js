@@ -29,7 +29,7 @@ function game() {
 	const EArray = [];
 	const context = vm.createContext({ E,
 		EArray, getUnicorns: () => EArray.filter(e => e[0] === 2), getPortals: () => EArray.filter(e => e[0] === 12), effects: () => EArray.filter(e => e[0] !== 0 && e[23] !== 0),
-		DEBUG: true, Math: randomMath,
+		DEBUG: true, Math: randomMath, flash() {},
 		setTimeout: (callback, delay) => timers.push({ callback, delay }),
 		setupEntities: () => { EArray.length = 0; nextEntityId = 1; },
 		heldKeys: new Set(), cameraEntity: new Float32Array(E.STRIDE), cameraPosition: [0, 5, 8], cameraRotation: [-0.5, 0, 0],

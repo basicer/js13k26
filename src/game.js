@@ -1,8 +1,10 @@
 import * as E from "./entities-const.js";
 import { heldKeys } from "./globals.js";
+import { flash } from "./render.js";
 import { cameraEntity, cameraRotation, spawn, EArray, setupEntities } from "./entities.js";
 import * as sound from "./sfx.js";
 import { canStand, moveActor, clearShot, shotFraction, entityShotFraction, setupLevel, sections } from "./level.js";
+
 
 function placeActor(type, x, z, parent) {
 	if (type === 11) return spawnUnicorn(x, z);
@@ -50,11 +52,12 @@ const weapons = [
 ];
 let player, marineParts, marineLegs, marineBody, marineArms, marineGun, muzzleFlash;
 let selectedWeapon, weapon, triggerConsumed, shotgunPumpPending, shotCooldown, triggerHeld, emptyClickPlayed;
-let reloadCooldown, marineLegYaw, marineHealth, hurtCooldown;
+let reloadCooldown, marineLegYaw, marineHealth, hurtCooldown, portals;
 
 export function setupGame() {
 	setupEntities();
 	setupLevel(placeActor);
+	portals = 4;
 	heldKeys.clear();
 	player = spawn(1);
 	// Translation-only root: body aiming and death poses must not rotate the camera.
@@ -288,6 +291,7 @@ function firePellet(muzzleX, muzzleY, muzzleZ, forwardX, forwardZ, forwardY = 0)
 		updateDamageDissolve(target, target[E.HEALTH], target[E.MAX_HEALTH]);
 		if (!target[E.HEALTH]) {
 			target[E.SOLID] = 0;
+			if (target[E.KIND] === 12) portals > 1 ? flash(--portals + " PORTALS REMAIN") : flash("YOU WIN!");
 			if (target[E.KIND] === 16) {
 				const gun = spawn(11);
 				if (gun) {

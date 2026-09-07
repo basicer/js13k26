@@ -1,4 +1,4 @@
-import { GenArray, label, d, Q, c } from "./globals.js";
+import { GenArray, d, Q, c } from "./globals.js";
 import {
 	COMMAND_NAMES,
 	OP_MIRROR,
@@ -20,9 +20,8 @@ import {
 } from "./vvm-const.js";
 const VOXEL_SIZE = 64;
 
-const tex = (name, size = [VOXEL_SIZE, VOXEL_SIZE, VOXEL_SIZE]) => {
+const tex = (size = [VOXEL_SIZE, VOXEL_SIZE, VOXEL_SIZE]) => {
 	let t = d.createTexture({
-		"label": label`${name} voxel texture`,
 		"size": size,
 		"dimension": "3d",
 		"format": "rgba32float",
@@ -33,10 +32,10 @@ const tex = (name, size = [VOXEL_SIZE, VOXEL_SIZE, VOXEL_SIZE]) => {
 };
 
 let buffers = new Map();
-const empty = tex("Empty");
+const empty = tex();
 if (DEBUG) buffers.set(empty, new Float32Array(VOXEL_SIZE ** 3 * 4));
 
-export var cube = DEBUG ? tex(label`cube`) : empty;
+export var cube = DEBUG ? tex() : empty;
 if (DEBUG) buffers.set(cube, new Float32Array(VOXEL_SIZE ** 3 * 4).fill(1));
 
 export var voxT = GenArray(256, () => [empty, empty]);
@@ -65,7 +64,7 @@ if (DEBUG && import.meta.env.DEBUG) {
 		//"../dds/FloorTile-S04.dds.gz",
 	].map(async (dds, i) => {
 		let { size, voxels } = await ddsVolume((await import(dds)).default, true);
-		var T = tex("projector", size);
+		var T = tex(size);
 		if (voxels) buffers.set(T, voxels);
 		voxT.map((texture, kind) => {
 			if (kind == i + 3) voxT[kind] = [T, T];
@@ -224,7 +223,7 @@ export function runByteCode(bytecode, parameter = () => 0) {
 		}
 	}
 
-	let result = tex(label`Worked`, size);
+	let result = tex(size);
 	buffers.set(result, buffer);
 	flush(result);
 	return result;

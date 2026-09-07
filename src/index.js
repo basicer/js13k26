@@ -5,13 +5,7 @@ import { reloadMarineGun, selectMarineWeapon, toggleMarineFlashlight } from "./g
 import { music1 } from "./sfx.js";
 import { zzfxX } from "../vendor/zzfx.js";
 
-Object.assign(c.style, {
-	position: "absolute",
-	top: 0,
-	left: 0,
-	width: "100%",
-	height: "100%",
-});
+c.style.cssText = "position:absolute;inset:0;width:100%;height:100%";
 
 G.configure({
 	"device": d,
