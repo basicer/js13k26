@@ -69,11 +69,38 @@ function game() {
 		.replace("export ", ""), context);
 	const run = code => vm.runInContext(code, context);
 	// Combat fixtures keep the section entrances open; door behavior has its own tests.
-	run("EArray.filter(e => e[E.KIND] === 19).forEach(e => e[E.POS_Y] = 3); EArray.filter(e => e[E.KIND] === 15).forEach(e => e[E.CONTROLLER] = 0)");
+	run("EArray.filter(e => e[E.KIND] === 19 && e[E.SOLID]).forEach(e => e[E.POS_Y] = 3); EArray.filter(e => e[E.KIND] === 15).forEach(e => e[E.CONTROLLER] = 0)");
 	run("globalThis.initialUnicorns = getUnicorns().length; getUnicorns().slice(1).forEach(e => e[0] = 0);");
 	const touch = () => run("getUnicorns()[0][4] = player[4] + 1; getUnicorns()[0][6] = player[6];");
 	return { run, touch, sounds, timers };
 }
+
+test("elevator arrivals arc in from the shaft, land by the rail, then fight", () => {
+	const { run, sounds } = game();
+	run("getUnicorns().forEach(e => e[E.KIND]=0); getPortals().forEach(e => e[E.KIND]=0); player.set([-17.5,0,20], E.POS); sections[3][E.AGE]=5; updateGame(0)");
+	assert.equal(run("getUnicorns().length"), 0, "no drops before departure");
+	run("sections[0][E.POS_Y]=1; updateGame(1/60); globalThis.arrival=getUnicorns()[0]");
+	assert.equal(run("getUnicorns().length"), 1);
+	assert.equal(run("arrival[E.POS_Y]"), 4);
+	assert.equal(run("arrival[E.PARENT]"), 0, "arrival stays with the stationary platform");
+	assert.ok(run("arrival[E.POS_X]>=-19 && arrival[E.POS_X]<=-16 && arrival[E.POS_Z]===26"));
+	run("player[E.POS_X]=arrival[E.POS_X]; player[E.POS_Z]=22; globalThis.landing=[arrival[E.POS_X],22]; updateEntities(.5); updateGame(.5)");
+	assert.equal(run("arrival[E.POS_Y]"), 6, "leap rises before falling");
+	assert.equal(run("arrival[E.POS_Z]"), 25, "leap crosses inward from outside the deck");
+	assert.equal(sounds.hurt, 0, "airborne arrivals cannot hurt the player underneath");
+	run("updateEntities(1.5); updateGame(1.5)");
+	assert.equal(run("arrival[E.POS_Y]"), 0);
+	assert.deepEqual(Array.from(run("[arrival[E.POS_X],arrival[E.POS_Z]]")), Array.from(run("landing")), "lands one unit inside the platform edge");
+	run("updateGame(0)");
+	assert.ok(sounds.hurt > 0, "landed unicorn resumes combat");
+	run("arrival[E.POS_X]=-11; arrival[E.POS_Z]=-11; sections[3][E.AGE]=5; updateGame(1/60)");
+	assert.equal(run("getUnicorns().length"), 2, "another arrival during the ride");
+	run("sections[0][E.POS_Y]=40; sections[3][E.AGE]=5; updateGame(0)");
+	assert.equal(run("getUnicorns().length"), 2, "no drops after docking");
+	run("globalThis.late=getUnicorns()[1]; late[E.AGE]=10; updateGame(1)");
+	assert.equal(run("late[E.POS_Y]"), 0);
+	assert.equal(run("late[E.POS_Z]"), 22, "a long frame cannot overshoot the landing");
+});
 
 test("start room contains the splash and no enemy gate", () => {
 	const { run } = game();

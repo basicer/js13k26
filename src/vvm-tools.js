@@ -7,7 +7,7 @@ export function expandVoxelImmediates(code) {
 	return code.replace(
 		/(?<!\S)(vstorei|strokei)(?::([0-7]))?\s+(-?\d+)\s+(-?\d+)\s+(-?\d+)(?=\s|$)/gi,
 		(match, op, arg, x, y, z, offset) => {
-			if (/\b(?:jumpif|loop|forjump)\s*$/i.test(code.slice(0, offset))) return match;
+			if (/\b(?:jumpif|forjump)\s*$/i.test(code.slice(0, offset))) return match;
 			if (op.toLowerCase() === "strokei" && arg !== undefined && arg !== "2")
 				throw Error("STROKEI always swaps endpoints; use STROKEI or STROKEI:SWAP.");
 			const expanded =
@@ -38,7 +38,7 @@ export function assemble(code) {
 			labels.set(name, bytecode.length);
 			continue;
 		}
-		if (/^(jumpif|loop|forjump)$/i.test(cmd)) {
+		if (/^(jumpif|forjump)$/i.test(cmd)) {
 			jumps.push({ at: bytecode.length, label: cmds[++i] });
 			bytecode.push(COMMAND_NAMES[cmd.toLowerCase()] << 3, 0);
 			continue;

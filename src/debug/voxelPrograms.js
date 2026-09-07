@@ -1,5 +1,5 @@
 import { compileVoxelSource } from "./voxelValidation.js";
-import { OP_PUSHI, OP_JUMPIF, OP_FORJUMP, OP_LOOP, OP_VSTOREI, OP_STROKEI } from "../vvm-const.js";
+import { OP_PUSHI, OP_JUMPIF, OP_FORJUMP, OP_VSTOREI, OP_STROKEI } from "../vvm-const.js";
 import { resolveVoxelConstants } from "../vvm-symbols.js";
 
 export const voxelPrograms = new Map();
@@ -15,7 +15,7 @@ export function voxelParameterIndices(source) {
 				jumpTarget = false;
 				continue;
 			}
-			if (/^(jumpif|loop|forjump)$/i.test(token)) {
+			if (/^(jumpif|forjump)$/i.test(token)) {
 				jumpTarget = true;
 				continue;
 			}
@@ -34,7 +34,7 @@ export function voxelInstructionEnds(bytecode) {
 	for (let pc = 0; pc < bytecode.length;) {
 		const cmd = bytecode[pc++];
 		if (cmd >> 3 === OP_PUSHI) pc += cmd & 7;
-		if (cmd >> 3 === OP_JUMPIF || cmd >> 3 === OP_LOOP || cmd >> 3 === OP_FORJUMP) pc++;
+		if (cmd >> 3 === OP_JUMPIF || cmd >> 3 === OP_FORJUMP) pc++;
 		if (cmd >> 3 === OP_VSTOREI || cmd >> 3 === OP_STROKEI) pc += 3;
 		if (pc > bytecode.length) throw Error("Incomplete instruction payload.");
 		ends.push(pc);

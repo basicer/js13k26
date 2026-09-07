@@ -15,20 +15,36 @@ import { vec3, vec3_add } from "../src/math.js";
 const source = readFileSync(new URL("../src/vvm.js", import.meta.url), "utf8");
 const buildVoxelVariants = vm.runInNewContext(source.slice(source.indexOf("export function buildVoxelVariants"), source.indexOf("// Publish both variants"))
 	.replace("export ", "") + "\nbuildVoxelVariants");
-const interpreter = source.slice(source.indexOf("export function runByteCode"), source.indexOf("\nbuffers.forEach"))
+const interpreter = source.slice(source.indexOf("export function runByteCode"), source.indexOf("\nif (DEBUG) buffers.forEach"))
 	.replace("export ", "").replaceAll("import.meta.env.DEBUG", "true");
 function run(code, parameters = []) {
 	return runBytes(compileVoxelSource(code, parameters), index => parameters[index] ?? 0);
 }
-function runBytes(bytecode, parameter) {
+function runBytes(bytecode, parameter, debug = true) {
 	const context = vm.createContext({
-		...opcodes, vec3, vec3_add, VOXEL_SIZE: 64, DEBUG: true,
+		...opcodes, vec3, vec3_add, VOXEL_SIZE: 64, DEBUG: debug,
 		GenArray: (n, fn) => Array.from({ length: n }, fn),
-		tex: () => ({}), label: String.raw, buffers: new Map(), flush() {}, voxT: [],
+		tex: () => ({}), label: String.raw, buffers: new Map(), flush(texture, data) { texture.data = data; }, voxT: [],
 		bytecode, parameter,
 	});
-	return vm.runInContext(interpreter + "\nbuffers.get(runByteCode(bytecode, parameter))", context, { timeout: 1000 });
+	return vm.runInContext(interpreter + "\nrunByteCode(bytecode, parameter).data", context, { timeout: 1000 });
 }
+
+test("single-channel release volumes preserve every material in both authored poses", () => {
+	for (const name of readdirSync(new URL("../vox/", import.meta.url)).filter(name => name.endsWith(".vp"))) {
+		const bytecode = assemble(readFileSync(new URL(`../vox/${name}`, import.meta.url), "utf8"));
+		for (const pose of [0, 1]) {
+			const parameter = name === "sphere.vp" ? index => index ? 31.5 : 24.32 : () => pose;
+			const editor = runBytes(bytecode, parameter), release = runBytes(bytecode, parameter, false);
+			assert.equal(editor.length, release.length * 4, name);
+			for (let i = 0; i < release.length; i++) {
+				assert.equal(release[i], editor[i * 4], `${name}: voxel ${i}`);
+				assert.equal(editor[i * 4 + 1] + editor[i * 4 + 2] + editor[i * 4 + 3], 0);
+			}
+		}
+	}
+});
+
 
 test("compact wall program preserves every original voxel and material", () => {
 	const code = readFileSync(new URL("../vox/walltile.vp", import.meta.url), "utf8");
@@ -82,6 +98,8 @@ test("wooden crate has steel edge bands, parallel inset boards, and one diagonal
 test("wall panel P0 raises the left lever and turns the right screen green", () => {
 	const code = readFileSync(new URL("../vox/computer-console.vp", import.meta.url), "utf8");
 	const red = run(code, [0]), green = run(code, [1]);
+	for (const [grid, hash] of [[red, "b21eb148155f9712b52c85fbc2d18671448c15b364f4a188507d45f9c6f04271"], [green, "c54d16b367f2d38670d6bf00a66c2a2793431d268aafc83d46b430d31c70fa4a"]])
+		assert.equal(createHash("sha256").update(new Uint8Array(grid.buffer)).digest("hex"), hash, "console draw reordering preserves every voxel");
 	assert.equal(red.length, 40 * 32 * 12 * 4);
 	const at = (grid, x, y, z) => grid[((z * 32 + y) * 40 + x) * 4];
 	assert.equal(at(red, 8, 7, 10), 2, "ivory grip down");
@@ -171,23 +189,9 @@ test("FORJUMP checks stack occupancy without consuming or testing the top value"
 	assert.deepEqual(voxelParameterIndices("FORJUMP loadp loadp:"), []);
 });
 
-test("LOOP peeks, decrements positive counters, and preserves zero and negative values", () => {
-	for (const count of [-2, 0, 1, 3]) {
-		let calls = 0;
-		const bytes = compileVoxelSource(`${count} again: LOADP:7 FSTORE:7 LOOP again FSTORE:MATERIAL BOX FSTORE:BRUSH STROKE`);
-		const result = runBytes(bytes, () => { calls++; return 0; });
-		assert.equal(calls, Math.max(0, count) + 1);
-		assert.equal(result[0], Math.min(0, count) & 255);
-	}
-	assert.deepEqual([...assemble("0 LOOP end end:")], [57, 0, 120, 0]);
-	assert.deepEqual(voxelInstructionEnds(assemble("0 LOOP end end:")), [0, 2, 4]);
-	assert.equal(run("1 LOOP end 9 FSTORE:MATERIAL end: FSTORE:MATERIAL BOX FSTORE:BRUSH STROKE")[0], 0);
-	assert.throws(() => compileVoxelSource("LOOP end end:"), /expects a number/);
-	assert.throws(() => compileVoxelSource("1 2 3 VEC LOOP end end:"), /expects a number/);
-	assert.throws(() => assemble("1 LOOP missing"), /Undefined label/);
-	assert.throws(() => assemble("1 LOOP"), /requires a label/);
-	assert.throws(() => compileVoxelSource("again: 1 LOOP again"), /infinite loop/);
-	assert.deepEqual(voxelParameterIndices("0 LOOP loadp loadp:"), []);
+test("removed counted LOOP instructions are rejected", () => {
+    assert.throws(() => assemble("1 LOOP again again:"));
+    assert.throws(() => compileVoxelSource("1 LOOP again again:"));
 });
 
 test("labels respect literal batching, vector fusion, comments and line breaks", () => {
@@ -429,27 +433,18 @@ test("split unicorn retains every original voxel and material in both walking po
 	}
 });
 
-test("FLIP swaps voxels only inside its box on each axis, including empty cells", () => {
-	for (const [axis, letter] of ["X", "Y", "Z"].entries()) {
-		for (const extent of [3, 4]) {
-			const a = [10, 11, 12], b = [...a];
-			b[axis] += extent;
-			const middle = [...a]; middle[axis] += 2;
-			const reflected = [...middle]; reflected[axis] = a[axis] + b[axis] - middle[axis];
-			const point = p => `${p.join(" ")} VEC VSTORE:START STROKE`;
-			const setup = `SPHERE FSTORE:BRUSH 0 FSTORE:RADIUS
-				7 FSTORE:MATERIAL ${point(a)} 9 FSTORE:MATERIAL ${point(b)}
-				14 FSTORE:MATERIAL ${point(middle)} ${point([1, 1, 1])}
-				${b.join(" ")} VEC VSTORE:START ${a.join(" ")} VEC VSTORE:END`;
-			const flipped = run(`${setup} FLIP:${letter}`);
-			const at = p => flipped[((p[2] * 64 + p[1]) * 64 + p[0]) * 4];
-			assert.equal(at(a), 9); assert.equal(at(b), 7);
-			assert.equal(at(reflected), 14); assert.equal(at([1, 1, 1]), 14);
-			if (extent === 3) assert.equal(at(middle), 0);
-			assert.deepEqual(Buffer.from(run(`${setup} FLIP:${letter} FLIP:${letter}`).buffer), Buffer.from(run(setup).buffer));
-		}
-	}
-	assert.throws(() => compileVoxelSource("FLIP:3"), /Invalid subopcode/);
+test("FLIP reflects the whole volume on each axis and preserves the cursor", () => {
+    for (const [axis, letter] of ["X", "Y", "Z"].entries()) {
+        const setup = "SPHERE FSTORE:BRUSH 0 FSTORE:RADIUS 9 FSTORE:MATERIAL 1 2 3 VEC VSTORE:START STROKE";
+        const before = run(setup), flipped = run(setup + " FLIP:" + letter);
+        for (let z = 0; z < 64; z++) for (let y = 0; y < 64; y++) for (let x = 0; x < 64; x++) {
+            const p = [x,y,z]; p[axis] = 63 - p[axis];
+            assert.equal(flipped[((z*64+y)*64+x)*4], before[((p[2]*64+p[1])*64+p[0])*4]);
+        }
+        assert.deepEqual(Buffer.from(run(setup + " FLIP:" + letter + " FLIP:" + letter).buffer), Buffer.from(before.buffer));
+        assert.equal(run(setup + " FLIP:" + letter + " 7 FSTORE:MATERIAL STROKE")[((3*64+2)*64+1)*4], 7);
+    }
+    assert.throws(() => compileVoxelSource("FLIP:3"), /Invalid subopcode/);
 });
 
 test("sphere program exactly matches the original procedural particle volume", () => {

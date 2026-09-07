@@ -184,10 +184,6 @@ const bloomPipeline = d.createRenderPipeline({
 		"targets": [{ "format": canvasSrgbFormat }],
 	},
 });
-const bloomSampler = d.createSampler({
-	"magFilter": "linear",
-	"minFilter": "linear",
-});
 
 const BG = (pipeline, id, ...array) =>
 	d.createBindGroup({
@@ -247,7 +243,8 @@ export function render() {
 	let pass = e.beginRenderPass(passDescriptor);
 	pass.setBindGroup(0, renderBindGroup);
 	pass.setPipeline(pipeline);
-	for (let i = 1; i < 128; i++) {
+	// Models 126/127 alias reserved kinds 254/255; neither can be rendered.
+	for (let i = 1; i < 126; i++) {
 		pass.setBindGroup(1, BG(pipeline, 1, ...voxT[i].map((texture) => texture.createView())));
 		pass.draw(36, ENTITY_COUNT, 0, i << 16);
 	}
@@ -265,7 +262,7 @@ export function render() {
 	if (DEBUG && debugModule) bloomPassDescriptor.timestampWrites = debugModule.stats.getTimestampWrites("bloom");
 	const bloomPass = e.beginRenderPass(bloomPassDescriptor);
 	bloomPass.setPipeline(bloomPipeline);
-	bloomPass.setBindGroup(0, BG(bloomPipeline, 0, sceneView, bloomSampler));
+	bloomPass.setBindGroup(0, BG(bloomPipeline, 0, sceneView));
 
 	bloomPass.draw(3);
 	bloomPass.end();

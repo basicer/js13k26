@@ -6,19 +6,19 @@ fn direct_lighting(base_color: vec3<f32>, normal: vec3<f32>, view: vec3<f32>, ro
 }
 
 fn shade_surface(base_color: vec3<f32>, normal: vec3<f32>, view: vec3<f32>, roughness: f32, metalness: f32, world_position: vec3<f32>, ao: f32) -> vec3<f32> {
-    var color = base_color * (0.01f + 0.01f * max(normal.y, 0.0f)) * ao;
-    for (var i = 0u; i < MAX_SPOTLIGHTS; i++) {
+    var color = base_color * 0.01f * (1.0f + max(normal.y, 0.0f)) * ao;
+    for (var i = 0u; i < 32u; i++) {
         let index = render_state.light_entities[i >> 2u][i & 3u];
         if (index == 0xffffffffu) { break; }
         let light = entities[index];
         let transform = world_transform(index);
         let axis = transform[2].xyz;
-        let cutoff = cos(clamp(light.light_angle, 0.0f, 6.283185307f) * 0.5f);
+        // Spawn and the inspector already constrain cone angles to 0..2PI.
+        let cutoff = cos(light.light_angle * 0.5f);
         let to_light = transform[3].xyz - world_position;
-        let distance_squared = dot(to_light, to_light);
-        if (distance_squared <= 0.000001f) { continue; }
+        let distance_squared = max(dot(to_light, to_light), 0.000001f);
         let light_direction = to_light * inverseSqrt(distance_squared);
-        if (cutoff > -1.0f && dot(-light_direction, axis / max(length(axis), 0.000001f)) <= cutoff) { continue; }
+        if (dot(-light_direction, axis / max(length(axis), 0.000001f)) < cutoff) { continue; }
         color += direct_lighting(base_color, normal, view, roughness, metalness, light_direction) * light.spotlight / (1.0f + distance_squared);
     }
     return color + direct_lighting(base_color, normal, view, roughness, metalness, normalize(vec3<f32>(-0.4f, 0.8f, -0.5f))) * 0.25f;

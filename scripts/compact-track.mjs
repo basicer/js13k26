@@ -1,9 +1,15 @@
 import vm from "node:vm";
 
-export function compactTrack(code) {
+export function compactTrack(code, prune = false) {
     // Tracker channels repeat verbatim. Share their immutable arrays before
     // Closure/Roadroller; preserve sparse holes (JSON would turn them into null).
     const track = vm.runInNewContext(code);
+    if (prune) {
+        const usedPatterns = new Set(track[2]), usedInstruments = new Set();
+        for (const index of usedPatterns) for (const channel of track[1][index]) usedInstruments.add(channel[0] || 0);
+        track[0] = track[0].map((instrument, index) => usedInstruments.has(index) ? instrument : 0);
+        track[1] = track[1].map((pattern, index) => usedPatterns.has(index) ? pattern : 0);
+    }
     const counts = new Map(), names = new Map(), declarations = [];
     const literal = value => Array.isArray(value) ? `[${value.map(literal).join(",")}${value.length && !(value.length - 1 in value) ? "," : ""}]` : JSON.stringify(value);
     const count = value => {

@@ -21,7 +21,7 @@ materials as well as every face. Row labels keep each record's literal encoding
 at six bytes. A repeated final stroke aligns successive tables for base64/ZIP
 compression. The voxel test checks the full original volume's SHA-256.
 
-`wall-window.vp` is a simple 64³ steel frame, model 17 (transparent entity kind 145). A cyan glass window
+`wall-window.vp` is a simple 64³ steel frame, model 125 (transparent entity kind 253). A cyan glass window
 runs through X at Y=4–59 and Z=4–59, retaining a sill, lintel and side posts.
 The level uses it on camera-side hallway, cargo and boss-room walls. This is
 a transparent infill; existing wall movement and shot colliders remain intact.
@@ -159,37 +159,18 @@ Plain and paint strokes remain separate: fusing those too made the release ZIP l
 
 
 
-## Boxed flips
-
-
+## Volume flips
 
 `FLIP:X`, `FLIP:Y`, and `FLIP:Z` use opcode 9 with subopcodes 0, 1, and 2.
-
-Each is one byte and swaps voxel contents inside the inclusive box defined by
-
-vector registers START (0) and END (1). Corner order does not matter. The flip
-
-reflects around the box's midpoint, leaves cells outside the box untouched,
-
-and preserves the endpoint registers and stack. Empty cells swap too; unlike
-
-`MIRROR`, this moves geometry instead of copying it. Two identical flips undo
-
-each other. Bounds use voxel coordinates 0–63 and are independent of clip registers.
-
-
+They swap voxels around the volume midpoint, visiting the positive half within
+CLIP_MIN/CLIP_MAX and exchanging each voxel with its reflected partner.
+Default clip bounds flip the whole model. START, END and the stack are unchanged;
+no cursor setup is required. Empty cells swap too. Unlike MIRROR, this moves
+geometry rather than copying it. Two whole-volume flips undo each other.
 
 ```text
-
-VLOAD:CLIP_MIN VSTORE:START
-
-VLOAD:CLIP_MAX VSTORE:END
-
 FLIP:X
-
 ```
-
-
 
 The unicorn mirrors its body first, then executes one shared leg routine twice.
 
@@ -281,45 +262,8 @@ remains an unbound reference for shape regression tests.
 
 
 
-## Counted loops
-
-
-
-`LOOP label` peeks at the top scalar. If it is greater than zero, it decrements
-
-that value in place and jumps; zero and negative values fall through unchanged.
-
-The counter is never popped. It uses opcode 15 and the same signed 11-bit,
-
-two-byte relative offset as `JUMPIF`. Labels and editor stepping account for
-
-the offset payload. The editor rejects missing/non-scalar counters and runaway loops.
-
-
-
-A bottom-tested loop starting at 3 executes its body four times, leaving 0:
-
-
-
-```text
-
-3
-
-again:
-
-// Body must preserve the counter on top of the stack.
-
-STROKE
-
-LOOP again
-
-```
-
-
-
-Steel uses lower roughness and stronger tinted specular highlights.
-
-
+Counted `LOOP` (former opcode 15) has been removed. Use `JUMPIF` for conditions
+and `FORJUMP` for the stack-driven routines below.
 
 ## Stack-driven loops
 

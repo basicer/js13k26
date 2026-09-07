@@ -35,22 +35,17 @@ struct Entity {
     controller: f32,
 };
 
-fn rotation_matrix(rotation: vec3<f32>) -> mat3x3<f32> {
+fn local_transform(entity: Entity) -> mat4x4<f32> {
+    let rotation = entity.rot;
     let cos_pitch = cos(rotation.x);
     let forward = vec3<f32>(sin(rotation.y) * cos_pitch, sin(rotation.x), -cos(rotation.y) * cos_pitch);
     // Derive right from yaw: crossing with world-up degenerates at +/-90 pitch.
     let base_right = vec3<f32>(cos(rotation.y), 0.0f, sin(rotation.y));
     let base_up = cross(base_right, forward);
-    let right = base_right * cos(rotation.z) + base_up * sin(rotation.z);
-    return mat3x3<f32>(right, base_up * cos(rotation.z) - base_right * sin(rotation.z), -forward);
-}
-
-fn local_transform(entity: Entity) -> mat4x4<f32> {
-    let rotation = rotation_matrix(entity.rot);
     return mat4x4<f32>(
-        vec4<f32>(rotation[0] * entity.scale.x, 0.0f),
-        vec4<f32>(rotation[1] * entity.scale.y, 0.0f),
-        vec4<f32>(rotation[2] * entity.scale.z, 0.0f),
+        vec4<f32>((base_right * cos(rotation.z) + base_up * sin(rotation.z)) * entity.scale.x, 0.0f),
+        vec4<f32>((base_up * cos(rotation.z) - base_right * sin(rotation.z)) * entity.scale.y, 0.0f),
+        vec4<f32>(-forward * entity.scale.z, 0.0f),
         vec4<f32>(entity.pos, 1.0f),
     );
 }
@@ -84,11 +79,10 @@ struct RenderState {
     light_entities: array<vec4<u32>, 8>,
 };
 
-const NEAR_PLANE = 0.1f;
-const FAR_PLANE = 100.0f;
 
 fn clip_depth(view_z: f32) -> f32 {
-    return view_z * FAR_PLANE / (FAR_PLANE - NEAR_PLANE) - NEAR_PLANE * FAR_PLANE / (FAR_PLANE - NEAR_PLANE);
+    // 100 / (100 - 0.1), rounded to f32 for the fixed far plane.
+    return (view_z - 0.1f) * 1.001001f;
 }
 
 @group(0) @binding(0)
@@ -97,7 +91,6 @@ var<uniform> render_state: RenderState;
 var<storage, read> entities: array<Entity>;
 @group(0) @binding(2)
 var palette: texture_storage_2d<rgba8unorm, read>;
-const MAX_SPOTLIGHTS = 32u;
 
 fn world_transform(index: u32) -> mat4x4<f32> {
     var current = u32(entities[index].parent);

@@ -14,7 +14,6 @@ import {
 	OP_FSTORE,
 	OP_LOADP,
 	OP_JUMPIF,
-	OP_LOOP,
 	OP_FORJUMP,
 	OP_SIZE,
 } from "./vvm-const.js";
@@ -24,14 +23,14 @@ const tex = (size = [VOXEL_SIZE, VOXEL_SIZE, VOXEL_SIZE]) => {
 	let t = d.createTexture({
 		"size": size,
 		"dimension": "3d",
-		"format": "rgba32float",
+		"format": DEBUG ? "rgba32float" : "r32float",
 		"usage": GPUTextureUsage.TEXTURE_BINDING | GPUTextureUsage.COPY_DST,
 	});
 	t.ROB_SIZE = size;
 	return t;
 };
 
-let buffers = new Map();
+let buffers = DEBUG && new Map();
 const empty = tex();
 if (DEBUG) buffers.set(empty, new Float32Array(VOXEL_SIZE ** 3 * 4));
 
@@ -43,12 +42,12 @@ export var voxT = GenArray(256, () => [empty, empty]);
 // Only the editor needs fallback cubes; release models finish loading before rendering.
 if (DEBUG) voxT[2] = voxT[7] = [cube, cube];
 
-export const flush = (texture) => {
+export const flush = (texture, buffer = DEBUG && buffers.get(texture)) => {
 	Q.writeTexture(
 		{ "texture": texture },
-		buffers.get(texture),
+		buffer,
 		{
-			"bytesPerRow": texture.ROB_SIZE[0] * 4 * 4,
+			"bytesPerRow": texture.ROB_SIZE[0] * 4 * (DEBUG ? 4 : 1),
 			"rowsPerImage": texture.ROB_SIZE[1],
 		},
 		texture.ROB_SIZE,
@@ -86,7 +85,7 @@ if (DEBUG && import.meta.env.DEBUG) {
 export function runByteCode(bytecode, parameter = () => 0) {
 	let pc = 0;
 	let size = [VOXEL_SIZE, VOXEL_SIZE, VOXEL_SIZE];
-	let buffer = new Float32Array(VOXEL_SIZE ** 3 * 4);
+	let buffer = new Float32Array(VOXEL_SIZE ** 3 * (DEBUG ? 4 : 1));
 
 	let reg_vec = GenArray(8, () => [0, 0, 0]);
 	reg_vec[7] = size.map((n) => n - 1);
@@ -99,12 +98,10 @@ export function runByteCode(bytecode, parameter = () => 0) {
 		switch (cmd >> 3) {
 			case OP_FORJUMP:
 				stack.push(stack.length);
-			case OP_LOOP:
 			case OP_JUMPIF: {
 				// Signed 11-bit byte offset, relative to the end of this instruction.
 				const offset = ((((cmd & 7) << 8) | bytecode[pc++]) << 21) >> 21;
-				if (cmd >> 3 === OP_LOOP ? stack[stack.length - 1] > 0 && stack[stack.length - 1]-- : stack.pop())
-					pc += offset;
+				if (stack.pop()) pc += offset;
 				break;
 			}
 			case OP_STROKEI:
@@ -132,20 +129,12 @@ export function runByteCode(bytecode, parameter = () => 0) {
 				for (let z = lo[2]; z <= hi[2]; z++)
 					for (let y = lo[1]; y <= hi[1]; y++)
 						for (let x = lo[0]; x <= hi[0]; x++) {
-							let dx = x - a[0],
-								dy = y - a[1],
-								dz = z - a[2],
-								hit = brush == 1;
-							if (brush == 0) hit = dx * dx + dy * dy + dz * dz <= rr;
-							if (brush == 1) hit = true;
-							if (brush == 2) {
-								let t = Math.max(0, Math.min(1, (dx * abx + dy * aby + dz * abz) / length));
-								dx -= abx * t;
-								dy -= aby * t;
-								dz -= abz * t;
-								hit = dx * dx + dy * dy + dz * dz <= rr;
-							}
-							let index = ((z * size[1] + y) * size[0] + x) * 4;
+							let dx = x - a[0], dy = y - a[1], dz = z - a[2];
+							// A sphere is the zero-length case of the capsule calculation.
+							const t = brush == 2 ? Math.max(0, Math.min(1, (dx * abx + dy * aby + dz * abz) / length)) : 0;
+							dx -= abx * t; dy -= aby * t; dz -= abz * t;
+							const hit = brush == 1 || dx * dx + dy * dy + dz * dz <= rr;
+							let index = ((z * size[1] + y) * size[0] + x) * (DEBUG ? 4 : 1);
 							if (hit && (!(cmd & 1) || buffer[index])) buffer[index] = reg_float[0] & 255;
 						}
 				if (cmd & 2) {
@@ -160,7 +149,7 @@ export function runByteCode(bytecode, parameter = () => 0) {
 			}
 			case OP_SIZE: {
 				size = stack.pop().map((n) => (n === -128 ? 128 : n));
-				buffer = new Float32Array(size[0] * size[1] * size[2] * 4);
+				buffer = new Float32Array(size[0] * size[1] * size[2] * (DEBUG ? 4 : 1));
 				reg_vec[7] = size.map((n) => n - 1);
 				break;
 			}
@@ -198,25 +187,20 @@ export function runByteCode(bytecode, parameter = () => 0) {
 			case OP_MIRROR: {
 				const flip = cmd >> 3 === OP_FLIP;
 				const axis = cmd & 7;
-				const a = reg_vec[flip ? 0 : 6],
-					b = reg_vec[flip ? 1 : 7];
-				const lo = flip ? a.map((v, i) => Math.ceil(Math.min(v, b[i]))) : [...a];
-				const hi = flip ? a.map((v, i) => Math.floor(Math.max(v, b[i]))) : b;
-				const sum = flip ? lo[axis] + hi[axis] : size[axis] - 1;
+				// Both operations reflect around the volume midpoint within the clip bounds.
+				const lo = [...reg_vec[6]], hi = reg_vec[7], sum = size[axis] - 1;
 				lo[axis] = Math.max(lo[axis], Math.floor(sum / 2) + 1);
 				for (let z = lo[2]; z <= hi[2]; z++)
 					for (let y = lo[1]; y <= hi[1]; y++)
 						for (let x = lo[0]; x <= hi[0]; x++) {
-							const sx = axis === 0 ? sum - x : x;
-							const sy = axis === 1 ? sum - y : y;
-							const sz = axis === 2 ? sum - z : z;
-							const target = ((z * size[1] + y) * size[0] + x) * 4;
-							const source = ((sz * size[1] + sy) * size[0] + sx) * 4;
-							for (let channel = 0; channel < (flip ? 4 : 1); channel++) {
-								const value = buffer[target + channel];
-								buffer[target + channel] = buffer[source + channel];
-								if (flip) buffer[source + channel] = value;
-							}
+							const reflected = [x, y, z];
+							reflected[axis] = sum - reflected[axis];
+							const target = ((z * size[1] + y) * size[0] + x) * (DEBUG ? 4 : 1);
+							const source = ((reflected[2] * size[1] + reflected[1]) * size[0] + reflected[0]) * (DEBUG ? 4 : 1);
+							// VP only writes the material channel; the other channels stay zero.
+							const value = buffer[target];
+							buffer[target] = buffer[source];
+							if (flip) buffer[source] = value;
 						}
 				break;
 			}
@@ -224,12 +208,12 @@ export function runByteCode(bytecode, parameter = () => 0) {
 	}
 
 	let result = tex(size);
-	buffers.set(result, buffer);
-	flush(result);
+	if (DEBUG) buffers.set(result, buffer);
+	flush(result, buffer);
 	return result;
 }
 
-buffers.forEach((_, texture) => flush(texture));
+if (DEBUG) buffers.forEach((_, texture) => flush(texture));
 
 import sphereProgram from "../vox/sphere.vp";
 // VP literals are integers; parameters preserve the original fractional shape.
@@ -317,7 +301,7 @@ export function buildModel(slot, bytecode, parameter = () => 0) {
 		[18, unicornHead, unicornHeadSource],
 		[5, program3, source3],
 		[7, program4, source4],
-		[17, windowWall, windowSource],
+		[125, windowWall, windowSource],
 		[19, door, doorSource],
 	];
 	// Kind 1 stays empty: it is the marine's gameplay and transform root.

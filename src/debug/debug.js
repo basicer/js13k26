@@ -2,7 +2,7 @@ import * as E from "../entities-const.js";
 import { ImGui, ImGuiImplWeb, ImVec2, ImVec4 } from "@mori2003/jsimgui";
 import { d, c, heldKeys } from "../globals.js";
 import { cameraEntity, cameraPosition, cameraRotation } from "../entities.js";
-import { startElevatorTest, updateElevatorTest, warpLocations, warpPlayer } from "./elevatorTest.js";
+import { startElevatorTest, warpLocations, warpPlayer } from "./elevatorTest.js";
 import { detachCamera, attachCamera } from "./camera.js";
 import { setMarineTrigger } from "../game.js";
 import { palette } from "../palette.js";
@@ -45,7 +45,7 @@ const play = () => {
 	paused = false;
 };
 export function updateCamera(deltaTime) {
-	if (!paused) updateElevatorTest(deltaTime);
+
 	if (!isFlying() || wantsKeyboard()) return;
 	detachCamera();
 	if (["w", "a", "s", "d", "r", "f", "q", "e", "arrowleft", "arrowright", "arrowup", "arrowdown"].some(key => heldKeys.has(key))) pause();

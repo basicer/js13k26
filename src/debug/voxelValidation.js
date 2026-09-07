@@ -32,17 +32,10 @@ export function compileVoxelSource(source, parameters = []) {
 		};
 		if (++steps > 100000) fail("Program exceeds the editor's instruction limit (possible infinite loop).");
 		if (token.endsWith(":")) continue;
-		if (/^(jumpif|loop|forjump)$/i.test(token)) {
+		if (/^(jumpif|forjump)$/i.test(token)) {
 			const target = tokens[++pc].token;
 			if (token.toLowerCase() === "forjump") {
 				if (stack.length) pc = labels.get(target);
-			} else if (token.toLowerCase() === "loop") {
-				const count = stack.at(-1);
-				if (typeof count !== "number") fail("LOOP expects a number on the stack.");
-				if (count > 0) {
-					stack[stack.length - 1]--;
-					pc = labels.get(target);
-				}
 			} else if (pop(false) !== 0) pc = labels.get(target);
 			continue;
 		}
@@ -84,20 +77,8 @@ export function compileVoxelSource(source, parameters = []) {
 			const value = parameters[arg] ?? 0;
 			if (!Number.isFinite(value)) fail("Parameters must be finite numbers.");
 			stack.push(value);
-		} else if (op === "mirror") work += dimensions.reduce((a, b) => a * b, 1);
-		else if (op === "flip") {
-			if ([...vectors[0], ...vectors[1]].some((n, axis) => n < 0 || n >= dimensions[axis % 3]))
-				fail("Flip bounds must fit the declared model size.");
-			work += vectors[0].reduce(
-				(volume, n, axis) =>
-					volume *
-					Math.max(
-						0,
-						Math.floor(Math.max(n, vectors[1][axis])) - Math.ceil(Math.min(n, vectors[1][axis])) + 1,
-					),
-				1,
-			);
-		} else if (op === "stroke") {
+		} else if (op === "mirror" || op === "flip") work += dimensions.reduce((a, b) => a * b, 1);
+		else if (op === "stroke") {
 			const [, brush, radius] = floats;
 			if (brush > 2 || radius > 64) fail("Brush must be 0–2 and radius must be 0–64.");
 			const a = vectors[0],

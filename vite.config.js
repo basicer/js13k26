@@ -26,7 +26,7 @@ export default defineConfig(({ command, mode }) => {
 		base: "./",
 		plugins: [
 			dds(),
-			zzfxm(),
+			zzfxm(pack),
 			voxprog(mode === "development"),
 			shader(pack),
 			...(pack ? [closure(), roadroller(useRoadroller), zip(useRoadroller)] : []),
@@ -60,13 +60,13 @@ var dds = () => ({
 	load: (id) => (/\.dds(?:\.gz)?$/.test(id) ? `export default "${readFileSync(id).toString("base64")}";` : undefined),
 });
 
-var zzfxm = () => ({
+var zzfxm = (pack) => ({
 	name: "vite:zzfxm",
 	load: (id) => {
 		if (!/\.zzfxm$/.test(id)) return undefined;
 		let code = readFileSync(id).toString("utf-8");
 		code = code.replace(/[{][^}]*[}]/gm, "{}");
-		return compactTrack(code);
+		return compactTrack(code, pack && id.endsWith("Main Title.zzfxm"));
 	},
 });
 

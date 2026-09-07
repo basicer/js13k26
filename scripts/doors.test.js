@@ -10,7 +10,7 @@ function level() {
         vm.runInContext(readFileSync(new URL(`../src/${file}.js`, import.meta.url), "utf8")
             .replace(/^import .*;\r?\n/gm, "").replaceAll("export ", ""), context);
     const run = code => vm.runInContext(code, context);
-    run("setupEntities(); setupLevel(() => {}); const doors = EArray.filter(e => e[E.KIND] === 19);");
+    run("setupEntities(); setupLevel(() => {}); const doors = EArray.filter(e => e[E.KIND] === 19 && e[E.SOLID]);");
     return run;
 }
 
@@ -69,7 +69,7 @@ test("door collision follows root and local panel translation but ignores visual
 
 test("each console targets its preceding door panel and opens/closes it in the same frame", () => {
     const run = level();
-    const consoles = run("EArray.filter(e => e[E.KIND] === 15)");
+    const consoles = run("EArray.filter(e => e[E.KIND] === 15 && EArray[e[E.CONTROLLER]][E.KIND] === 19)");
     assert.equal(consoles.length, 4);
     for (const console of consoles) {
         const door = run(`EArray[${console[E.CONTROLLER]}]`);

@@ -14,7 +14,8 @@ fn vs_main(
     // belongs to a different texture before they reach rasterization.
     let entity_kind = u32(entities[entity_index].kind);
     let transparency = entities[entity_index].transparency;
-    if (entity_index == 0u || entity_kind >= 254u || (entity_kind & 127u) != (idx >> 16u) || transparency >= 1.0f) {
+    // Reserved kinds 254/255 map to models 126/127, which are never submitted.
+    if ((entity_kind & 127u) != (idx >> 16u) || transparency >= 1.0f) {
         out.clip_position = vec4<f32>(0.0f, 0.0f, 2.0f, 1.0f);
         return out;
     }
@@ -37,9 +38,8 @@ fn vs_main(
     );
 
     let focal_length = 1.0f / tan(radians(render_state.fov) * 0.5f);
-    let aspect = render_state.aspect;
     out.clip_position = vec4<f32>(
-        view_position.x * focal_length / aspect,
+        view_position.x * focal_length / render_state.aspect,
         view_position.y * focal_length,
         clip_depth(view_position.z),
         view_position.z,
@@ -61,7 +61,8 @@ fn voxel_at(cell: vec3<i32>, volume_size: vec3<i32>, grid_size: vec3<f32>, entit
     if (material == 0.0f) { return 0.0f; }
     // Stable 4x4x4 chunks either become air or take the replacement palette.
     if (dissolve_noise(vec3<u32>(cell) / vec3<u32>(4u), entity_id) < e.dissolve) {
-        return clamp(e.dissolvePalette, 0.0f, 255.0f);
+        // Gameplay and the inspector already constrain palette IDs to 0..255.
+        return e.dissolvePalette;
     }
     return select(material, e.matOverride, e.matOverride > 0.0f);
 }
@@ -93,7 +94,8 @@ fn voxel_search(ray_origin: vec3<f32>, ray_direction: vec3<f32>, volume_size: ve
     normal[entry_axis] = -f32(step[entry_axis]);
     // Each iteration advances one axis, including exact edge/corner ties.
     // Fractional grids can leave the box before crossing the last cell boundary.
-    while (distance <= exit_distance && all(cell >= vec3<i32>(0)) && all(vec3<f32>(cell) < grid_size)) {
+    // Box exit bounds traversal; voxel_at also rejects any rounded boundary cell.
+    while (distance <= exit_distance) {
         let material = voxel_at(cell, volume_size, grid_size, entity_id);
         if (material > 0.0f) {
             return VoxelHit(distance, material, normal, cell);
@@ -112,9 +114,8 @@ fn voxel_search(ray_origin: vec3<f32>, ray_direction: vec3<f32>, volume_size: ve
 // Stable model-space chunks, with a different mask for each entity ID.
 fn dissolve_noise(chunk: vec3<u32>, entity_id: u32) -> f32 {
     var seed = (chunk.x * 1973u) ^ (chunk.y * 9277u) ^ (chunk.z * 104729u) ^ (entity_id * 26699u);
-    seed = (seed ^ (seed >> 16u)) * 0x7feb352du;
-    seed = (seed ^ (seed >> 15u)) * 0x846ca68bu;
-    seed = seed ^ (seed >> 16u);
+    seed = (seed ^ (seed >> 16u)) * 1664525u;
+    seed = seed ^ (seed >> 15u);
     // Exactly representable values in [0, 1): endpoints preserve all/remove all.
     return f32(seed & 16777215u) / 16777216.0f;
 }
@@ -122,7 +123,6 @@ fn dissolve_noise(chunk: vec3<u32>, entity_id: u32) -> f32 {
 @fragment
 fn fs_main(in: VertexOutput) -> FragmentOutput {
     let e = entities[in.idx];
-    if (e.dissolve >= 1.0f && e.dissolvePalette <= 0.0f) { discard; }
     let camera_transform = world_transform(0u);
     let camera_position = camera_transform[3].xyz;
     let camera_direction = -normalize(camera_transform[2].xyz);
@@ -158,16 +158,15 @@ fn fs_main(in: VertexOutput) -> FragmentOutput {
     let side_a = select(vec3<i32>(1, 0, 0), vec3<i32>(0, 1, 0), normal.x != 0) * corner;
     let side_b = select(vec3<i32>(0, 1, 0), vec3<i32>(0, 0, 1), normal.z == 0) * corner;
     let outside = cell + normal;
-    var ao = 1.0f - 0.18f * (
+    var ao = 1.0f - 0.25f * (
         min(voxel_at(outside + side_a, volume_size, grid_size, in.idx), 1.0f) +
-        min(voxel_at(outside + side_b, volume_size, grid_size, in.idx), 1.0f) +
-        min(voxel_at(outside + side_a + side_b, volume_size, grid_size, in.idx), 1.0f)
+        min(voxel_at(outside + side_b, volume_size, grid_size, in.idx), 1.0f)
     );
     
 
-    let material = hit.material;
-    var color = textureLoad(palette, vec2<u32>(u32(material), 0));
-    if (material == 255.0f) {
+    let material = u32(hit.material);
+    var color = textureLoad(palette, vec2<u32>(material, 0));
+    if (material == 255u) {
         // Warp model-space bands into flowing marble; simulation time pauses with the game.
         var p = voxel_position * 0.08f + vec3<f32>(render_state.time * 0.1f, 0.0f, 0.0f);
         p += 1.2f * sin(p.yzx + sin(p.zxy));
@@ -175,11 +174,11 @@ fn fs_main(in: VertexOutput) -> FragmentOutput {
         let rainbow = clamp(abs(fract(vec3<f32>(hue) + vec3<f32>(0.0f, 0.6666667f, 0.3333333f)) * 6.0f - 3.0f) - 1.0f, vec3<f32>(0.0f), vec3<f32>(1.0f));
         color = vec4<f32>(rainbow * rainbow, color.a);
     }
-    let surface = textureLoad(palette, vec2<u32>(u32(material), 1));
+    let surface = textureLoad(palette, vec2<u32>(material, 1));
     let hit_position = hit.distance * world_ray + camera_position;
     let view_depth = hit.distance * dot(world_ray, camera_direction);
     return FragmentOutput(
-        vec4<f32>(shade_surface(color.rgb, normalize(transpose(inverse_entity_transform) * hit.normal), -world_ray, surface.g, surface.r, hit_position, ao) + color.rgb * surface.b * 4.0f, select(1.0f, color.a * (1.0f - clamp(e.transparency, 0.0f, 1.0f)), e.kind >= 128.0f)),
+        vec4<f32>(shade_surface(color.rgb, normalize(transpose(inverse_entity_transform) * hit.normal), -world_ray, surface.g, surface.r, hit_position, ao) + color.rgb * surface.b * 4.0f, select(1.0f, color.a * (1.0f - e.transparency), e.kind >= 128.0f)),
         // 128-unit centered cursor range at 1/256 precision; high bit of each lane is unused.
         vec2<u32>(in.idx, u32(clamp((hit_position.x + 64.0f) * 256.0f, 0.0f, 32767.0f)) + u32(clamp((hit_position.z + 64.0f) * 256.0f, 0.0f, 32767.0f)) * 65536u),
         clip_depth(view_depth) / view_depth,

@@ -1,8 +1,8 @@
 import * as E from "../entities-const.js";
-import { entityOverrides, entityVersion } from "../entities.js";
+import { entityOverrides, EArray } from "../entities.js";
 import { sections } from "../level.js";
 
-let ride;
+const liftPanel = () => EArray.find(e => e[E.KIND] === 15 && e[E.CONTROLLER] === sections[0].id);
 
 export const warpLocations = [
 	["Start room", -11, -11, 0],
@@ -15,7 +15,7 @@ export const warpLocations = [
 ];
 
 export function warpPlayer(player, [, x, z, height]) {
-	ride = null;
+	liftPanel()[E.MODEL_VARIANT] = 0;
 	entityOverrides.delete(player.id);
 	entityOverrides.delete(sections[0].id);
 	player.set([x + height / 2, 0, z], E.POS);
@@ -28,15 +28,6 @@ export function warpPlayer(player, [, x, z, height]) {
 }
 
 export function startElevatorTest(player) {
-	const section = sections[0];
-	ride = { section, elapsed: 0, version: entityVersion };
-}
-
-export function updateElevatorTest(dt) {
-	if (!ride) return;
-	if (ride.version !== entityVersion) { ride = null; return; }
-	ride.elapsed = Math.min(10, ride.elapsed + dt);
-	ride.section[E.POS_Y] = ride.elapsed * 4;
-	ride.section[E.POS_X] = ride.elapsed * 2;
-	if (ride.elapsed === 10) ride = null;
+	sections[0].fill(0, E.POS, E.POS + 3);
+	liftPanel()[E.MODEL_VARIANT] = 1;
 }

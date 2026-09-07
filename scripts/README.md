@@ -1,5 +1,17 @@
 # Build analysis tools
 
+The voxel interpreter uses the same opcode set in development and release.
+Counted LOOP and arbitrary boxed flips have been removed; JUMPIF and FORJUMP
+remain. FLIP reflects around the volume midpoint using the clip bounds.
+The console draws its asymmetric screen after flipping the symmetric backing,
+preserving both original voxel volumes.
+
+Release voxel textures use `r32float` and discard their CPU buffers after upload;
+the editor retains editable `rgba32float` buffers. The title-song build drops
+unused instruments and patterns without modifying the authored file or played
+sequence. Postprocessing reads clamped texel centers directly, preserving the
+25-tap bloom and antialiasing weights without a sampler binding.
+
 `npm run generate:entities` reads `Entity` in `shaders/common.wgsl` and writes
 `src/entities-const.js`. Vite also regenerates it when loading its config
 for development or production. Rerun the command after editing the struct
@@ -48,7 +60,7 @@ X/Z coordinates retain their +16 bias. Put scenery before actors within each sec
 Type 8 records encode floor rectangles with the same x,z,width,depth fields
 as walls. Seven floor rectangles cover the rooms, dogleg hallway, square lift platform and lower landing; exterior space has
 no floor. The start room has the G&G splash and no enemy portal.
-Type 1 uses those same rectangle fields for `wall-window.vp` (transparent kind 145, model 17),
+Type 1 uses those same rectangle fields for `wall-window.vp` (transparent kind 253, model 125),
 replacing the unused horizontal-rail record. The cyan glass window faces local X;
 use it on walls running along Z. Window walls retain the original map collider.
 Type 12 uses `x,z,width,depth` for a 2.8-unit-high door. Kind 19 uses `door.vp`,
@@ -58,7 +70,7 @@ Four doors start closed at the Hallway, Cargo, Elevator and Boss entrances.
 Other systems can move the panel relative to that root: setting its `POS_Y` to 3
 raises it clear of the passage. Movement and shot collision follow root/panel
 translation; roots retain unit scale and zero rotation. Section height remains
-visual. Each type-5 console follows its door in the plan and targets the previous
+visual. Each door console follows its door in the plan and targets the previous
 spawned entity (the panel). Red sets its local `targetPosition` to `(0,0,0)`;
 green moves it 4 units along its wider horizontal axis: `(4,0,0)` for X-wide
 panels or `(0,0,4)` for Z-wide panels, both with `lerpSpeed = 2`. All entities interpolate
@@ -70,21 +82,39 @@ doors open. `node --test scripts/doors.test.js` checks closed and moved doors.
 
 The elevator is a 6×6 square platform centered at `(-17.5,20)`, with six caution-rail
 segments. Its east edge docks directly at Cargo's X=-14.5 boundary. There are no
-projecting platform walkways. The 30.5×15 shaft descends 40 units; the platform's
+projecting platform walkways. The 30.5×15 shaft walls descend 80 units, continuing
+40 units below the elevator's lower stop. The platform's
 lower stop relative to the shaft is `(-37.5,20)`, 20 units backward from the top.
 The three shaft walls, inclined steel guide track and Cargo landing door belong
-to Cargo, while the platform, rails and platform light belong to Elevator.
+to Cargo, while the platform, rails, ride panel and platform light belong to Elevator.
 The camera-facing side stays open so the platform remains visible.
+The exit-side shaft wall is split into two jambs plus sections above and below
+the Boss doorway, leaving its full four-unit opening clear at the lower stop.
 The Boss section owns a 4×4.5 lower landing hallway from Z=12.5 to Z=17,
 with its door console mounted inside. The guide is one long cuboid inclined
 approximately 26.6 degrees from vertical, matching the lift's 40-down/20-back path.
-The Cargo wall and door centers are X=-14, so their half-unit thickness ends
+The Cargo entrance wall and door centers are X=-14, so their half-unit thickness ends
 at the platform edge. The track is offset toward Cargo to clear the deck too.
+The Cargo-side shaft wall follows the guide's 26.6-degree inclination, ending
+below the entrance and extending past the lower stop. It retains the wall material.
+The guide track uses door kind 19 at tile scale -2, preserving the shutter's
+metallic steel and dark seams instead of a flat material override.
+Click the panel on the platform's Cargo-facing rail to launch the 30-second ride.
+It uses the main game entity update and targets the first section via `controller`.
+Once launched, another click cannot interrupt the ride; reset restores the top stop.
+During travel, the platform attempts a unicorn leap every four seconds toward a
+clear spot one unit inside its far railing (Z=22). Arrivals launch from Z=26 at
+height 4, arc upward to 6.25, and land after two seconds. They begin chasing and
+attacking only after reaching deck height. No new
+drops occur before departure or after docking.
+During transit, invisible marine-only movement bounds keep walking and knockback
+half a unit inside the platform perimeter. They release at both stops and do not
+block the unicorns' incoming arcs or gunfire.
 The debug **Warp** menu offers Start room, Hallway, Cargo, Cargo landing, Elevator,
-Boss landing and Boss room. Warping cancels the TEST timer, resumes play, and
+Boss landing and Boss room. Warping resets the ride panel, resumes play, and
 aligns the selected floor with the player: the main section is `(20,40,0)` for
-Boss destinations and `(0,0,0)` elsewhere. TEST interpolates between these poses
-over ten seconds while the platform stays fixed.
+Boss destinations and `(0,0,0)` elsewhere. TEST resets the top pose and activates
+the same gameplay panel while the platform stays fixed.
 TEST does not teleport the player; use Warp → Elevator to board first.
 Type 13 encodes `x,z,width,depth,height,bottom` for shaft walls, with bottom relative
 to the ground plane. Type 14 encodes `x,z,width,depth` for one-unit-high caution

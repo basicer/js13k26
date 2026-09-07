@@ -12,8 +12,7 @@ export const OP_FORJUMP = 0,
 	OP_LOADP = 11,
 	OP_JUMPIF = 12,
 	OP_SIZE = 13,
-	OP_STROKEI = 14,
-	OP_LOOP = 15;
+	OP_STROKEI = 14;
 
 export const COMMAND_NAMES = {
 	"stroke": OP_STROKE,
@@ -26,7 +25,6 @@ export const COMMAND_NAMES = {
 	"fstore": OP_FSTORE,
 	"loadp": OP_LOADP,
 	"jumpif": OP_JUMPIF,
-	"loop": OP_LOOP,
 	"forjump": OP_FORJUMP,
 	"size": OP_SIZE,
 	"pushi": OP_PUSHI,

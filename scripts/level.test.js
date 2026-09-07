@@ -29,7 +29,7 @@ function level() {
 	const placements = [];
 	context.setupLevel((type,x,z,parent) => placements.push({type,x,z,parent}));
 	// These route tests exercise the architecture with its doors opened.
-	for (const entity of blocks) if (entity[E.KIND] === 19) entity[E.POS_Y] = 3;
+	for (const entity of blocks) if (entity[E.KIND] === 19 && entity[E.SOLID]) entity[E.POS_Y] = 3;
 	return { ...context, blocks, placements, sections: vm.runInContext("sections", context) };
 }
 
@@ -37,7 +37,7 @@ const route = [[-11,-11],[-10,-12],[2,-12],[2,8],[-6,8],[-6,14],[-12.5,14],[-13,
 
 test("camera-side window walls preserve the room barriers and section parents", () => {
 	const { blocks, sections, canStand } = level();
-	const windows = blocks.filter(e => e[E.KIND] === 145);
+	const windows = blocks.filter(e => e[E.KIND] === 253);
 	assert.equal(windows.length,4);
 	for (const [x,z,section] of [[-2,-1,1],[-14,12,2],[-57.5,4.25,4],[-33.5,4.25,4]]) {
 		const wall = windows.find(e => e[E.POS_X] === x && e[E.POS_Z] === z);

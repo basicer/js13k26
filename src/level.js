@@ -14,9 +14,9 @@ const ground = -30 / 64;
 const plan = [
 	9,8,4,4,12,12,0,-2,4,1,12,0,4,-2,12,1,0,4,10,12,1,0,10,0,1,4,0,10,8,1,4,2,0,8,
 	9,12,10,4,1,4,5,9.4,1,8,16,4,12,6,8,18,14,8,16,0,16,1,12,1,0,22,12,1,22,0,12,7,4,1,1,14,15,1,16,7,18,4,7,18,18,2,20,9,11,18,11,11,19,18,
-	9,12,18,22,4,1,5,21.4,21,8,11.75,32.75,20.5,21.5,0,21,22,2,1,0,8.75,22,14.5,1,0,22,32.75,1,21.5,0,11.75,43.5,20.5,1,1,2,28,1,12,0,2,40.75,1,5.5,0,14,29,1,8,0,6,35,1,6,2,15,27,2,15,28,2,13,30,2,7,34,2,5,36,2,4,38,3,3,26,7,18,27,7,10,34,7,2,37,12,2,36,1,4,5,4.5,43.3,13,-13.75,43.5,30.5,1,42.8,-40,13,2,36,1,15,40,-40,13,-13.75,28.5,30.5,1,40,-37.2,15,-8,36,0.5,0.5,44.72,-42.76,10,21,28,10,21,36,11,17,26,11,10,26,11,3,33,11,13,37,
-	9,8,-1.5,36,6,6,14,-4.5,36,0.2,6,14,-1.5,39,6,0.2,14,1.5,33.5,0.2,1,14,1.5,38.5,0.2,1,14,-4,33,1,0.2,14,1,33,1,0.2,7,-1.5,36,
-	9,12,-21.5,28.5,4,1,5,-19.7,31,8,-21.5,30.75,4,4.5,0,-23.5,30.75,0.2,4.5,0,-19.5,30.75,0.2,4.5,8,-29.5,20.25,24,16.5,0,-32.5,28.5,18,1,0,-18.5,28.5,2,1,1,-41.5,20.25,1,16.5,1,-17.5,20.25,1,16.5,0,-29.5,12,24,1,3,-35.5,22,3,-23.5,22,4,-29.5,16,2,-36.5,16,2,-22.5,16,7,-35.5,27,7,-23.5,27,7,-29.5,15,10,-18.5,27,10,-18.5,17,11,-36.5,27,11,-24.5,27,11,-35.5,17,11,-23.5,17
+	9,12,18,22,4,1,5,21.4,21,8,11.75,32.75,20.5,21.5,0,21,22,2,1,0,8.75,22,14.5,1,0,22,32.75,1,21.5,0,11.75,43.5,20.5,1,1,2,28,1,12,0,2,40.75,1,5.5,0,14,29,1,8,0,6,35,1,6,2,15,27,2,15,28,2,13,30,2,7,34,2,5,36,2,4,38,3,3,26,7,18,27,7,10,34,7,2,37,12,2,36,1,4,5,4.5,43.3,13,-13.75,43.5,30.5,1,82.8,-80,13,-20,36,1,15,100,-95,13,-26.25,28.5,5.5,1,82.8,-80,13,-9,28.5,21,1,82.8,-80,13,-21.5,28.5,4,1,40,-80,13,-21.5,28.5,4,1,40,-37.2,15,-8,36,0.5,0.5,44.72,-42.76,10,21,28,10,21,36,11,17,26,11,10,26,11,3,33,11,13,37,
+	9,8,-1.5,36,6,6,14,-4.5,36,0.2,6,14,-1.5,39,6,0.2,14,1.5,33.5,0.2,1,14,1.5,38.5,0.2,1,14,-4,33,1,0.2,14,1,33,1,0.2,5,1,39,7,-1.5,36,
+	9,12,-21.5,28.5,4,1,5,-19.700000000000003,31,8,-21.5,30.75,4,4.5,0,-23.5,30.75,0.2,4.5,0,-19.5,30.75,0.2,4.5,8,-29.5,20.25,24,16.5,0,-32.5,28.5,18,1,0,-18.5,28.5,2,1,1,-41.5,20.25,1,16.5,1,-17.5,20.25,1,16.5,0,-29.5,12,24,1,3,-35.5,22,3,-23.5,22,4,-29.5,16,2,-36.5,16,2,-22.5,16,7,-35.5,27,7,-23.5,27,7,-29.5,15,10,-18.5,27,10,-18.5,17,11,-36.5,27,11,-24.5,27,11,-35.5,17,11,-23.5,17
 ];
 
 // Section roots translate; authored child coordinates stay in the map frame.
@@ -46,22 +46,21 @@ export function setupLevel(place) {
 		const y = ground + sizes[1] / 2 + (shaft ? read() : 0);
 		// Allocate the anchor first so a following console targets the panel.
 		const root = door && spawn(1);
-		const entity = spawn(door ? 19 : rail ? 14 : [7,145,16,7,7,15,14,6,5][type]);
+		const entity = spawn(door || track ? 19 : rail ? 14 : [7,253,16,7,7,15,14,6,5][type]);
 		entity.set([x, y, z], E.POS);
 		entity.set(sizes, E.SCALE);
 		entity.set(sizes.map(size => Math.max(1, Math.round(size / 2))), E.TILE);
 		entity[E.SOLID] = !shaft && type < 7;
 		if (type === 2) { entity[E.HEALTH] = entity[E.MAX_HEALTH] = 4; entity[E.DISSOLVE_RATE] = .5; }
-		if (type === 5) { entity[E.POS_Z] -= .4; entity[E.POS_Y] = .6; entity[E.CONTROLLER] = entity.id - 1; }
+		if (type === 5) { entity[E.POS_Z] -= .4; entity[E.POS_Y] = .6; entity[E.CONTROLLER] = sections.length === 4 ? sections[0].id : entity.id - 1; }
 		if (type === 5 || type === 6) entity[E.ROT_Y] = type === 6 || z < 23 ? Math.PI / 2 : Math.PI;
 		if (type > 6) {
 			entity[E.POS_Y] = type === 7 ? 2 : -.5;
 		}
 		if (type === 7) entity[E.SPOTLIGHT] = 3.5;
-		if (type === 5 || type > 6 || rail || door) entity.fill(type === 7 ? 0 : -2, E.TILE, E.TILE + 3);
+		if (type === 5 || type > 6 || rail || door || track) entity.fill(type === 7 ? 0 : -2, E.TILE, E.TILE + 3);
 		entity[E.PARENT] = parent;
-		entity[E.ROT_Z] = track * -.464;
-		entity[E.MAT_OVERRIDE] = track * 185;
+		entity[E.ROT_Z] = (shaft && sizes[0] < 2) * -.464;
 		if (rail) {
 			if (sizes[2] > sizes[0]) {
 				entity[E.SCALE_X] = sizes[2]; entity[E.SCALE_Z] = sizes[0];
@@ -106,6 +105,11 @@ export function canStand(x, z, radius = 0.45, avoid = 0) {
 export function moveActor(entity, dx, dz) {
 	const x = entity[E.POS_X], z = entity[E.POS_Z];
 	const avoid = entity[E.KIND] === 2 && entity;
+	// Invisible marine-only boundaries close both entrances during transit.
+	if (entity[E.KIND] === 1 && sections[0][E.POS_Y] % 40) {
+		dx = Math.max(-20, Math.min(-15, x + dx)) - x;
+		dz = Math.max(17.5, Math.min(22.5, z + dz)) - z;
+	}
 	// Small steps prevent tunneling; separate axes let actors slide along walls.
 	const steps = Math.max(1, Math.ceil(Math.hypot(dx, dz) / 0.2));
 	for (let i = 0; i < steps; i++) {

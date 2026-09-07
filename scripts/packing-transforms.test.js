@@ -13,6 +13,23 @@ const shape = value => value && typeof value === "object"
     ? [Array.isArray(value) ? value.length : null, Object.keys(value).map(key => [key, shape(value[key])])]
     : value;
 
+test("release song pruning preserves the sequence and every played pattern and instrument", () => {
+    for (const name of fs.readdirSync(new URL("../music/", import.meta.url)).filter(name => name.endsWith(".zzfxm"))) {
+        const source = fs.readFileSync(new URL(`../music/${name}`, import.meta.url), "utf8").replace(/[{][^}]*[}]/gm, "{}");
+        const original = vm.runInNewContext(source), context = vm.createContext({});
+        vm.runInContext(compactTrack(source, true).replace("export default ", "globalThis.result = "), context);
+        const packed = context.result;
+        assert.deepEqual(shape(packed.slice(2)), shape(original.slice(2)), name);
+        for (const index of original[2]) {
+            assert.deepEqual(shape(packed[1][index]), shape(original[1][index]), name);
+            for (const channel of original[1][index]) {
+                const instrument = channel[0] || 0;
+                assert.deepEqual(shape(packed[0][instrument]), shape(original[0][instrument]), name);
+            }
+        }
+    }
+});
+
 test("track factoring preserves every note, instrument, sparse hole and array length", () => {
     for (const name of fs.readdirSync(new URL("../music/", import.meta.url))) {
         if (!name.endsWith(".zzfxm")) continue;

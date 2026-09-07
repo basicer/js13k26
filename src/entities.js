@@ -66,6 +66,12 @@ export function updateEntities(dt) {
 	// Controllers run first so targets move this frame regardless of entity order.
 	for (const entity of EArray) if (entity[E.KIND] === 15 && entity[E.CONTROLLER]) {
 		const target = EArray[entity[E.CONTROLLER]];
+		if (target[E.KIND] === 1) {
+			// Once launched, finish the 30-second ride even if the panel is clicked again.
+			if (entity[E.MODEL_VARIANT] || target[E.POS_Y])
+				target[E.POS_Y] = (target[E.POS_X] = Math.min(20, target[E.POS_X] + dt / 1.5)) * 2;
+			continue;
+		}
 		// Links are allocated entity slots; spawn clears all fields before reuse.
 		target.fill(0, E.TARGET_POSITION, E.TARGET_POSITION + 3);
 		target[E.TARGET_POSITION + (target[E.SCALE_X] > target[E.SCALE_Z] ? 0 : 2)] = entity[E.MODEL_VARIANT] * 4;

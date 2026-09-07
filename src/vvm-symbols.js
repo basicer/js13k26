@@ -112,11 +112,11 @@ export function resolveVoxelConstants(source) {
 					return token;
 				}
 				if (/^[A-Za-z_][A-Za-z_0-9]*:$/.test(token)) return token;
-				if (/^(jumpif|loop|forjump)$/i.test(token)) {
+				if (/^(jumpif|forjump)$/i.test(token)) {
 					jumpTarget = true;
 					return token;
 				}
-				if (/^(jumpif|loop|forjump):/i.test(token)) fail("Use JUMPIF <label>, LOOP <label> or FORJUMP <label>.");
+				if (/^(jumpif|forjump):/i.test(token)) fail("Use JUMPIF <label> or FORJUMP <label>.");
 				const [name, arg, extra] = token.split(":");
 				if (arg !== undefined || Object.hasOwn(COMMAND_NAMES, name.toLowerCase())) {
 					if (!Object.hasOwn(COMMAND_NAMES, name.toLowerCase()) || extra !== undefined)

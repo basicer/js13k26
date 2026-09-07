@@ -116,10 +116,10 @@ test("all entities use model batches without separate transparent draws", () => 
 	assert.equal(pipelines.length, 1);
 	assert.equal(pipelines[0].fragment.targets[0].blend.color.srcFactor, "src-alpha");
 	assert.equal(pipelines[0].depthStencil.depthWriteEnabled, true);
-	assert.equal(draws.length, 127);
+	assert.equal(draws.length, 125); // Reserved aliases 126/127 are never submitted.
 	assert.ok(draws.every(draw => draw.count === 16));
 	assert.deepEqual(draws.map(({ instance, texture }) => [instance >>> 16, texture]),
-		Array.from({ length: 127 }, (_, i) => [i + 1, [(i + 1) * 2, (i + 1) * 2 + 1]]));
+		Array.from({ length: 125 }, (_, i) => [i + 1, [(i + 1) * 2, (i + 1) * 2 + 1]]));
 	assert.ok(draws.every(draw => draw.pipeline === pipelines[0]));
 });
 

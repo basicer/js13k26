@@ -22,7 +22,7 @@ function placeActor(type, x, z, parent) {
 	portal[E.PARENT] = parent;
 }
 
-function spawnUnicorn(x, z) {
+function spawnUnicorn(x, z, y = 0) {
 	if (!canStand(x, z, .45, true)) return false;
 	const unicorn = spawn(2);
 	if (!unicorn) return;
@@ -31,9 +31,8 @@ function spawnUnicorn(x, z) {
 	// Shared model coordinates, like the marine: the torso is the gameplay root.
 	head[E.PARENT] = unicorn.id;
 	head.fill(0, E.TILE, E.TILE + 3);
-	head[E.DISSOLVE_PALETTE] = 249;
 	unicorn[E.POS_X] = x;
-
+	unicorn[E.POS_Y] = y;
 	unicorn[E.POS_Z] = z;
 	unicorn[E.DISSOLVE_PALETTE] = 249;
 	unicorn[E.HEALTH] = 4;
@@ -345,6 +344,11 @@ export function aimMarineAtCursor(index, x, z) {
 }
 
 export function updateGame(deltaTime, freeCamera = false) {
+	// The stationary platform supplies the drop cadence; no drops outside the ride.
+	if (marineHealth && sections[0][E.POS_Y] % 40 && sections[3][E.AGE] > 4) {
+		spawnUnicorn(random(-19, 3), 22, 4);
+		sections[3][E.AGE] = 0;
+	}
 	if (muzzleFlash[E.AGE] + deltaTime >= .035) {
 		muzzleFlash[E.TRANSPARENCY] = 1;
 		muzzleFlash[E.SPOTLIGHT] = 0;
@@ -397,6 +401,13 @@ export function updateGame(deltaTime, freeCamera = false) {
 
 	for (const entity of EArray) {
 		if (entity[E.KIND] !== 2 || !entity[E.HEALTH] || !marineHealth) continue;
+		// A two-second leap from the shaft side lands one unit inside the rail.
+		if (entity[E.POS_Y] > 0) {
+			const t = Math.min(2, entity[E.AGE]);
+			entity[E.POS_Y] = 4 + t * (6 - 4 * t);
+			entity[E.POS_Z] = 26 - 2 * t;
+			continue;
+		}
 		const dx = player[E.POS_X] - entity[E.POS_X];
 		const dz = player[E.POS_Z] - entity[E.POS_Z];
 		const distance = Math.hypot(dx, dz);
