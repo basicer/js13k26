@@ -234,7 +234,7 @@ buffers.forEach((_, texture) => flush(texture));
 
 import sphereProgram from "../vox/sphere.vp";
 // VP literals are integers; parameters preserve the original fractional shape.
-export var sphere = runByteCode(Uint8Array.fromBase64(sphereProgram), (index) => (index ? 31.5 : 24.32));
+export var sphere = runByteCode(sphereProgram, (index) => (index ? 31.5 : 24.32));
 voxT[6] = [sphere, sphere];
 
 import marineLegs, { debugSource as legsSource } from "../vox/marine-legs.vp";
@@ -317,7 +317,7 @@ export function buildModel(slot, bytecode, parameter = () => 0) {
 	];
 	// Kind 1 stays empty: it is the marine's gameplay and transform root.
 	for (const [slot, program] of models) {
-		buildModel(slot, Uint8Array.fromBase64(program));
+		buildModel(slot, program);
 	}
 	if (DEBUG && import.meta.env.DEBUG) {
 		const { registerVoxelProgram } = await import("./debug/voxelPrograms.js");

@@ -51,6 +51,14 @@ function game() {
 		},
 		sound: Object.fromEntries(Object.keys(sounds).map(key => [key, () => sounds[key]++])),
 	});
+	// Test-only collider fixture, independent of the packed level constructor.
+	context.block = (x, z, width, height, depth, bottom = -30 / 64) => {
+		const entity = context.spawn(7);
+		entity.set([x, bottom + height / 2, z], E.POS);
+		entity.set([width, height, depth], E.SCALE);
+		entity[E.SOLID] = 1;
+		return entity;
+	};
 	for (const file of ["level", "game"]) {
 		vm.runInContext(readFileSync(new URL(`../src/${file}.js`, import.meta.url), "utf8")
 			.replace(/^import .*;\r?\n/gm, "").replaceAll("export ", ""), context);
@@ -67,7 +75,7 @@ function game() {
 
 test("start room contains the splash and no enemy gate", () => {
 	const { run } = game();
-	assert.equal(run("getPortals().length"), 3);
+	assert.equal(run("getPortals().length"), 4);
 	assert.equal(run("getPortals().some(e => e[E.POS_X] < -7 && e[E.POS_Z] < -7)"), false);
 	assert.equal(run("EArray.some(e => e[E.KIND] === 13 && e[E.POS_X] < -7 && e[E.POS_X] > -15 && e[E.POS_Z] === -11)"), true);
 	assert.equal(run("EArray.some(e => e[E.KIND] === 6 && e[E.SCALE_X] === 1 && e[E.SPOTLIGHT] > 0)"), false);
@@ -75,16 +83,16 @@ test("start room contains the splash and no enemy gate", () => {
 
 test("initial defenders spawn at every authored position with clear footing", () => {
 	const { run } = game();
-	assert.equal(run("initialUnicorns"), 8);
+	assert.equal(run("initialUnicorns"), 10);
 	run("setupGame();");
-	assert.equal(run("getUnicorns().length"), 8);
+	assert.equal(run("getUnicorns().length"), 10);
 	assert.equal(run("getUnicorns().every(e => canStand(e[E.POS_X],e[E.POS_Z]) && e[E.PARENT] === 0)"), true);
 	assert.equal(run("getPortals().every(e => Math.sin(e[E.ROT_Y]) > .99 && canStand(e[E.POS_X]-1,e[E.POS_Z]))"), true);
 });
 
 test("sections move rendering while combat and effects keep map-local coordinates", () => {
 	const { run } = game();
-	run("setupGame(); player.set([8,0,2], E.POS); sections[2][E.POS_Y] = sections[4][E.POS_Y] = 8;");
+	run("setupGame(); player.set([-22,0,20], E.POS); sections[2][E.POS_Y] = sections[4][E.POS_Y] = 8;");
 	let entities = run("EArray");
 	assert.equal(run("player[E.PARENT]"),0);
 	assert.equal(worldPoint(entities,run("player"),[0,0,0])[1],0);
@@ -93,7 +101,7 @@ test("sections move rendering while combat and effects keep map-local coordinate
 	run("globalThis.gate = getPortals()[0]; spawnFromPortal(gate);");
 	assert.equal(run("getUnicorns().at(-1)[E.PARENT]"),0);
 	assert.equal(run("getUnicorns().at(-1)[E.POS_Y]"),0);
-	run("globalThis.crate = EArray.find(e => e[E.KIND] === 16 && e[E.PARENT] === sections[2].id); crate[E.HEALTH] = 1; firePellet(crate[E.POS_X],.1,crate[E.POS_Z]-1,0,1);");
+	run("globalThis.crate = EArray.find(e => e[E.KIND] === 16 && e[E.PARENT] === sections[2].id); crate[E.HEALTH] = 1; player[E.POS_X] = crate[E.POS_X]; player[E.POS_Z] = crate[E.POS_Z]-1; firePellet(crate[E.POS_X],.1,crate[E.POS_Z]-1,0,1);");
 	assert.equal(run("EArray.some(e => e[E.KIND] === 11 && e[E.PARENT] === sections[2].id)"),true);
 	run("particleBurst([0,0,1],1,.1,[249],1,[0,0,0],[0,0,0],0,sections[2].id);");
 	assert.equal(run("effects().at(-1)[E.POS_Y]"),0);
@@ -248,21 +256,21 @@ test("portal shots respect cover, nearer unicorns and the elliptical outline", (
 	assert.equal(run("getPortals()[0][25]"), 49);
 });
 
-test("gates spawn independently after twenty-five seconds, reset age and play wobble", () => {
+test("gates spawn independently every 12.5 seconds, reset age and play wobble", () => {
 	const { run, sounds } = game();
-	assert.equal(sounds.wobble, 5, "Initial herd plays the spawn sound");
-	run("getPortals().forEach(p => p[27] = 8); updateGame(0);");
+	assert.equal(sounds.wobble, 10, "Initial herd plays the spawn sound");
+	run("getPortals().forEach(p => p[27] = 12.49); updateGame(0);");
 	assert.equal(run("getUnicorns().length"), 1);
-	assert.equal(sounds.wobble, 5);
-	run("getPortals().forEach(p => p[27] = 25.1); updateGame(0);");
-	assert.equal(run("getUnicorns().length"), 6, "Every gate spawns, even above the old herd cap");
-	assert.equal(run("getPortals().every(p => p[27] === 0)"), true);
 	assert.equal(sounds.wobble, 10);
+	run("getPortals().forEach(p => p[27] = 12.5); updateGame(0);");
+	assert.equal(run("getUnicorns().length"), 5, "Every gate spawns, even above the old herd cap");
+	assert.equal(run("getPortals().every(p => p[27] === 0)"), true);
+	assert.equal(sounds.wobble, 14);
 	run("updateGame(0);");
-	assert.equal(sounds.wobble, 10, "Reset gates cannot spawn again immediately");
-	run("getPortals()[1][27] = 26; updateGame(0);");
-	assert.equal(run("getUnicorns().length"), 7);
-	assert.equal(sounds.wobble, 11);
+	assert.equal(sounds.wobble, 14, "Reset gates cannot spawn again immediately");
+	run("getUnicorns()[2][E.POS_X] -= 2; getPortals()[1][27] = 12.5; updateGame(0);");
+	assert.equal(run("getUnicorns().length"), 6);
+	assert.equal(sounds.wobble, 15);
 });
 
 test("failed gate spawns retain their timer without playing wobble", () => {
@@ -270,7 +278,59 @@ test("failed gate spawns retain their timer without playing wobble", () => {
 	run("getPortals()[0][27] = 26; spawn = () => null; updateGame(0);");
 	assert.equal(run("getPortals()[0][27]"), 26);
 	assert.equal(run("getUnicorns().length"), 1);
-	assert.equal(sounds.wobble, 5);
+	assert.equal(sounds.wobble, 10);
+});
+
+test("crowded gates wait for clearance without resetting their spawn timer", () => {
+	const { run, sounds } = game();
+	run("globalThis.gate = getPortals()[0]; spawnFromPortal(gate); gate[E.AGE] = 12.5;");
+	const count = run("getUnicorns().length"), wobble = sounds.wobble;
+	run("updateGame(0);");
+	assert.equal(run("getUnicorns().length"), count);
+	assert.equal(run("gate[E.AGE]"), 12.5);
+	assert.equal(sounds.wobble, wobble);
+	run("getUnicorns().at(-1)[E.HEALTH] = 0; updateGame(0);");
+	assert.equal(run("getUnicorns().length"), count + 1, "corpses do not obstruct a spawn");
+	assert.equal(run("gate[E.AGE]"), 0);
+});
+
+test("portal damage advances spawning but respects crowding and destruction", () => {
+	const { run } = game();
+	run(`EArray.forEach(e => { e[E.SOLID] = 0; if (e[E.KIND] === 2) e[E.KIND] = 0; });
+		globalThis.gate = getPortals()[0];
+		hurtCooldown = 10;
+		gate[E.AGE] = 11.5;
+		player[E.POS_X] = gate[E.POS_X] - 3; player[E.POS_Z] = gate[E.POS_Z];
+		globalThis.shootGate = () => firePellet(player[E.POS_X],gate[E.POS_Y],player[E.POS_Z],1,0);
+		shootGate();`);
+	assert.equal(run("gate[E.HEALTH]"), 49);
+	assert.equal(run("gate[E.AGE]"), 12.5);
+	run("updateGame(0);");
+	assert.equal(run("getUnicorns().length"), 1);
+	assert.equal(run("gate[E.AGE]"), 0);
+	// Shoot from beyond the occupied exit so this pellet reaches the portal.
+	run("player[E.POS_X] = gate[E.POS_X] - .5; gate[E.AGE] = 11.5; shootGate(); updateGame(0);");
+	assert.equal(run("getUnicorns().length"), 1);
+	assert.equal(run("gate[E.AGE]"), 12.5);
+	run("getUnicorns()[0][E.KIND] = 0; updateGame(0);");
+	assert.equal(run("getUnicorns().length"), 1);
+	assert.equal(run("gate[E.AGE]"), 0);
+	run("getUnicorns()[0][E.KIND] = 0; gate[E.HEALTH] = 1; shootGate(); updateGame(0);");
+	assert.equal(run("gate[E.HEALTH]"), 0);
+	assert.equal(run("getUnicorns().length"), 0);
+});
+
+test("converging unicorns keep their spacing, including large movement steps", () => {
+	const { run } = game();
+	run(`EArray.forEach(e => { e[E.SOLID] = 0; if (e[E.KIND] === 2) e[E.KIND] = 0; });
+		for (const [x,z] of [[-2,0],[2,0],[0,-2],[0,2]]) spawnUnicorn(x,z);
+		for (let i=0; i<60; i++) for (const e of getUnicorns()) moveActor(e,-e[E.POS_X],-e[E.POS_Z]);`);
+	const herd = run("getUnicorns()");
+	assert.equal(herd.length, 4);
+	for (let i=0; i<herd.length; i++) for (let j=0; j<i; j++)
+		assert.ok(Math.hypot(herd[i][E.POS_X]-herd[j][E.POS_X], herd[i][E.POS_Z]-herd[j][E.POS_Z]) >= .8-1e-6);
+	assert.ok(herd.some(e => Math.hypot(e[E.POS_X],e[E.POS_Z]) < 1), "unicorns can move without colliding with themselves");
+	assert.equal(run("spawnUnicorn(getUnicorns()[0][E.POS_X],getUnicorns()[0][E.POS_Z])"), false);
 });
 
 test("replacement unicorns only emerge from surviving portals", () => {
@@ -518,7 +578,7 @@ test("walk cycle is frame-rate independent and freezes when blocked, stopped, or
 	assert.equal(coarse.run("getUnicorns()[0][26]"), before);
 	coarse.run("getUnicorns()[0][25] = 0; updateGame(1);");
 	assert.equal(coarse.run("getUnicorns()[0][26]"), before);
-	assert.equal(coarse.run("getUnicorns()[0][15]"), 1);
+	assert.equal(coarse.run("getUnicorns()[0][15]"), before | 0);
 });
 
 test("unicorns must close to one unit before contact damage", () => {

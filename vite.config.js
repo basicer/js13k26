@@ -81,7 +81,8 @@ var voxprog = (development) => {
 			const source = readFileSync(id, "utf8");
 			const file = path.relative(root, id).replaceAll("\\", "/");
 			const metadata = development ? JSON.stringify({ file, source }) : "undefined";
-			return `export default "${Buffer.from(assemble(source)).toString("base64")}"; export const debugSource = ${metadata};`;
+			// Numeric bytes compress better than base64 through Closure + Roadroller + ZIP.
+			return `export default ${JSON.stringify([...assemble(source)])}; export const debugSource = ${metadata};`;
 		},
 	};
 };

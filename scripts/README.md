@@ -33,14 +33,20 @@ changing the production artifact. Both scripts use scratch files outside `dist`.
 and the intended route. Run it before changing level records to visually check
 the layout without launching the game.
 
-The route is Start (-11,-11) → bent hallway (-3,-9) → Cargo (0,0) →
-Elevator (8,2) → Boss Room (9,10). Cargo has destructible crate clusters
-and a sightline-breaking pylon; the final arena has two flank pylons and a
-rear reactor. The elevator is a static staging chamber with a console.
-Room geometry, dressing, portals and initial unicorns live in the packed string.
-Keep the preview route and labels aligned when editing.
+The route is Start (-12,-12) → dogleg hallway (2,-2) → Cargo (-6,15) →
+Elevator (-22,20) → Boss Room (-30,6). The footprint spans roughly 48×42 units.
+The route turns east, north, west, then south, curling back toward the starting
+area through the reactor arena. All four room transitions remain mandatory.
+The starter lounge keeps the G&G logo and no portal. A long windowed corridor
+leads into a 24×18 cargo hold with staggered storage aisles, destructible crates,
+and two side-wall portals. The 8×8 elevator staging chamber leads into a 24×20
+reactor arena with two flanking columns and two side-wall portals. Ten initial
+unicorns occupy the hall, cargo lanes, and boss arena. Camera-side glass walls
+keep the rooms readable. The SVG automatically fits the map and uses a two-unit grid.
+Room geometry, dressing, portals and initial unicorns live in the numeric plan array.
+X/Z coordinates retain their +16 bias. Put scenery before actors within each section.
 Type 8 records encode floor rectangles with the same x,z,width,depth fields
-as walls. Six floor rectangles cover the rooms and bent hallway; exterior space has
+as walls. Six floor rectangles cover the rooms and dogleg hallway; exterior space has
 no floor. The start room has the G&G splash and no enemy portal.
 Type 1 uses those same rectangle fields for `wall-window.vp` (transparent kind 145, model 17),
 replacing the unused horizontal-rail record. The cyan glass window faces local X;
@@ -48,13 +54,13 @@ use it on walls running along Z. Window walls retain the original map collider.
 `node --test scripts/level.test.js` checks traversal in both directions,
 sealed boundaries, mandatory thresholds, and clear gate spawn positions.
 
-Type 9 is a single-character marker that creates the next parent section:
+Type 9 is a single-value marker that creates the next parent section:
 0 Start, 1 Hallway, 2 Cargo, 3 Elevator,
 4 Boss Room. `sections` exported from `src/level.js` holds the five invisible
 kind-1 roots. Every placed floor, wall, prop, light and portal is a child.
 Unicorns and the marine root remain unparented, including gate-spawned unicorns. Articulated
 models and the camera keep their existing hierarchy beneath the actor.
-Records `:` (type 10) and `;` (type 11) place a portal facing -X and a unicorn.
+Records of type 10 and type 11 place a portal facing -X and a unicorn.
 Put each section's scenery first, then its portals and unicorns, before the
 next section marker. Scenery and portals inherit the most recently created section;
 there is no spatial lookup. The game supplies the actor factory to `setupLevel`.

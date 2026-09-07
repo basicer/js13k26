@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { createHash } from "node:crypto";
 import { readFileSync, readdirSync } from "node:fs";
 import test from "node:test";
 import vm from "node:vm";
@@ -28,6 +29,14 @@ function runBytes(bytecode, parameter) {
 	});
 	return vm.runInContext(interpreter + "\nbuffers.get(runByteCode(bytecode, parameter))", context, { timeout: 1000 });
 }
+
+test("compact wall program preserves every original voxel and material", () => {
+	const code = readFileSync(new URL("../vox/walltile.vp", import.meta.url), "utf8");
+	const grid = run(code);
+	assert.equal(createHash("sha256").update(new Uint8Array(grid.buffer)).digest("hex"),
+		"fcaf7eda8a51c2b897611a128f8ebf640a8d315c3b916a8aa8195a18a0b5250b");
+	assert.ok(compileVoxelSource(code, []).length <= 306, "original program used 441 bytes");
+});
 
 test("window bulkhead has transparent cyan glass and a continuous steel frame", () => {
 	const grid = run(readFileSync(new URL("../vox/wall-window.vp", import.meta.url), "utf8"));
@@ -240,6 +249,18 @@ test("fused and unfused programs produce identical voxels for every model and po
 		const unfused = source.replace(/\bVEC\b/g, () => `fusion_barrier_${label++}: VEC`);
 		for (const pose of [0, 1])
 			assert.deepEqual(Buffer.from(run(source, [pose]).buffer), Buffer.from(run(unfused, [pose]).buffer), `${file}, pose ${pose}`);
+	}
+});
+
+test("embedded numeric arrays match typed bytecode for every model and pose", () => {
+	for (const file of readdirSync(new URL("../vox/", import.meta.url)).filter(file => file.endsWith(".vp"))) {
+		const source = readFileSync(new URL(`../vox/${file}`, import.meta.url), "utf8");
+		const bytes = assemble(source);
+		const embedded = JSON.parse(JSON.stringify([...bytes]));
+		assert.deepEqual(embedded, [...bytes]);
+		for (const pose of [0, 1])
+			assert.deepEqual(Buffer.from(runBytes(embedded, () => pose).buffer),
+				Buffer.from(runBytes(bytes, () => pose).buffer), `${file}, pose ${pose}`);
 	}
 });
 

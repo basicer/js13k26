@@ -16,6 +16,14 @@ function level() {
 			return entity;
 		},
 	});
+	// Test-only collider fixture, independent of the packed level constructor.
+	context.block = (x, z, width, height, depth, bottom = -30 / 64) => {
+		const entity = context.spawn(7);
+		entity.set([x, bottom + height / 2, z], E.POS);
+		entity.set([width, height, depth], E.SCALE);
+		entity[E.SOLID] = 1;
+		return entity;
+	};
 	vm.runInContext(readFileSync(new URL("../src/level.js", import.meta.url), "utf8")
 		.replace(/^import .*;\r?\n/gm, "").replaceAll("export ", ""), context);
 	const placements = [];
@@ -23,13 +31,13 @@ function level() {
 	return { ...context, blocks, placements, sections: vm.runInContext("sections", context) };
 }
 
-const route = [[-11,-11],[-3,-11],[-3,-4],[-1,-3],[0,1],[8,1],[9,3],[9,7],[9,10]];
+const route = [[-11,-11],[-10,-12],[2,-12],[2,8],[-6,8],[-6,14],[-14,14],[-14,20],[-22,20],[-22,14],[-22,9],[-30,9],[-30,3]];
 
 test("camera-side window walls preserve the room barriers and section parents", () => {
 	const { blocks, sections, canStand } = level();
 	const windows = blocks.filter(e => e[E.KIND] === 145);
-	assert.equal(windows.length,3);
-	for (const [x,z,section] of [[-5,-7,1],[-5,0,2],[3,10,4]]) {
+	assert.equal(windows.length,4);
+	for (const [x,z,section] of [[-2,-1,1],[-18,12,2],[-42,6,4],[-18,6,4]]) {
 		const wall = windows.find(e => e[E.POS_X] === x && e[E.POS_Z] === z);
 		assert.equal(wall[E.PARENT],sections[section].id);
 		assert.equal(wall[E.SOLID],1);
@@ -63,7 +71,7 @@ test("the perimeter is sealed and all four thresholds are mandatory", () => {
 		for (let i=0; i<queue.length; i++) {
 			const [x,z] = queue[i], key = x+","+z;
 			if (visited.has(key) || sealed(x/2,z/2) || !canStand(x/2,z/2)) continue;
-			assert.ok(Math.abs(x)<32 && Math.abs(z)<32, "route leaks outside the floor at " + key);
+			assert.ok(Math.abs(x)<128 && Math.abs(z)<128, "route leaks outside the floor at " + key);
 			assert.ok(floors.some(e => Math.abs(x/2-e[E.POS_X]) <= e[E.SCALE_X]/2 && Math.abs(z/2-e[E.POS_Z]) <= e[E.SCALE_Z]/2), "missing floor at " + key);
 			visited.add(key);
 			queue.push([x+1,z],[x-1,z],[x,z+1],[x,z-1]);
@@ -73,11 +81,11 @@ test("the perimeter is sealed and all four thresholds are mandatory", () => {
 	const connected = flood();
 	for (const [x,z] of route) assert.ok(connected.has(x*2+","+z*2));
 	for (const seal of [
-		(x,z) => x === -7 && z >= -13 && z <= -9,
-		(x,z) => z === -5 && x >= -5 && x <= -1,
-		(x,z) => x === 5 && z >= -1 && z <= 3,
-		(x,z) => z === 5 && x >= 7 && x <= 11,
-	]) assert.ok(!flood(seal).has("18,20"), "a threshold can be bypassed");
+		(x,z) => x === -6 && z >= -14 && z <= -10,
+		(x,z) => z === 6 && x >= 0 && x <= 4,
+		(x,z) => x === -18 && z >= 18 && z <= 22,
+		(x,z) => z === 16 && x >= -24 && x <= -20,
+	]) assert.ok(!flood(seal).has("-60,6"), "a threshold can be bypassed");
 });
 
 test("packed floor sections stop downward shots without covering exterior space", () => {
@@ -94,10 +102,10 @@ test("packed floor sections stop downward shots without covering exterior space"
 
 test("bulkheads break long sightlines and gate spawn points are clear", () => {
 	const { clearShot, canStand, placements } = level();
-	assert.ok(!clearShot(-11,-11,-16,-11));
-	assert.ok(!clearShot(-11,-11,0,1), "the bent hall conceals cargo");
-	assert.ok(!clearShot(0,1,9,10), "the lift conceals the boss arena");
-	assert.ok(clearShot(-3,-11,-3,-4));
+	assert.ok(!clearShot(-11,-11,-20,-11));
+	assert.ok(!clearShot(-11,-11,-6,15), "the bent hall conceals cargo");
+	assert.ok(!clearShot(-6,14,-30,3), "the lift conceals the boss arena");
+	assert.ok(clearShot(2,-12,2,4));
 	for (const {x,z} of placements.filter(e => e.type === 10)) assert.ok(canStand(x-1,z), "blocked gate at " + [x,z]);
 });
 
@@ -105,15 +113,15 @@ test("section height is visual and leaves hit tests and movement unchanged", () 
 	const { sections, blocks, canStand, shotFraction, spawn, moveActor } = level();
 	assert.equal(sections.length,5);
 	assert.ok(blocks.filter(e => e[E.KIND] !== 1).every(e => sections.some(s => s.id === e[E.PARENT])));
-	const hit = shotFraction(3,-3,6,-3,.5);
+	const hit = shotFraction(-16,12,-20,12,.5);
 	assert.ok(hit < 1);
 	const actor = spawn(1);
-	actor[E.POS_X] = 0; actor[E.POS_Z] = 1;
+	actor[E.POS_X] = -22; actor[E.POS_Z] = 20;
 	actor[E.PARENT] = sections[2].id;
 	sections[2][E.POS_Y] = sections[4][E.POS_Y] = 8;
-	assert.equal(canStand(5,-3),false,"raised walls keep the original map collider");
-	assert.equal(shotFraction(3,-3,6,-3,.5),hit);
-	assert.equal(shotFraction(3,-3,6,-3,8.5),1,"visual height is not added to the hit test");
+	assert.equal(canStand(-18,12),false,"raised walls keep the original map collider");
+	assert.equal(shotFraction(-16,12,-20,12,.5),hit);
+	assert.equal(shotFraction(-16,12,-20,12,8.5),1,"visual height is not added to the hit test");
 	moveActor(actor,8,0);
 	assert.equal(actor[E.PARENT],sections[2].id,"movement keeps the originally assigned section");
 	assert.equal(actor[E.POS_Y],0);

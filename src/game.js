@@ -13,7 +13,7 @@ function placeActor(type, x, z, parent) {
 	portal.set([x, 0.1875, z], E.POS);
 	portal[E.ROT_Y] = Math.PI / 2;
 	portal.set([3.6, 3, 0.45], E.SCALE);
-	portal[E.TILE_X] = portal[E.TILE_Y] = portal[E.TILE_Z] = 0;
+	portal.fill(0, E.TILE, E.TILE + 3);
 	portal[E.HEALTH] = portal[E.MAX_HEALTH] = 50;
 	portal[E.DISSOLVE_RATE] = .5;
 	portal[E.HIT_RADIUS] = 24.5 / 64;
@@ -21,7 +21,7 @@ function placeActor(type, x, z, parent) {
 }
 
 function spawnUnicorn(x, z) {
-	if (!canStand(x, z)) return false;
+	if (!canStand(x, z, .45, true)) return false;
 	const unicorn = spawn(2);
 	if (!unicorn) return;
 	unicorn[E.POS_X] = x;
@@ -69,7 +69,7 @@ export function setupGame() {
 	logo.set([-11.7, 0.894, -11], E.POS);
 	logo.set([-0.32, cameraRotation[1], 0], E.ROT);
 	logo.set([5.25, 5.25, 1.3], E.SCALE);
-	logo[E.TILE_X] = logo[E.TILE_Y] = logo[E.TILE_Z] = 0;
+	logo.fill(0, E.TILE, E.TILE + 3);
 	logo[E.TTL] = 0.1;
 	logo[E.PARENT] = sections[0].id;
 	const logoLight = spawn(1);
@@ -98,15 +98,15 @@ export function setupGame() {
 
 	for (const part of marineParts) {
 		part[E.DISSOLVE_PALETTE] = 255;
-		part[E.TILE_X] = part[E.TILE_Y] = part[E.TILE_Z] = 0;
+		part.fill(0, E.TILE, E.TILE + 3);
 	}
-	marineGun[E.TILE_X] = marineGun[E.TILE_Y] = marineGun[E.TILE_Z] = 1;
+	marineGun.fill(1, E.TILE, E.TILE + 3);
 	// Permanent flash follows the arms through aiming, movement, and reload poses.
 	muzzleFlash = spawn(6);
 	muzzleFlash[E.PARENT] = marineArms.id;
 	muzzleFlash.set([1 / 64, 10.5 / 64, 30 / 64], E.POS);
-	muzzleFlash[E.SCALE_X] = muzzleFlash[E.SCALE_Y] = muzzleFlash[E.SCALE_Z] = .14;
-	muzzleFlash[E.TILE_X] = muzzleFlash[E.TILE_Y] = muzzleFlash[E.TILE_Z] = 0;
+	muzzleFlash.fill(.14, E.SCALE, E.SCALE + 3);
+	muzzleFlash.fill(0, E.TILE, E.TILE + 3);
 	muzzleFlash[E.MAT_OVERRIDE] = 246;
 	muzzleFlash[E.TRANSPARENCY] = 1;
 
@@ -148,8 +148,8 @@ function particleBurst(position, count, scale, materials, lifetime, velocity, sp
 		entity.set(position, E.POS);
 		entity[E.PARENT] = parent;
 		entity[E.TRANSPARENCY] = transparency;
-		entity[E.SCALE_X] = entity[E.SCALE_Y] = entity[E.SCALE_Z] = random(scale, scale * .6);
-		entity[E.TILE_X] = entity[E.TILE_Y] = entity[E.TILE_Z] = 0;
+		entity.fill(random(scale, scale * .6), E.SCALE, E.SCALE + 3);
+		entity.fill(0, E.TILE, E.TILE + 3);
 		entity[E.MAT_OVERRIDE] = materials[i % materials.length];
 		entity[E.DISSOLVE] = .5;
 		entity[E.TTL] = random(lifetime, lifetime * .5);
@@ -283,6 +283,7 @@ function firePellet(muzzleX, muzzleY, muzzleZ, forwardX, forwardZ, forwardY = 0)
 		return;
 	}
 	target[E.HEALTH]--;
+	if (target[E.KIND] === 12) target[E.AGE] += 1; // Portal damage causes more spawns.
 	if (target[E.DISSOLVE_RATE]) {
 		updateDamageDissolve(target, target[E.HEALTH], target[E.MAX_HEALTH]);
 		if (!target[E.HEALTH]) {
@@ -294,7 +295,7 @@ function firePellet(muzzleX, muzzleY, muzzleZ, forwardX, forwardZ, forwardY = 0)
 					gun[E.PARENT] = target[E.PARENT];
 					gun.set([.17, .25, .56], E.SCALE);
 					gun[E.ROT_Z] = Math.PI / 2;
-					gun[E.TILE_X] = gun[E.TILE_Y] = gun[E.TILE_Z] = 1;
+					gun.fill(1, E.TILE, E.TILE + 3);
 				}
 			}
 		}
@@ -340,7 +341,7 @@ export function updateGame(deltaTime, freeCamera = false) {
 	}
 	for (const entity of EArray) {
 		if (entity[E.KIND] !== 12) continue;
-		if (marineHealth && entity[E.HEALTH] && entity[E.AGE] > 25 && spawnFromPortal(entity)) entity[E.AGE] = 0;
+		if (marineHealth && entity[E.HEALTH] && entity[E.AGE] >= 12.5 && spawnFromPortal(entity)) entity[E.AGE] = 0;
 		entity[E.SPOTLIGHT] = 2.1 * (1 - entity[E.DISSOLVE]);
 	}
 	const sprinting = !freeCamera && isSprinting();
@@ -365,11 +366,9 @@ export function updateGame(deltaTime, freeCamera = false) {
 	let legTarget = marineBody[E.ROT_Y];
 	if (!freeCamera && marineHealth > 0 && (moveX || moveZ)) {
 		const [forwardX, forwardZ] = heading(cameraRotation[1]);
-		const rightX = Math.cos(cameraRotation[1]);
-		const rightZ = Math.sin(cameraRotation[1]);
 		const length = Math.hypot(moveX, moveZ);
-		const dx = (rightX * moveX + forwardX * moveZ) / length;
-		const dz = (rightZ * moveX + forwardZ * moveZ) / length;
+		const dx = (-forwardZ * moveX + forwardX * moveZ) / length;
+		const dz = (forwardX * moveX + forwardZ * moveZ) / length;
 		const x = player[E.POS_X],
 			z = player[E.POS_Z];
 		moveActor(player, dx * (sprinting ? 5.8 : 4.4) * deltaTime, dz * (sprinting ? 5.8 : 4.4) * deltaTime);
@@ -392,7 +391,7 @@ export function updateGame(deltaTime, freeCamera = false) {
 		const dz = player[E.POS_Z] - entity[E.POS_Z];
 		const distance = Math.hypot(dx, dz);
 		if (distance > 1) {
-			const step = Math.min(1.755 * deltaTime, distance - 0.8);
+			const step = Math.min(2.457 * deltaTime, distance - 0.8);
 			moveActor(entity, (dx / distance) * step, (dz / distance) * step);
 			entity[E.ROT_Y] = lookAtYaw(dx, dz);
 		}

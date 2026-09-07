@@ -38,8 +38,8 @@ export const spawn = (kind) => {
 	e.fill(0);
 	e[E.KIND] = kind;
 	e[E.LIGHT_ANGLE] = Math.PI * 2;
-	e[E.SCALE_X] = e[E.SCALE_Y] = e[E.SCALE_Z] = 1;
-	e[E.TILE_X] = e[E.TILE_Y] = e[E.TILE_Z] = -2;
+	e.fill(1, E.SCALE, E.SCALE + 3);
+	e.fill(-2, E.TILE, E.TILE + 3);
 	return e;
 };
 

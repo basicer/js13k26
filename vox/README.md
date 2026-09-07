@@ -1,5 +1,19 @@
 # Voxel assembly branches
 
+The build embeds assembled programs as numeric JavaScript arrays. The voxel VM
+reads them directly; editor-assembled `Uint8Array` programs remain supported.
+Measured with the same Closure/Roadroller/ZIP settings, the complete release was
+13,271 bytes with base64, 13,094 with numeric arrays, and 13,332 with escaped
+byte strings plus a character-code decoder. Compare final ZIP sizes when changing
+this encoding: smaller source strings do not necessarily compress better.
+
+`walltile.vp` stores each axis's 13 boxes as five-value stack records and draws
+them with a shared loop. Float registers 3–6 hold the four in-plane coordinates;
+the perpendicular coordinates stay 0 and 63. The axis order preserves interior
+materials as well as every face. Row labels keep each record's literal encoding
+at six bytes. A repeated final stroke aligns successive tables for base64/ZIP
+compression. The voxel test checks the full original volume's SHA-256.
+
 `wall-window.vp` is a simple 64³ steel frame, model 17 (transparent entity kind 145). A cyan glass window
 runs through X at Y=4–59 and Z=4–59, retaining a sill, lintel and side posts.
 The level uses it on camera-side hallway, cargo and boss-room walls. This is
