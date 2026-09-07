@@ -9,10 +9,10 @@ const ground = -30 / 64;
 // Start (-12,-12) → dogleg hall (2,-2) → cargo (-6,15) → lift (-22,20) → boss (-30,6).
 // Shared bulkheads seal the perimeter; every threshold has 3+ units of clearance.
 const plan = [
-	9,8,4,4,12,12,0,-2,4,1,12,0,4,-2,12,1,0,4,10,12,1,0,10,0,1,4,0,10,8,1,4,2,0,8,5,0,1,
+	9,8,4,4,12,12,0,-2,4,1,12,0,4,-2,12,1,0,4,10,12,1,0,10,0,1,4,0,10,8,1,4,2,0,8,5,9.4,1,
 	9,8,16,4,12,6,8,18,14,8,16,0,16,1,12,1,0,22,12,1,22,0,12,7,4,1,1,14,15,1,16,7,18,4,7,18,18,2,20,9,11,18,11,11,19,18,
 	9,8,10,31,24,18,0,21,22,2,1,0,7,22,18,1,0,22,31,1,18,0,10,40,24,1,1,-2,28,1,12,0,-2,39,1,2,0,14,29,1,8,0,6,35,1,6,2,15,27,2,15,28,2,13,30,2,7,34,2,5,36,2,4,36,3,3,26,7,18,27,7,10,34,7,2,37,10,21,28,10,21,36,11,17,26,11,10,26,11,3,33,11,13,37,
-	9,8,-6,36,8,8,0,-6,40,8,1,0,-10,36,1,8,5,-9,35,7,-6,36,
+	9,8,-6,36,8,8,0,-6,40,8,1,0,-10,36,1,8,5,-1.4,39,7,-6,36,
 	9,8,-14,22,24,20,0,-17,32,18,1,0,-3,32,2,1,1,-26,22,1,20,1,-2,22,1,20,0,-14,12,24,1,3,-20,22,3,-8,22,4,-14,16,2,-21,16,2,-7,16,7,-20,27,7,-8,27,7,-14,15,10,-3,27,10,-3,17,11,-21,27,11,-9,27,11,-20,17,11,-8,17
 ];
 
@@ -33,7 +33,7 @@ export function setupLevel(place) {
 		}
 		const x = read() - 16, z = read() - 16;
 		if (type > 9) { place(type, x, z, parent); continue; }
-		const sizes = [[0,2.8,0],[0,2.8,0],[.75,.75,.75],[1.5,2.8,1.5],[2.5,2.8,3.6],[1,1,1],[6,1,.2],[.1,.1,.1],[0,4/64,0]][type];
+		const sizes = [[0,2.8,0],[0,2.8,0],[.75,.75,.75],[1.5,2.8,1.5],[2.5,2.8,3.6],[5/8,1/2,3/16],[6,1,.2],[.1,.1,.1],[0,4/64,0]][type];
 		if (type < 2 || type === 8) { sizes[0] = read(); sizes[2] = read(); }
 		const entity = spawn(7);
 		entity.set([x, ground + sizes[1] / 2, z], E.POS);
@@ -42,14 +42,14 @@ export function setupLevel(place) {
 		entity[E.SOLID] = 1;
 		entity[E.KIND] = [7,145,16,7,7,15,14,6,5][type];
 		if (type === 2) { entity[E.HEALTH] = entity[E.MAX_HEALTH] = 4; entity[E.DISSOLVE_RATE] = .5; }
-		if (type === 5) { entity[E.POS_X] += .25; entity[E.POS_Z] -= .4; entity[E.POS_Y] = .6; }
-		if (type === 5 || type === 6) entity[E.ROT_Y] = Math.PI / 2;
+		if (type === 5) { entity[E.POS_Z] -= .4; entity[E.POS_Y] = .6; }
+		if (type === 5 || type === 6) entity[E.ROT_Y] = type === 6 || x > -10 ? Math.PI / 2 : -Math.PI / 2;
 		if (type > 6) {
 			entity[E.POS_Y] = type === 7 ? 2 : -.5;
 			entity[E.SOLID] = 0;
 		}
 		if (type === 7) entity[E.SPOTLIGHT] = 3.5;
-		if (type === 5 || type > 6) entity.fill(type === 8 ? -2 : 0, E.TILE, E.TILE + 3);
+		if (type === 5 || type > 6) entity.fill(type === 5 || type === 8 ? -2 : 0, E.TILE, E.TILE + 3);
 		entity[E.PARENT] = parent;
 	}
 }

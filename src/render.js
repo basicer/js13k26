@@ -50,7 +50,11 @@ c.addEventListener("pointerdown", (event) => {
 	c.setPointerCapture(event.pointerId);
 	const [index] = cursorHit;
 	if (isPaused()) {
-		if (DEBUG && index >= 0) debugModule?.selectEntity(index);
+		if (DEBUG) {
+			const bounds = c.getBoundingClientRect();
+			pickEntity((event.clientX - bounds.left) * c.width / bounds.width, (event.clientY - bounds.top) * c.height / bounds.height)
+				.then(([index]) => index >= 0 && debugModule?.selectEntity(index));
+		}
 		return;
 	}
 	const entity = EArray[index];

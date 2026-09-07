@@ -53,8 +53,8 @@ const entities = find(s => /new Float32Array\(68400\)/.test(s));
 const textures = find(s => /dimension:[`"]3d/.test(s));
 const audio = find(s => s.includes('AudioContext'));
 const bootstrap = find(s => s.includes('=document'));
-const inputState = find(s => s.includes('k.has(`shift`)'));
-const gpuBuffers = find(s => s.includes('new Float32Array(A(24'));
+const inputState = find(s => s.includes('.has(`shift`)'));
+const gpuBuffers = find(s => s.includes('new Float32Array(') && s.includes('>>'));
 const shaderModule = find(s => s.includes('createShaderModule'));
 const pipeline = find(s => s.includes('createRenderPipeline'));
 const animation = find(s => s.includes('requestAnimationFrame'));
@@ -77,20 +77,20 @@ function tagFunction(label, predicate) {
   tag(node.start, node.end, label);
 }
 tagFunction('Voxel interpreter and variants', s => s.includes('switch(') && s.includes('>>3'));
-tagFunction('Level layout and collision', s => s.includes('15.5') && s.includes('2.8'));
+tagFunction('Level layout and collision', s => s.includes('Ce.length') && s.includes('-16'));
 tagFunction('Level layout and collision', s => s.includes('.some(') && s.includes('Math.abs'));
 tagFunction('Level layout and collision', s => s.includes('Math.cos(e[c])') && s.includes('t.map('));
-tagFunction('Level layout and collision', s => s.includes('L.reduce(') && s.includes('Math.min('));
+tagFunction('Level layout and collision', s => s.includes('.reduce(') && s.includes('Math.min('));
 tagFunction('Gameplay', s => s.includes('Math.hypot(') && s.includes('/.2'));
-tagFunction('Gameplay', s => s.includes('[11]=249') && s.includes('Se()'));
+tagFunction('Gameplay', s => s.includes('[11]=249'));
 tagFunction('Render frame', s => s.includes('performance.now()'));
 tagFunction('Gameplay', s => s.includes('Z&&n[25]') && s.includes('Math.max(0'));
-tagFunction('Gameplay', s => s.includes('e(),o(),k.clear()'));
+tagFunction('Gameplay', s => s.includes('.clear()') && s.includes('[24]=Math.PI'));
 tagFunction('Gameplay', s => s.includes('s>0?134:6'));
-tagFunction('Gameplay', s => s.includes('K!==1&&Oe'));
-tagFunction('Gameplay', s => s.includes('r*18') && s.includes('for(var d of L)'));
-tagFunction('Entity storage and initialization', s => s.includes('N.fill(0)') && s.includes('te.clear()'));
-tagFunction('Entity storage and initialization', s => s.includes('z.fill(-1)') && s.includes('r[27]'));
+tagFunction('Gameplay', s => s.includes('K!==1&&De'));
+tagFunction('Gameplay', s => s.includes('r*18') && s.includes('for(var d of'));
+tagFunction('Entity storage and initialization', s => s.includes('.fill(0)') && s.includes('.clear()') && s.includes('[24]=Math.PI'));
+tagFunction('Entity storage and initialization', s => s.includes('.fill(-1)') && s.includes('[27]'));
 tagFunction('Render-target resizing', s => s.includes('getBoundingClientRect'));
 tagFunction('Render frame', s => s.includes('createRenderPass') || s.includes('beginRenderPass'));
 tagFunction('GPU picking', s => s.includes('copyTextureToBuffer') && s.includes('mapAsync'));
@@ -103,7 +103,7 @@ for (const n of nodes.filter(n => n.type === 'TemplateLiteral' || n.type === 'Li
 const voxelFiles = [...fs.readFileSync('src/vvm.js', 'utf8').matchAll(/\.\.\/vox\/([^"']+\.vp)/g)].map(match => match[1]);
 for (const file of voxelFiles) {
   const name = file.slice(0, -3);
-  const encoded = Buffer.from(assemble(fs.readFileSync(`vox/${name}.vp`, 'utf8'))).toString('base64');
+  const encoded = '[' + [...assemble(fs.readFileSync(`vox/${name}.vp`, 'utf8'))].join(',') + ']';
   let count = 0;
   for (let i = code.indexOf(encoded); i !== -1; i = code.indexOf(encoded, i + encoded.length)) {
     tag(i, i + encoded.length, `Model: ${name}`); count++;

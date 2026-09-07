@@ -34,7 +34,7 @@ entity kind 15. The lever sits to the left of the screen: P0=0 points down with
 
 red illumination; P0=1 points up with green illumination. It mounts flush on
 
-an existing bulkhead at (-4.5, 0.6, -4.375). Clicking the panel uses GPU picking
+the bulkhead beside the start/hall or cargo/elevator doorway. Clicking the panel uses GPU picking
 
 to toggle `MODEL_VARIANT` instead of firing; paused editor clicks still select it.
 
