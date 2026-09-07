@@ -117,7 +117,7 @@ test("variant builder aliases non-P0 models and builds both P0 values when reque
 	assert.equal(runs, 2); assert.equal(skipped[0], skipped[1]);
 	const otherParam = buildVoxelVariants(assemble("LOADP:7 FSTORE:MATERIAL BOX FSTORE:BRUSH STROKE"), execute, index => index === 7 ? 19 : 0);
 	assert.equal(runs, 3); assert.equal(otherParam[0], otherParam[1]); assert.equal(otherParam[0][0], 19);
-	const unicorn = readFileSync(new URL("../vox/unicorn.vp", import.meta.url), "utf8");
+	const unicorn = readFileSync(new URL("../vox/unicorn-body.vp", import.meta.url), "utf8");
 	const variants = buildVoxelVariants(assemble(unicorn), execute);
 	assert.equal(runs, 5); assert.notEqual(variants[0], variants[1]);
 	assert.deepEqual(Buffer.from(variants[0].buffer), Buffer.from(run(unicorn, [0]).buffer));
@@ -252,6 +252,31 @@ test("fused and unfused programs produce identical voxels for every model and po
 	}
 });
 
+for (const DEBUG of [false, true]) test(`wall rebuilds preserve independent door textures (DEBUG=${DEBUG})`, async () => {
+	const old = { destroy() {} };
+	const context = vm.createContext({
+		DEBUG, voxT: Array.from({ length: 20 }, () => [old, old]), buffers: new Map([[old, {}]]),
+		empty: {}, cube: {}, sphere: {}, Q: { onSubmittedWorkDone: () => Promise.resolve() },
+		buildVoxelVariants, runByteCode: () => ({ destroy() {} }),
+	});
+	vm.runInContext(source.slice(source.indexOf("export function buildModel"), source.indexOf("\n// Load authored models."))
+		.replace("export ", "").replaceAll("import.meta.env.DEBUG", "true"), context);
+	const door = vm.runInContext("buildModel(19, [])", context);
+	const first = vm.runInContext("buildModel(7, [])", context);
+	assert.equal(context.voxT[19], door);
+	assert.equal(context.voxT[7], first);
+	const second = vm.runInContext("buildModel(7, [])", context);
+	assert.notEqual(first, second);
+	assert.equal(context.voxT[19], door);
+	if (DEBUG) {
+		context.runByteCode = () => { throw Error("bad tile"); };
+		assert.throws(() => vm.runInContext("buildModel(7, [])", context), /bad tile/);
+		assert.equal(context.voxT[7], second);
+		assert.equal(context.voxT[19], door);
+	}
+	await Promise.resolve();
+});
+
 test("embedded numeric arrays match typed bytecode for every model and pose", () => {
 	for (const file of readdirSync(new URL("../vox/", import.meta.url)).filter(file => file.endsWith(".vp"))) {
 		const source = readFileSync(new URL(`../vox/${file}`, import.meta.url), "utf8");
@@ -363,7 +388,7 @@ test("existing voxel programs still compile and retain complete instruction boun
 });
 
 test("unicorn parameter zero swaps opposite hoof poses between sides", () => {
-	const source = readFileSync(new URL("../vox/unicorn.vp", import.meta.url), "utf8");
+	const source = readFileSync(new URL("../vox/unicorn-body.vp", import.meta.url), "utf8");
 	assert.deepEqual(voxelParameterIndices(source), [0]);
 	const standing = run(source, [0]);
 	const stride = run(source, [1]);
@@ -389,6 +414,19 @@ test("unicorn parameter zero swaps opposite hoof poses between sides", () => {
 		}
 	}
 	assert.deepEqual(Buffer.from(run(source, [-1]).buffer), Buffer.from(stride.buffer));
+});
+
+test("split unicorn retains every original voxel and material in both walking poses", () => {
+	const read = file => readFileSync(new URL(file, import.meta.url), "utf8");
+	const headSource = read("../vox/unicorn-head.vp");
+	const head = run(headSource);
+	assert.deepEqual(Buffer.from(head.buffer), Buffer.from(run(headSource, [1]).buffer), "head has no walking variant");
+	for (const pose of [0, 1]) {
+		const body = run(read("../vox/unicorn-body.vp"), [pose]);
+		const original = run(read("./fixtures/unicorn-original.vp"), [pose]);
+		for (let i = 0; i < original.length; i += 4)
+			assert.equal(head[i] || body[i], original[i], `pose ${pose}, voxel ${i / 4}`);
+	}
 });
 
 test("FLIP swaps voxels only inside its box on each axis, including empty cells", () => {

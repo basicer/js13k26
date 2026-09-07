@@ -10,6 +10,10 @@ const styles = [
 	["pylon", "#754b90"], ["reactor", "#c34b64"], ["console", "#3bc9e8"],
 	["rail", "#d6bb3b"], ["light", "#f7f0a3"], ["floor", "#142330"],
 ];
+styles[12] = ["door", "#d69b52"];
+styles[13] = ["shaft", "#556174"];
+styles[14] = ["rail", "#d6bb3b"];
+styles[15] = ["track", "#b4bcc5"];
 const size = (type, width, depth) => type ? [
 	[6, .2], [.75, .75], [1.5, 1.5], [2.5, 3.6], [1, 1], [.2, 6], [.1, .1],
 ][type - 1] : [width, depth];
@@ -19,10 +23,11 @@ for (let i = 0; i < plan.length;) {
 	const type = plan[i++];
 	if (type === 9) { section++; continue; }
 	let x = plan[i++] - 16, z = plan[i++] - 16, width, depth;
-	if (type > 9) { actors.push({type,x,z,section}); continue; }
-	if (type > 1 && type !== 8) [width, depth] = size(type);
+	if (type === 10 || type === 11) { actors.push({type,x,z,section}); continue; }
+	if (type > 1 && type !== 8 && type < 12) [width, depth] = size(type);
 	else [width, depth] = [plan[i++], plan[i++]];
-	if (type === 5) { x += .25; z -= .4; }
+	if (type === 13 || type === 15) i += 2; // Height and bottom.
+	if (type === 5) z -= .4;
 	things.push({ section, type, x, z, width, depth });
 }
 
@@ -43,9 +48,9 @@ const rect = ({ section, type, x, z, width, depth }) => {
 const grid = [];
 for (let x=minX; x<=maxX; x+=2) { const [px,py]=point(x,maxZ); grid.push(`<path d="M${px} ${py}V${point(x,minZ)[1]}"/>`); }
 for (let z=minZ; z<=maxZ; z+=2) { const [px,py]=point(minX,z); grid.push(`<path d="M${px} ${py}H${point(maxX,z)[0]}"/>`); }
-const route = [[-11,-11],[-10,-12],[2,-12],[2,8],[-6,8],[-6,14],[-14,14],[-14,20],[-22,20],[-22,14],[-22,9],[-30,9],[-30,3]]
+const route = [[-11,-11],[-10,-12],[2,-12],[2,8],[-6,8],[-6,14],[-12.5,14],[-13,20],[-17.5,20],[-37.5,20],[-37.5,14],[-37.5,9],[-45.5,9],[-45.5,3]]
 	.map(p => point(...p).join(",")).join(" ");
-const labels = [[-12,-9,"01 START"],[2,-2,"02 HALLWAY"],[-6,22,"03 CARGO"],[-22,22,"04 ELEVATOR"],[-30,14,"05 BOSS ROOM"]]
+const labels = [[-12,-9,"01 START"],[2,-2,"02 HALLWAY"],[-6,22,"03 CARGO"],[-17.5,22,"04 ELEVATOR"],[-45.5,10,"05 BOSS ROOM"]]
 	.map(([x, z, label]) => { const [px, py] = point(x, z); return `<text x="${px}" y="${py}">${label}</text>`; }).join("");
 // Actor markers come from the same ordered plan as scenery.
 const portals = actors.filter(e => e.type === 10).map(({x,z}) => {

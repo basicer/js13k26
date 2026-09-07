@@ -245,10 +245,12 @@ import ggLogo, { debugSource as logoSource } from "../vox/gg-logo.vp";
 import railing, { debugSource as railingSource } from "../vox/railing.vp";
 import computerConsole, { debugSource as consoleSource } from "../vox/computer-console.vp";
 import woodenCrate, { debugSource as crateSource } from "../vox/wooden-crate.vp";
-import program2, { debugSource as source2 } from "../vox/unicorn.vp";
+import unicornHead, { debugSource as unicornHeadSource } from "../vox/unicorn-head.vp";
+import unicornBody, { debugSource as unicornBodySource } from "../vox/unicorn-body.vp";
 import program3, { debugSource as source3 } from "../vox/floortile.vp";
 import program4, { debugSource as source4 } from "../vox/walltile.vp";
 import windowWall, { debugSource as windowSource } from "../vox/wall-window.vp";
+import door, { debugSource as doorSource } from "../vox/door.vp";
 
 let wait = (n) => new Promise((resolve) => setTimeout(resolve, n));
 
@@ -265,32 +267,34 @@ export function buildVoxelVariants(bytecode, run, parameter = () => 0) {
 // Publish both variants together, then retire each old texture only once.
 export function buildModel(slot, bytecode, parameter = () => 0) {
 	// Release builds load each model once; texture retirement is editor-only.
-	if (!DEBUG) return (voxT[slot] = buildVoxelVariants(bytecode, runByteCode, parameter));
-	const previous = voxT[slot];
-	const created = [];
-	try {
-		voxT[slot] = buildVoxelVariants(
-			bytecode,
-			(code, load) => {
-				const texture = runByteCode(code, load);
-				created.push(texture);
-				return texture;
-			},
-			parameter,
-		);
-	} catch (error) {
-		for (const texture of created) {
-			buffers.delete(texture);
-			texture.destroy();
-		}
-		throw error;
-	}
-
-	if (DEBUG && import.meta.env.DEBUG) {
-		for (const texture of new Set(previous)) {
-			if (texture !== empty && texture !== cube && texture !== sphere) {
+	if (!DEBUG) voxT[slot] = buildVoxelVariants(bytecode, runByteCode, parameter);
+	else {
+		const previous = voxT[slot];
+		const created = [];
+		try {
+			voxT[slot] = buildVoxelVariants(
+				bytecode,
+				(code, load) => {
+					const texture = runByteCode(code, load);
+					created.push(texture);
+					return texture;
+				},
+				parameter,
+			);
+		} catch (error) {
+			for (const texture of created) {
 				buffers.delete(texture);
-				Q.onSubmittedWorkDone().then(() => texture.destroy());
+				texture.destroy();
+			}
+			throw error;
+		}
+
+		if (DEBUG && import.meta.env.DEBUG) {
+			for (const texture of new Set(previous)) {
+				if (texture !== empty && texture !== cube && texture !== sphere) {
+					buffers.delete(texture);
+					Q.onSubmittedWorkDone().then(() => texture.destroy());
+				}
 			}
 		}
 	}
@@ -309,10 +313,12 @@ export function buildModel(slot, bytecode, parameter = () => 0) {
 		[14, railing, railingSource],
 		[15, computerConsole, consoleSource],
 		[16, woodenCrate, crateSource],
-		[2, program2, source2],
+		[2, unicornBody, unicornBodySource],
+		[18, unicornHead, unicornHeadSource],
 		[5, program3, source3],
 		[7, program4, source4],
 		[17, windowWall, windowSource],
+		[19, door, doorSource],
 	];
 	// Kind 1 stays empty: it is the marine's gameplay and transform root.
 	for (const [slot, program] of models) {

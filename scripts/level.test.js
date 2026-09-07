@@ -9,7 +9,7 @@ function level() {
 	const context = vm.createContext({ E, EArray: blocks,
 		spawn: kind => {
 			const entity = new Float32Array(E.STRIDE);
-			entity.id = blocks.length + 1;
+			entity.id = blocks.length;
 			entity[0] = kind;
 			entity[12] = entity[13] = entity[14] = 1;
 			blocks.push(entity);
@@ -28,16 +28,18 @@ function level() {
 		.replace(/^import .*;\r?\n/gm, "").replaceAll("export ", ""), context);
 	const placements = [];
 	context.setupLevel((type,x,z,parent) => placements.push({type,x,z,parent}));
+	// These route tests exercise the architecture with its doors opened.
+	for (const entity of blocks) if (entity[E.KIND] === 19) entity[E.POS_Y] = 3;
 	return { ...context, blocks, placements, sections: vm.runInContext("sections", context) };
 }
 
-const route = [[-11,-11],[-10,-12],[2,-12],[2,8],[-6,8],[-6,14],[-14,14],[-14,20],[-22,20],[-22,14],[-22,9],[-30,9],[-30,3]];
+const route = [[-11,-11],[-10,-12],[2,-12],[2,8],[-6,8],[-6,14],[-12.5,14],[-13,20],[-17.5,20]];
 
 test("camera-side window walls preserve the room barriers and section parents", () => {
 	const { blocks, sections, canStand } = level();
 	const windows = blocks.filter(e => e[E.KIND] === 145);
 	assert.equal(windows.length,4);
-	for (const [x,z,section] of [[-2,-1,1],[-18,12,2],[-42,6,4],[-18,6,4]]) {
+	for (const [x,z,section] of [[-2,-1,1],[-14,12,2],[-57.5,4.25,4],[-33.5,4.25,4]]) {
 		const wall = windows.find(e => e[E.POS_X] === x && e[E.POS_Z] === z);
 		assert.equal(wall[E.PARENT],sections[section].id);
 		assert.equal(wall[E.SOLID],1);
@@ -45,7 +47,7 @@ test("camera-side window walls preserve the room barriers and section parents", 
 	}
 });
 
-test("the entire route is walkable with actor clearance in both directions", () => {
+test("map-plane colliders preserve route clearance in both directions", () => {
 	const { moveActor, canStand, blocks } = level();
 	for (const points of [route, [...route].reverse()]) {
 		const actor = new Float32Array(E.STRIDE);
@@ -56,13 +58,13 @@ test("the entire route is walkable with actor clearance in both directions", () 
 		}
 	}
 	for (const [x,z] of route) assert.ok(canStand(x,z,.65), "room for actors at " + [x,z]);
-	for (const wall of blocks.filter(e => e[E.KIND] === 7)) {
+	for (const wall of blocks.filter(e => e[E.KIND] === 7 && e[E.SOLID])) {
 		assert.ok(Math.abs(wall[E.SCALE_Y] - 2.8) < 1e-6);
 		for (const repeat of wall.subarray(E.TILE,E.TILE+3)) assert.ok(Number.isInteger(repeat) && repeat >= 1);
 	}
 });
 
-test("the perimeter is sealed and all four thresholds are mandatory", () => {
+test("floor connectivity reaches Cargo through its thresholds and stops at the open shaft", () => {
 	const { canStand, blocks } = level();
 	const floors = blocks.filter(e => e[E.KIND] === 5);
 	// Flood at half-unit spacing with the same collision radius as gameplay.
@@ -71,6 +73,8 @@ test("the perimeter is sealed and all four thresholds are mandatory", () => {
 		for (let i=0; i<queue.length; i++) {
 			const [x,z] = queue[i], key = x+","+z;
 			if (visited.has(key) || sealed(x/2,z/2) || !canStand(x/2,z/2)) continue;
+			// The shaft now has deliberate floor gaps; a map-plane collider alone is not footing.
+			if (!floors.some(e => Math.abs(x/2-e[E.POS_X]) <= e[E.SCALE_X]/2 && Math.abs(z/2-e[E.POS_Z]) <= e[E.SCALE_Z]/2)) continue;
 			assert.ok(Math.abs(x)<128 && Math.abs(z)<128, "route leaks outside the floor at " + key);
 			assert.ok(floors.some(e => Math.abs(x/2-e[E.POS_X]) <= e[E.SCALE_X]/2 && Math.abs(z/2-e[E.POS_Z]) <= e[E.SCALE_Z]/2), "missing floor at " + key);
 			visited.add(key);
@@ -79,19 +83,19 @@ test("the perimeter is sealed and all four thresholds are mandatory", () => {
 		return visited;
 	};
 	const connected = flood();
-	for (const [x,z] of route) assert.ok(connected.has(x*2+","+z*2));
+	for (const [x,z] of route.slice(0,8)) assert.ok(connected.has(x*2+","+z*2));
+	assert.equal(connected.has("-35,40"), true, "the platform docks directly at Cargo");
+	assert.equal(connected.has("-44,30"), false, "the lower hallway is across the shaft before travel");
 	for (const seal of [
 		(x,z) => x === -6 && z >= -14 && z <= -10,
 		(x,z) => z === 6 && x >= 0 && x <= 4,
-		(x,z) => x === -18 && z >= 18 && z <= 22,
-		(x,z) => z === 16 && x >= -24 && x <= -20,
-	]) assert.ok(!flood(seal).has("-60,6"), "a threshold can be bypassed");
+	]) assert.ok(!flood(seal).has("-26,40"), "a threshold can be bypassed");
 });
 
 test("packed floor sections stop downward shots without covering exterior space", () => {
 	const { blocks, shotFraction } = level();
 	const floors = blocks.filter(e => e[E.KIND] === 5);
-	assert.equal(floors.length, 6);
+	assert.equal(floors.length, 7);
 	for (const floor of floors) {
 		assert.equal(floor[E.SOLID], 0);
 		assert.equal(floor[E.POS_Y] + floor[E.SCALE_Y]/2, -30/64);
@@ -112,16 +116,17 @@ test("bulkheads break long sightlines and gate spawn points are clear", () => {
 test("section height is visual and leaves hit tests and movement unchanged", () => {
 	const { sections, blocks, canStand, shotFraction, spawn, moveActor } = level();
 	assert.equal(sections.length,5);
-	assert.ok(blocks.filter(e => e[E.KIND] !== 1).every(e => sections.some(s => s.id === e[E.PARENT])));
-	const hit = shotFraction(-16,12,-20,12,.5);
+	assert.ok(blocks.filter(e => e[E.KIND] !== 1).every(e => sections.some(s => s.id ===
+		(e[E.KIND] === 19 ? blocks[e[E.PARENT]][E.PARENT] : e[E.PARENT]))));
+	const hit = shotFraction(-13,12,-16,12,.5);
 	assert.ok(hit < 1);
 	const actor = spawn(1);
 	actor[E.POS_X] = -22; actor[E.POS_Z] = 20;
 	actor[E.PARENT] = sections[2].id;
 	sections[2][E.POS_Y] = sections[4][E.POS_Y] = 8;
-	assert.equal(canStand(-18,12),false,"raised walls keep the original map collider");
-	assert.equal(shotFraction(-16,12,-20,12,.5),hit);
-	assert.equal(shotFraction(-16,12,-20,12,8.5),1,"visual height is not added to the hit test");
+	assert.equal(canStand(-14.5,12),false,"raised walls keep the original map collider");
+	assert.equal(shotFraction(-13,12,-16,12,.5),hit);
+	assert.equal(shotFraction(-13,12,-16,12,8.5),1,"visual height is not added to the hit test");
 	moveActor(actor,8,0);
 	assert.equal(actor[E.PARENT],sections[2].id,"movement keeps the originally assigned section");
 	assert.equal(actor[E.POS_Y],0);

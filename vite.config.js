@@ -132,19 +132,20 @@ var roadroller = (enabled) => ({
 		}
 		const packer = new Packer([{ data, type: "js", action: "eval" }], {
 			maxMemoryMB: 128,
-			modelRecipBaseCount: 61,
+			modelRecipBaseCount: 62,
+			dynamicModels: 0,
 			modelMaxCount: 3,
 			numAbbreviations: 0,
-			sparseSelectors: [0, 1, 2, 3, 5, 6, 7, 10, 13, 25, 42, 51, 65, 127, 200, 226, 249, 276, 313, 417],
+			sparseSelectors: [0, 1, 2, 3, 5, 6, 7, 10, 13, 22, 25, 45, 51, 81, 230, 249, 345, 396, 417, 423],
 			precision: 16,
-			recipLearningRate: 2737,
+			recipLearningRate: 2501,
 			// The packed release owns its single page; game code has its own wrapper.
 			allowFreeVars: true,
 		});
 		// Reuse the tuned model for deterministic, fast builds; opt in to retuning.
 		if (process.env.REPACK) console.log("Roadroller parameters", JSON.stringify((await packer.optimize(2)).best));
 		const { firstLine, secondLine } = packer.makeDecoder();
-		const code = `${firstLine}\n${secondLine}`;
+		const code = firstLine + secondLine;
 		if (/<\/script/i.test(code)) throw Error("Unsafe packed script terminator");
 		// Decode without running the game and verify the executable syntax tree.
 		let decoded;

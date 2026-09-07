@@ -4,7 +4,7 @@ import { EArray } from "../entities";
 import { voxelPrograms } from "./voxelPrograms.js";
 import { openVoxelEditor } from "./voxelEditor.js";
 let selectedEntity = 0;
-const marinePartNames = { 1: "Marine", 8: "Marine legs", 9: "Marine body", 10: "Marine arms", 11: "Marine gun", 15: "Computer console", 16: "Wooden crate" };
+const kindNames = { 1: "Folder", 8: "Marine legs", 9: "Marine body", 10: "Marine arms", 11: "Marine gun", 15: "Computer console", 16: "Wooden crate" };
 
 export const selectEntity = (index) => selectedEntity = index;
 
@@ -25,7 +25,7 @@ export function entityInspector(overrides, open) {
 				const kind = Math.round(entities[i][E.KIND]);
 				const id = entities[i].id;
 				if (kind === 0) continue; // Skip empty entities
-				const label = id === 0 ? `0  Camera##entity-${id}` : `${id}  ${marinePartNames[kind] || `Kind ${kind}`}##entity-${id}`;
+				const label = id === 0 ? `0  Camera##entity-${id}` : `${id}  ${kindNames[kind] || `Kind ${kind}`}##entity-${id}`;
 				if (ImGui.Selectable(label, selectedEntity === id)) selectedEntity = id;
 			}
 		}
@@ -53,6 +53,9 @@ export function entityInspector(overrides, open) {
 	const modelVariant = [entity[E.MODEL_VARIANT] >= 0.5];
 	const velocity = Array.from(entity.subarray(E.VELOCITY, E.VELOCITY + 3));
 	const ttl = [entity[E.TTL]];
+	const targetPosition = Array.from(entity.subarray(E.TARGET_POSITION, E.TARGET_POSITION + 3));
+	const lerpSpeed = [entity[E.LERP_SPEED]];
+	const target = [entity[E.CONTROLLER]];
 	let changed = false;
 	const solid = [!!entity[E.SOLID]];
 	if (ImGui.Checkbox("Solid box", solid)) {
@@ -112,6 +115,18 @@ export function entityInspector(overrides, open) {
 	}
 	if (ImGui.DragFloat3("Velocity", velocity, 0.05)) {
 		entity.set(velocity, E.VELOCITY);
+		changed = true;
+	}
+	if (ImGui.DragFloat3("Target position (local)", targetPosition, 0.05)) {
+		entity.set(targetPosition, E.TARGET_POSITION);
+		changed = true;
+	}
+	if (ImGui.DragFloat("Lerp speed (0 = off)", lerpSpeed, 0.05)) {
+		entity[E.LERP_SPEED] = Math.max(0, lerpSpeed[0]);
+		changed = true;
+	}
+	if (ImGui.InputInt("Controller link (0 = none)", target, 1, 10)) {
+		entity[E.CONTROLLER] = Math.max(0, Math.min(EArray.length - 1, target[0]));
 		changed = true;
 	}
 	if (ImGui.DragFloat("TTL (seconds, 0 = forever)", ttl, 0.05)) {

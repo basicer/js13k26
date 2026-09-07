@@ -1,7 +1,8 @@
 import * as E from "../entities-const.js";
 import { ImGui, ImGuiImplWeb, ImVec2, ImVec4 } from "@mori2003/jsimgui";
 import { d, c, heldKeys } from "../globals.js";
-import { cameraPosition, cameraRotation } from "../entities.js";
+import { cameraEntity, cameraPosition, cameraRotation } from "../entities.js";
+import { startElevatorTest, updateElevatorTest, warpLocations, warpPlayer } from "./elevatorTest.js";
 import { detachCamera, attachCamera } from "./camera.js";
 import { setMarineTrigger } from "../game.js";
 import { palette } from "../palette.js";
@@ -44,6 +45,7 @@ const play = () => {
 	paused = false;
 };
 export function updateCamera(deltaTime) {
+	if (!paused) updateElevatorTest(deltaTime);
 	if (!isFlying() || wantsKeyboard()) return;
 	detachCamera();
 	if (["w", "a", "s", "d", "r", "f", "q", "e", "arrowleft", "arrowright", "arrowup", "arrowdown"].some(key => heldKeys.has(key))) pause();
@@ -155,6 +157,24 @@ export function debug(passEncoder, entities, entitySize, overrides) {
 			else pause();
 		}
 		if (ImGui.Button("Reset")) restartGame();
+		if (ImGui.Button("TEST")) {
+			play();
+			startElevatorTest(EArray[cameraEntity[E.PARENT]]);
+		}
+		if (ImGui.BeginMenu("Warp")) {
+			for (const location of warpLocations) if (ImGui.MenuItem(location[0])) {
+				play();
+				warpPlayer(EArray[cameraEntity[E.PARENT]], location);
+			}
+			ImGui.EndMenu();
+		}
+		if (ImGui.Button("NUKE")) {
+			for (const entity of EArray) {
+				if (![2, 12, 18].includes(entity[E.KIND] & 127)) continue;
+				overrides.delete(entity.id);
+				entity.fill(0);
+			}
+		}
 
 		if (ImGui.BeginMenu("Scene")) {
 			if (ImGui.MenuItem("Reset")) {

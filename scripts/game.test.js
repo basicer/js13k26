@@ -19,7 +19,7 @@ function worldPoint(entities, entity, point = [0,0,0]) {
 }
 
 function game() {
-	let nextEntityId = 1;
+	let nextEntityId = 0;
 	const timers = [];
 	let restarts = 0;
 	const sounds = { hurt: 0, gunshot: 0, reload: 0, emptyClick: 0, explode: 0, shotgunPump: 0, wobble: 0 };
@@ -31,7 +31,7 @@ function game() {
 		EArray, getUnicorns: () => EArray.filter(e => e[0] === 2), getPortals: () => EArray.filter(e => e[0] === 12), effects: () => EArray.filter(e => e[0] !== 0 && e[23] !== 0),
 		DEBUG: true, Math: randomMath, flash() {},
 		setTimeout: (callback, delay) => timers.push({ callback, delay }),
-		setupEntities: () => { EArray.length = 0; nextEntityId = 1; },
+		setupEntities: () => { EArray.length = 0; nextEntityId = 0; },
 		heldKeys: new Set(), cameraEntity: new Float32Array(E.STRIDE), cameraPosition: [0, 5, 8], cameraRotation: [-0.5, 0, 0],
 		spawn: kind => {
 			let entity = EArray.find(e => e[0] === 0);
@@ -68,6 +68,8 @@ function game() {
 	vm.runInContext(entitySource.slice(entitySource.indexOf("export function updateEntities"))
 		.replace("export ", ""), context);
 	const run = code => vm.runInContext(code, context);
+	// Combat fixtures keep the section entrances open; door behavior has its own tests.
+	run("EArray.filter(e => e[E.KIND] === 19).forEach(e => e[E.POS_Y] = 3); EArray.filter(e => e[E.KIND] === 15).forEach(e => e[E.CONTROLLER] = 0)");
 	run("globalThis.initialUnicorns = getUnicorns().length; getUnicorns().slice(1).forEach(e => e[0] = 0);");
 	const touch = () => run("getUnicorns()[0][4] = player[4] + 1; getUnicorns()[0][6] = player[6];");
 	return { run, touch, sounds, timers };
@@ -107,7 +109,7 @@ test("sections move rendering while combat and effects keep map-local coordinate
 	assert.equal(run("effects().at(-1)[E.POS_Y]"),0);
 	assert.equal(worldPoint(entities,run("effects().at(-1)"),[0,0,0])[1],8);
 	run("setupGame();");
-	assert.equal(run("sections.every(e => e[E.POS_Y] === 0)"),true);
+	assert.equal(run("sections.every((e, i) => e[E.POS_Y] === (i === 4 ? -40 : 0))"),true);
 });
 
 test("only a fatal hit schedules one restart after five seconds", () => {

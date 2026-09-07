@@ -6,17 +6,20 @@ const ground = -30 / 64;
 // 9 creates the next section: start, hallway, cargo, elevator, boss (no fields).
 // 10 portal facing -X, 11 unicorn; place these after their section scenery.
 // 6 rail (+Z), 2 crate, 3 pylon, 4 reactor, 5 console, 7 light.
-// Start (-12,-12) → dogleg hall (2,-2) → cargo (-6,15) → lift (-22,20) → boss (-30,6).
+// 12 door + x,z,width,depth: positioned root with a kind-19 panel at local zero.
+// 13 shaft wall + x,z,width,depth,height,bottom (relative to ground); 14 rail + x,z,width,depth.
+// 15 uses shaft-wall fields for the inclined elevator guide track.
+// Start (-12,-12) → dogleg hall (2,-2) → cargo (-6,15) → lift (-17.5,20) → boss (-45.5,6).
 // Shared bulkheads seal the perimeter; every threshold has 3+ units of clearance.
 const plan = [
-	9,8,4,4,12,12,0,-2,4,1,12,0,4,-2,12,1,0,4,10,12,1,0,10,0,1,4,0,10,8,1,4,2,0,8,5,9.4,1,
-	9,8,16,4,12,6,8,18,14,8,16,0,16,1,12,1,0,22,12,1,22,0,12,7,4,1,1,14,15,1,16,7,18,4,7,18,18,2,20,9,11,18,11,11,19,18,
-	9,8,10,31,24,18,0,21,22,2,1,0,7,22,18,1,0,22,31,1,18,0,10,40,24,1,1,-2,28,1,12,0,-2,39,1,2,0,14,29,1,8,0,6,35,1,6,2,15,27,2,15,28,2,13,30,2,7,34,2,5,36,2,4,36,3,3,26,7,18,27,7,10,34,7,2,37,10,21,28,10,21,36,11,17,26,11,10,26,11,3,33,11,13,37,
-	9,8,-6,36,8,8,0,-6,40,8,1,0,-10,36,1,8,5,-1.4,39,7,-6,36,
-	9,8,-14,22,24,20,0,-17,32,18,1,0,-3,32,2,1,1,-26,22,1,20,1,-2,22,1,20,0,-14,12,24,1,3,-20,22,3,-8,22,4,-14,16,2,-21,16,2,-7,16,7,-20,27,7,-8,27,7,-14,15,10,-3,27,10,-3,17,11,-21,27,11,-9,27,11,-20,17,11,-8,17
+	9,8,4,4,12,12,0,-2,4,1,12,0,4,-2,12,1,0,4,10,12,1,0,10,0,1,4,0,10,8,1,4,2,0,8,
+	9,12,10,4,1,4,5,9.4,1,8,16,4,12,6,8,18,14,8,16,0,16,1,12,1,0,22,12,1,22,0,12,7,4,1,1,14,15,1,16,7,18,4,7,18,18,2,20,9,11,18,11,11,19,18,
+	9,12,18,22,4,1,5,21.4,21,8,11.75,32.75,20.5,21.5,0,21,22,2,1,0,8.75,22,14.5,1,0,22,32.75,1,21.5,0,11.75,43.5,20.5,1,1,2,28,1,12,0,2,40.75,1,5.5,0,14,29,1,8,0,6,35,1,6,2,15,27,2,15,28,2,13,30,2,7,34,2,5,36,2,4,38,3,3,26,7,18,27,7,10,34,7,2,37,12,2,36,1,4,5,4.5,43.3,13,-13.75,43.5,30.5,1,42.8,-40,13,2,36,1,15,40,-40,13,-13.75,28.5,30.5,1,40,-37.2,15,-8,36,0.5,0.5,44.72,-42.76,10,21,28,10,21,36,11,17,26,11,10,26,11,3,33,11,13,37,
+	9,8,-1.5,36,6,6,14,-4.5,36,0.2,6,14,-1.5,39,6,0.2,14,1.5,33.5,0.2,1,14,1.5,38.5,0.2,1,14,-4,33,1,0.2,14,1,33,1,0.2,7,-1.5,36,
+	9,12,-21.5,28.5,4,1,5,-19.7,31,8,-21.5,30.75,4,4.5,0,-23.5,30.75,0.2,4.5,0,-19.5,30.75,0.2,4.5,8,-29.5,20.25,24,16.5,0,-32.5,28.5,18,1,0,-18.5,28.5,2,1,1,-41.5,20.25,1,16.5,1,-17.5,20.25,1,16.5,0,-29.5,12,24,1,3,-35.5,22,3,-23.5,22,4,-29.5,16,2,-36.5,16,2,-22.5,16,7,-35.5,27,7,-23.5,27,7,-29.5,15,10,-18.5,27,10,-18.5,17,11,-36.5,27,11,-24.5,27,11,-35.5,17,11,-23.5,17
 ];
 
-// Section roots only translate vertically; child X/Z remain in map coordinates.
+// Section roots translate; authored child coordinates stay in the map frame.
 export const sections = [];
 
 export function setupLevel(place) {
@@ -24,7 +27,10 @@ export function setupLevel(place) {
 	let parent = 0, i = 0;
 	const read = () => plan[i++];
 	while (i < plan.length) {
-		const type = read();
+		let type = read();
+		const track = type === 15, shaft = type === 13 || track, rail = type === 14;
+		const door = type === 12;
+		if (type >= 12) type = 0;
 		if (type === 9) {
 			const section = spawn(1);
 			sections.push(section);
@@ -35,31 +41,62 @@ export function setupLevel(place) {
 		if (type > 9) { place(type, x, z, parent); continue; }
 		const sizes = [[0,2.8,0],[0,2.8,0],[.75,.75,.75],[1.5,2.8,1.5],[2.5,2.8,3.6],[5/8,1/2,3/16],[6,1,.2],[.1,.1,.1],[0,4/64,0]][type];
 		if (type < 2 || type === 8) { sizes[0] = read(); sizes[2] = read(); }
-		const entity = spawn(7);
-		entity.set([x, ground + sizes[1] / 2, z], E.POS);
+		if (shaft) sizes[1] = read();
+		if (rail) sizes[1] = 1;
+		const y = ground + sizes[1] / 2 + (shaft ? read() : 0);
+		// Allocate the anchor first so a following console targets the panel.
+		const root = door && spawn(1);
+		const entity = spawn(door ? 19 : rail ? 14 : [7,145,16,7,7,15,14,6,5][type]);
+		entity.set([x, y, z], E.POS);
 		entity.set(sizes, E.SCALE);
 		entity.set(sizes.map(size => Math.max(1, Math.round(size / 2))), E.TILE);
-		entity[E.SOLID] = 1;
-		entity[E.KIND] = [7,145,16,7,7,15,14,6,5][type];
+		entity[E.SOLID] = !shaft && type < 7;
 		if (type === 2) { entity[E.HEALTH] = entity[E.MAX_HEALTH] = 4; entity[E.DISSOLVE_RATE] = .5; }
-		if (type === 5) { entity[E.POS_Z] -= .4; entity[E.POS_Y] = .6; }
-		if (type === 5 || type === 6) entity[E.ROT_Y] = type === 6 || x > -10 ? Math.PI / 2 : -Math.PI / 2;
+		if (type === 5) { entity[E.POS_Z] -= .4; entity[E.POS_Y] = .6; entity[E.CONTROLLER] = entity.id - 1; }
+		if (type === 5 || type === 6) entity[E.ROT_Y] = type === 6 || z < 23 ? Math.PI / 2 : Math.PI;
 		if (type > 6) {
 			entity[E.POS_Y] = type === 7 ? 2 : -.5;
-			entity[E.SOLID] = 0;
 		}
 		if (type === 7) entity[E.SPOTLIGHT] = 3.5;
-		if (type === 5 || type > 6) entity.fill(type === 5 || type === 8 ? -2 : 0, E.TILE, E.TILE + 3);
+		if (type === 5 || type > 6 || rail || door) entity.fill(type === 7 ? 0 : -2, E.TILE, E.TILE + 3);
 		entity[E.PARENT] = parent;
+		entity[E.ROT_Z] = track * -.464;
+		entity[E.MAT_OVERRIDE] = track * 185;
+		if (rail) {
+			if (sizes[2] > sizes[0]) {
+				entity[E.SCALE_X] = sizes[2]; entity[E.SCALE_Z] = sizes[0];
+				entity[E.ROT_Y] = Math.PI / 2;
+			}
+		}
+		if (door) {
+			root.set(entity.subarray(E.POS, E.POS + 3), E.POS);
+			root[E.PARENT] = parent;
+			entity[E.PARENT] = root.id;
+			entity.fill(0, E.POS, E.POS + 3);
+		}
 	}
+	sections[4][E.POS_Y] = -40;
+	for (const i of [1, 2, 4]) sections[i][E.PARENT] = sections[0].id;
+
 }
+
+// Horizontal section travel moves colliders; section height stays visual.
+const collisionPosition = (entity, axis) => {
+	let value = entity[E.POS + axis];
+	while (entity[E.PARENT] && (axis !== 1 || entity[E.KIND] === 19)) {
+		entity = EArray[entity[E.PARENT]];
+		value += entity[E.POS + axis];
+	}
+	return value;
+};
 
 export function canStand(x, z, radius = 0.45, avoid = 0) {
 	return !EArray.some(
 		(entity) => {
-			const dx = x - entity[E.POS_X], dz = z - entity[E.POS_Z], c = Math.cos(entity[E.ROT_Y]), s = Math.sin(entity[E.ROT_Y]);
+			const dx = x - collisionPosition(entity, 0), dz = z - collisionPosition(entity, 2), c = Math.cos(entity[E.ROT_Y]), s = Math.sin(entity[E.ROT_Y]);
 			// Unicorn movement/spawns reserve space around other living unicorns.
 			return avoid && entity !== avoid && entity[E.KIND] === 2 && entity[E.HEALTH] > 0 && Math.hypot(dx, dz) < .8 || entity[E.KIND] && entity[E.SOLID] &&
+				(entity[E.KIND] !== 19 || collisionPosition(entity, 1) - Math.abs(entity[E.SCALE_Y]) / 2 < 1.25) &&
 				Math.abs(dx * c + dz * s) < Math.abs(entity[E.SCALE_X]) / 2 + radius &&
 				Math.abs(dz * c - dx * s) < Math.abs(entity[E.SCALE_Z]) / 2 + radius;
 		},
@@ -86,10 +123,10 @@ export function clearShot(x, z, targetX, targetZ) {
 }
 
 // The segment parameter is preserved through inverse rotation and scale.
-// Gameplay uses map-local colliders; visual section offsets do not affect hits.
+// Horizontal parent translation follows rendering; section height remains visual.
 export function entityShotFraction(entity, origin, direction) {
 	if (!entity[E.SCALE_X] || !entity[E.SCALE_Y] || !entity[E.SCALE_Z]) return 1;
-	const rays = [origin.map((n, i) => n - entity[E.POS + i]), [...direction]];
+	const rays = [origin.map((n, i) => n - collisionPosition(entity, i)), [...direction]];
 	// Inverse yaw, pitch, and roll are the same two-coordinate rotation.
 	for (const [a, b, axis] of [[0, 2, E.ROT_Y], [1, 2, E.ROT_X], [0, 1, E.ROT_Z]]) {
 		const c = Math.cos(entity[axis]), s = Math.sin(entity[axis]);

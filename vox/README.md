@@ -7,6 +7,13 @@ Measured with the same Closure/Roadroller/ZIP settings, the complete release was
 byte strings plus a character-code decoder. Compare final ZIP sizes when changing
 this encoding: smaller source strings do not necessarily compress better.
 
+`unicorn-body.vp` (kind 2) contains the torso, tail and animated legs.
+`unicorn-head.vp` (kind 18) contains the neck, head, mane, ears and horn.
+Both use the original 64³ model coordinates; the head has zero local position
+and rotation, unit scale, and the body as its parent, like the marine parts.
+Only the body uses P0 for walking and owns health, collision and AI. The head
+inherits damage appearance and disappears when its body's corpse expires.
+
 `walltile.vp` stores each axis's 13 boxes as five-value stack records and draws
 them with a shared loop. Float registers 3–6 hold the four in-plane coordinates;
 the perpendicular coordinates stay 0 and 63. The axis order preserves interior

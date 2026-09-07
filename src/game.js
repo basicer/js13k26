@@ -26,6 +26,12 @@ function spawnUnicorn(x, z) {
 	if (!canStand(x, z, .45, true)) return false;
 	const unicorn = spawn(2);
 	if (!unicorn) return;
+	const head = spawn(18);
+	if (!head) { unicorn.fill(0); return; }
+	// Shared model coordinates, like the marine: the torso is the gameplay root.
+	head[E.PARENT] = unicorn.id;
+	head.fill(0, E.TILE, E.TILE + 3);
+	head[E.DISSOLVE_PALETTE] = 249;
 	unicorn[E.POS_X] = x;
 
 	unicorn[E.POS_Z] = z;

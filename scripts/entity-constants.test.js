@@ -9,9 +9,10 @@ test("generated entity constants match the shader and committed output", () => {
 	const source = readFileSync(new URL("../shaders/common.wgsl", import.meta.url), "utf8");
 	const output = readFileSync(new URL("../src/entities-const.js", import.meta.url), "utf8");
 	assert.equal(generateEntityConstants(source), output.replaceAll("\r\n", "\n"));
+	assert.deepEqual([E.TARGET_POSITION, E.LERP_SPEED, E.CONTROLLER], [36, 39, 40]);
 	assert.deepEqual(
 		[E.KIND, E.POS, E.ROT, E.SCALE, E.TILE, E.VELOCITY, E.TTL, E.LIGHT_ANGLE, E.SOLID, E.HIT_RADIUS, E.HIT_CENTER_Y, E.DISSOLVE_RATE, E.WALK_STRIDE, E.DISSOLVE_TARGET, E.GRAVITY, E.MAX_HEALTH, E.STRIDE],
-		[0, 4, 8, 12, 16, 20, 23, 24, 28, 29, 30, 31, 32, 33, 34, 35, 36],
+		[0, 4, 8, 12, 16, 20, 23, 24, 28, 29, 30, 31, 32, 33, 34, 35, 44],
 	);
 });
 

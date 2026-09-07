@@ -1,0 +1,132 @@
+// Unicorn torso, tail and legs, 64^3. Mirror the body, then draw opposite leg poses.
+// STROKE:PAINT colors existing cells; :SWAP advances a path; :PAINT|SWAP does both.
+// Connected paths keep the last endpoint in START and supply the next point in END.
+// Rounded barrel and haunches, with a lighter shoulder.
+CAPSULE FSTORE:BRUSH
+8 FSTORE:RADIUS
+MAT_COOL_WHITE FSTORE:MATERIAL
+31 31 22 VEC VSTORE:START
+31 31 38 VEC VSTORE:END
+STROKE
+9 FSTORE:RADIUS
+31 31 23 VEC VSTORE:START
+31 32 25 VEC VSTORE:END
+STROKE
+7 FSTORE:RADIUS
+MAT_WHITE FSTORE:MATERIAL
+31 32 37 VEC VSTORE:START
+31 35 40 VEC VSTORE:END
+STROKE
+
+CAPSULE FSTORE:BRUSH
+MAT_PINK FSTORE:MATERIAL
+// Tail: a continuous cascade with layered colored strands.
+4 FSTORE:RADIUS
+31 34 15 VEC VSTORE:START
+29 32 9 VEC VSTORE:END
+STROKE:SWAP
+28 24 6 VEC VSTORE:END
+STROKE:SWAP
+3 FSTORE:RADIUS
+28 17 10 VEC VSTORE:END
+STROKE
+2 FSTORE:RADIUS
+MAT_LAVENDER FSTORE:MATERIAL
+27 33 12 VEC VSTORE:START
+25 25 7 VEC VSTORE:END
+STROKE:SWAP
+26 17 10 VEC VSTORE:END
+STROKE
+MAT_TURQUOISE FSTORE:MATERIAL
+25 30 11 VEC VSTORE:START
+24 24 9 VEC VSTORE:END
+STROKE:SWAP
+26 19 12 VEC VSTORE:END
+STROKE
+
+MIRROR:X
+
+// Stack schedule: second pose, first pose. FORJUMP repeats while a pose remains.
+// Parameter 0 swaps standing/stride between the left and right sides.
+LOADP:0 JUMPIF phase_one
+0 1
+1 JUMPIF leg_pose
+phase_one:
+1 0
+leg_pose:
+// The mirrored body is unchanged on the first pass; later passes move the legs.
+VLOAD:CLIP_MIN VSTORE:START
+VLOAD:CLIP_MAX VSTORE:END
+FLIP:X
+JUMPIF stride
+// Coordinates are stacked in reverse draw order for the shared routine.
+27 10 43
+23 9 40
+27 10 25
+23 9 22
+28 8 45
+22 5 39
+28 8 27
+22 5 21
+25 8 41
+25 20 41
+25 8 23
+25 17 21
+1 JUMPIF draw_legs
+stride:
+27 15 48
+23 14 45
+27 10 21
+23 9 18
+28 13 50
+22 10 44
+28 8 23
+22 5 17
+25 13 46
+25 20 44
+25 8 19
+25 17 19
+draw_legs:
+CAPSULE FSTORE:BRUSH
+// Hind legs: rounded thigh, angled hock, slim cannon.
+4 FSTORE:RADIUS
+MAT_COOL_WHITE FSTORE:MATERIAL
+26 29 23 VEC VSTORE:START
+25 23 25 VEC VSTORE:END
+STROKE:SWAP
+3 FSTORE:RADIUS
+VEC VSTORE:END
+STROKE:SWAP
+2 FSTORE:RADIUS
+VEC VSTORE:END
+STROKE
+
+// Forelegs emerge from the shoulder, leaving daylight under the belly.
+3 FSTORE:RADIUS
+MAT_WHITE FSTORE:MATERIAL
+25 29 39 VEC VSTORE:START
+VEC VSTORE:END
+STROKE:SWAP
+2 FSTORE:RADIUS
+VEC VSTORE:END
+STROKE
+
+// Lavender hooves and pale coronets.
+BOX FSTORE:BRUSH
+MAT_LAVENDER FSTORE:MATERIAL
+VEC VSTORE:START
+VEC VSTORE:END
+STROKE
+VEC VSTORE:START
+VEC VSTORE:END
+STROKE
+MAT_COOL_WHITE FSTORE:MATERIAL
+VEC VSTORE:START
+VEC VSTORE:END
+STROKE
+VEC VSTORE:START
+VEC VSTORE:END
+STROKE
+
+
+FORJUMP leg_pose

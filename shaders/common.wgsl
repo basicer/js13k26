@@ -28,6 +28,11 @@ struct Entity {
     dissolveTarget: f32,
     gravity: f32,
     maxHealth: f32,
+    // Local-space destination; zero lerpSpeed disables target movement.
+    targetPosition: vec3<f32>,
+    lerpSpeed: f32,
+    // Entity ID controlled by a console; zero means unconnected.
+    controller: f32,
 };
 
 fn rotation_matrix(rotation: vec3<f32>) -> mat3x3<f32> {

@@ -15,6 +15,8 @@ export const ENTITY_DATA_SIZE = E.STRIDE; // (in floats)
 // Radius zero uses only the box. Lifecycle and movement properties follow.
 // New entities live indefinitely unless given a nonzero TTL.
 // Kind 1 is the empty marine root; kinds 8–11 are legs, body, arms, and gun.
+// Unicorn kind 2 owns gameplay and walking legs; kind 18 is its attached head/neck.
+// Kind 19 is a tiled steel door panel under a positioned kind-1 root.
 export const ENTITY_COUNT = 1900;
 
 export const entities = new Float32Array(ENTITY_COUNT * ENTITY_DATA_SIZE);
@@ -61,17 +63,34 @@ export function setupEntities() {
 export const lightEntities = new Uint32Array(32);
 
 export function updateEntities(dt) {
+	// Controllers run first so targets move this frame regardless of entity order.
+	for (const entity of EArray) if (entity[E.KIND] === 15 && entity[E.CONTROLLER]) {
+		const target = EArray[entity[E.CONTROLLER]];
+		// Links are allocated entity slots; spawn clears all fields before reuse.
+		target.fill(0, E.TARGET_POSITION, E.TARGET_POSITION + 3);
+		target[E.TARGET_POSITION + (target[E.SCALE_X] > target[E.SCALE_Z] ? 0 : 2)] = entity[E.MODEL_VARIANT] * 4;
+		target[E.LERP_SPEED] = 2;
+	}
 	lightEntities.fill(-1);
 	let lights = 0;
 	for (const entity of EArray) {
 		if (!entity[E.KIND]) continue;
+		if (entity[E.KIND] === 18) {
+			const body = EArray[entity[E.PARENT]];
+			// Bodies are allocated before heads, so expiry is handled before reuse.
+			if (body[E.KIND] !== 2) { entity.fill(0); continue; }
+			for (const slot of [E.DISSOLVE, E.DISSOLVE_PALETTE, E.MAT_OVERRIDE, E.TRANSPARENCY])
+				entity[slot] = body[slot];
+		}
 		if (dt) {
 			entity[E.AGE] += dt;
 			if (entity[E.TTL] && entity[E.AGE] >= entity[E.TTL]) {
 				entity.fill(0);
 				continue;
 			}
-			for (let axis = 0; axis < 3; axis++) entity[E.POS + axis] += entity[E.VELOCITY + axis] * dt;
+			const blend = 1 - Math.exp(-entity[E.LERP_SPEED] * dt);
+			for (let axis = 0; axis < 3; axis++) entity[E.POS + axis] += entity[E.VELOCITY + axis] * dt +
+				(entity[E.TARGET_POSITION + axis] - entity[E.POS + axis]) * blend;
 			// Any entity can erode toward a target and retire once fully dissolved.
 			if (entity[E.DISSOLVE_RATE]) {
 				entity[E.DISSOLVE] = Math.min(entity[E.DISSOLVE_TARGET], entity[E.DISSOLVE] + entity[E.DISSOLVE_RATE] * dt);

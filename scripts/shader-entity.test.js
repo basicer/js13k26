@@ -32,7 +32,7 @@ function verifyOffsets(input) {
 
 test("release entity padding preserves all GPU offsets and the host stride", () => {
     const packed = verifyOffsets(source);
-    assert.equal(packed.stride, 144);
+    assert.equal(packed.stride, 176);
     assert.equal(packed.fields.matOverride, 76);
     assert.equal(packed.fields.light_angle, 96);
     assert.equal(packed.fields.health, undefined);
