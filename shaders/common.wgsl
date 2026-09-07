@@ -40,12 +40,12 @@ fn rotation_matrix(rotation: vec3<f32>) -> mat3x3<f32> {
     return mat3x3<f32>(right, base_up * cos(rotation.z) - base_right * sin(rotation.z), -forward);
 }
 
-fn local_transform(entity: Entity, entity_scale: vec3<f32>) -> mat4x4<f32> {
+fn local_transform(entity: Entity) -> mat4x4<f32> {
     let rotation = rotation_matrix(entity.rot);
     return mat4x4<f32>(
-        vec4<f32>(rotation[0] * entity_scale.x, 0.0f),
-        vec4<f32>(rotation[1] * entity_scale.y, 0.0f),
-        vec4<f32>(rotation[2] * entity_scale.z, 0.0f),
+        vec4<f32>(rotation[0] * entity.scale.x, 0.0f),
+        vec4<f32>(rotation[1] * entity.scale.y, 0.0f),
+        vec4<f32>(rotation[2] * entity.scale.z, 0.0f),
         vec4<f32>(entity.pos, 1.0f),
     );
 }
@@ -67,7 +67,6 @@ struct VoxelHit {
     distance: f32,
     material: f32,
     normal: vec3<f32>,
-    position: vec3<f32>,
     cell: vec3<i32>,
 };
 
@@ -96,18 +95,12 @@ var palette: texture_storage_2d<rgba8unorm, read>;
 const MAX_SPOTLIGHTS = 32u;
 
 fn world_transform(index: u32) -> mat4x4<f32> {
-    var current = index;
-    var transform = mat4x4<f32>(
-        vec4<f32>(1.0f, 0.0f, 0.0f, 0.0f),
-        vec4<f32>(0.0f, 1.0f, 0.0f, 0.0f),
-        vec4<f32>(0.0f, 0.0f, 1.0f, 0.0f),
-        vec4<f32>(0.0f, 0.0f, 0.0f, 1.0f),
-    );
-    loop {
+    var current = u32(entities[index].parent);
+    var transform = local_transform(entities[index]);
+    while (current != 0u) {
         let entity = entities[current];
-        transform = local_transform(entity, entity.scale) * transform;
+        transform = local_transform(entity) * transform;
         current = u32(entity.parent);
-        if (current == 0u) { break; }
     }
     return transform;
 }

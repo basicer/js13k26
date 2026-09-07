@@ -1,8 +1,11 @@
 @vertex
 fn vs_main(
     @builtin(instance_index) idx: u32,
-    @location(0) pos: vec3<f32>
+    @builtin(vertex_index) vertex: u32
 ) -> VertexOutput {
+    // The original inward-wound cube, ten three-bit indices per word.
+    let corner = (array<u32, 4>(668020936u, 447748655u, 639176151u, 127977u)[vertex / 10u] >> ((vertex % 10u) * 3u)) & 7u;
+    let pos = vec3<f32>((vec3<u32>(corner) >> vec3<u32>(0u, 1u, 2u)) & vec3<u32>(1u)) * 2.0f - vec3<f32>(1.0f);
     let entity_index = idx & 65535u;
     var out: VertexOutput;
     out.idx = entity_index;
@@ -57,7 +60,7 @@ fn voxel_at(cell: vec3<i32>, volume_size: vec3<i32>, grid_size: vec3<f32>, entit
     else { material = textureLoad(vox, cell % volume_size, 0).x; }
     if (material == 0.0f) { return 0.0f; }
     // Stable 4x4x4 chunks either become air or take the replacement palette.
-    if (e.dissolve > 0.0f && dissolve_noise(vec3<u32>(cell) / vec3<u32>(4u), entity_id) < clamp(e.dissolve, 0.0f, 1.0f)) {
+    if (dissolve_noise(vec3<u32>(cell) / vec3<u32>(4u), entity_id) < e.dissolve) {
         return clamp(e.dissolvePalette, 0.0f, 255.0f);
     }
     return select(material, e.matOverride, e.matOverride > 0.0f);
@@ -76,32 +79,32 @@ fn voxel_search(ray_origin: vec3<f32>, ray_direction: vec3<f32>, volume_size: ve
     let bounds_far = max(first_bounds, second_bounds);
     var distance = max(max(bounds_near.x, bounds_near.y), max(bounds_near.z, 0.0f));
     let exit_distance = min(min(bounds_far.x, bounds_far.y), bounds_far.z);
-    if (distance > exit_distance) { return VoxelHit(); }
 
     let point = ray_origin + ray_direction * (distance + 0.0001f);
     var cell = voxel_cell(point * grid_size, grid_size);
     let step = select(vec3<i32>(-1), vec3<i32>(1), ray_direction >= vec3<f32>(0.0f));
-    let cell_size = 1.0f / grid_size;
-    let delta_distance = abs(cell_size / safe_direction);
-    var side_distance = distance + ((vec3<f32>(cell) + select(vec3<f32>(0.0f), vec3<f32>(1.0f), safe_direction >= vec3<f32>(0.0f))) * cell_size - point) / safe_direction;
+    let grid_direction = safe_direction * grid_size;
+    let delta_distance = abs(1.0f / grid_direction);
+    var side_distance = (vec3<f32>(cell) + max(vec3<f32>(step), vec3<f32>(0.0f)) - ray_origin * grid_size) / grid_direction;
     // A solid boundary voxel is hit before DDA advances: use the box entry face.
     let entry_axis = select(select(2u, 1u, bounds_near.y >= bounds_near.z), 0u,
         bounds_near.x >= max(bounds_near.y, bounds_near.z));
     var normal = vec3<f32>(0.0f);
     normal[entry_axis] = -f32(step[entry_axis]);
-    for (var step_count = 0u; step_count < u32(ceil(grid_size.x) + ceil(grid_size.y) + ceil(grid_size.z)); step_count++) {
+    // Each iteration advances one axis, including exact edge/corner ties.
+    // Fractional grids can leave the box before crossing the last cell boundary.
+    while (distance <= exit_distance && all(cell >= vec3<i32>(0)) && all(vec3<f32>(cell) < grid_size)) {
         let material = voxel_at(cell, volume_size, grid_size, entity_id);
         if (material > 0.0f) {
-            // Preserve the original hit-position epsilon and cell rounding for AO/dissolve.
-            let position = (ray_origin + ray_direction * (distance + 0.0001f)) * grid_size;
-            return VoxelHit(distance, material, normal, position, voxel_cell(position, grid_size));
+            return VoxelHit(distance, material, normal, cell);
         }
-        let mask = select(vec3<f32>(0.0f), vec3<f32>(1.0f), side_distance < min(side_distance.yzx, side_distance.zxy));
-        distance = dot(side_distance, mask);
-        cell += step * vec3<i32>(mask);
-        side_distance += delta_distance * mask;
-        normal = -vec3<f32>(step) * mask;
-        if (distance > exit_distance || any(cell < vec3<i32>(0)) || any(vec3<f32>(cell) >= grid_size)) { break; }
+        let axis = select(select(2u, 1u, side_distance.y <= side_distance.z), 0u,
+            side_distance.x <= min(side_distance.y, side_distance.z));
+        distance = side_distance[axis];
+        cell[axis] += step[axis];
+        side_distance[axis] += delta_distance[axis];
+        normal = vec3<f32>(0.0f);
+        normal[axis] = -f32(step[axis]);
     }
     return VoxelHit();
 }
@@ -144,9 +147,11 @@ fn fs_main(in: VertexOutput) -> FragmentOutput {
         scale * 64.0f / vec3<f32>(volume_size),
         e.tile == vec3<f32>(-2.0f),
     );
-    let hit = voxel_search(inverse_entity_transform * (camera_position - entity_transform[3].xyz) + vec3<f32>(0.5f), inverse_entity_transform * world_ray, volume_size, grid_size, in.idx);
+    let ray_origin = inverse_entity_transform * (camera_position - entity_transform[3].xyz) + vec3<f32>(0.5f);
+    let ray_direction = inverse_entity_transform * world_ray;
+    let hit = voxel_search(ray_origin, ray_direction, volume_size, grid_size, in.idx);
     if (hit.material == 0.0f) { discard; }
-    let voxel_position = hit.position;
+    let voxel_position = (ray_origin + ray_direction * (hit.distance + 0.0001f)) * grid_size;
     let cell = hit.cell;
     let normal = vec3<i32>(hit.normal);
     let corner = select(vec3<i32>(-1), vec3<i32>(1), fract(voxel_position) > vec3<f32>(0.5f));

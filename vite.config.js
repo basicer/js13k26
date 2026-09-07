@@ -9,6 +9,8 @@ import { Packer } from "roadroller";
 import ClosureCompiler from "google-closure-compiler";
 import { assemble } from "./src/vvm-tools.js";
 import { minifyWgsl } from "./tools/wgsl-minify/src/minify.js";
+import { compactTrack } from "./scripts/compact-track.mjs";
+import { compactShaderLocals } from "./scripts/compact-shader-locals.mjs";
 import { compactShaderEntity } from "./scripts/compact-shader-entity.mjs";
 import { writeEntityConstants } from "./scripts/generate-entity-constants.mjs";
 
@@ -64,8 +66,7 @@ var zzfxm = () => ({
 		if (!/\.zzfxm$/.test(id)) return undefined;
 		let code = readFileSync(id).toString("utf-8");
 		code = code.replace(/[{][^}]*[}]/gm, "{}");
-		// console.log(code);
-		return `export default ${code};`;
+		return compactTrack(code);
 	},
 });
 
@@ -99,7 +100,7 @@ var shader = (isBuild) => ({
 		});
 
 		try {
-			if (isBuild) code = minifyWgsl(compactShaderEntity(code));
+			if (isBuild) code = minifyWgsl(compactShaderLocals(compactShaderEntity(code)));
 		} catch (cause) {
 			throw new Error(`Unable to minify shader ${id}: ${cause.message}`, {
 				cause,
@@ -134,9 +135,9 @@ var roadroller = (enabled) => ({
 			modelRecipBaseCount: 61,
 			modelMaxCount: 3,
 			numAbbreviations: 0,
-			sparseSelectors: [0, 1, 2, 3, 5, 6, 7, 8, 10, 13, 16, 25, 33, 48, 150, 185, 191, 193, 280, 363],
+			sparseSelectors: [0, 1, 2, 3, 5, 6, 7, 10, 13, 25, 42, 51, 65, 127, 200, 226, 249, 276, 313, 417],
 			precision: 16,
-			recipLearningRate: 2090,
+			recipLearningRate: 2737,
 			// The packed release owns its single page; game code has its own wrapper.
 			allowFreeVars: true,
 		});

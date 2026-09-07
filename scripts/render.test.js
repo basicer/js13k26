@@ -105,8 +105,8 @@ test("all entities use model batches without separate transparent draws", () => 
 		pass: {
 			setPipeline: value => { activePipeline = value; },
 			setBindGroup: (group, value) => { if (group === 1) texture = value; },
-			setVertexBuffer() {}, setIndexBuffer() {},
-			drawIndexed: (indices, count, first, base, instance) => {
+			draw: (vertices, count, first, instance) => {
+				assert.equal(vertices, 36);
 				draws.push({ count, instance, texture, pipeline: activePipeline });
 			},
 		},

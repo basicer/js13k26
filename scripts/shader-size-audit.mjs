@@ -10,6 +10,7 @@ import { Packer } from "roadroller";
 import ect from "ect-bin";
 import advzip from "advzip-bin";
 import { compactShaderEntity } from "./compact-shader-entity.mjs";
+import { compactShaderLocals } from "./compact-shader-locals.mjs";
 import { minifyWgsl } from "../tools/wgsl-minify/src/minify.js";
 
 const root = path.resolve(import.meta.dirname, "..");
@@ -24,7 +25,7 @@ if (typeof code !== "string") throw Error("Could not decode the release JavaScri
 const expand = file => fs.readFileSync(path.join(root, "shaders", file), "utf8")
     .replace(/^#import "([^"]*)".*$/gm, (_, dependency) => expand(dependency));
 const compact = compactShaderEntity(expand("shader.wgsl"));
-const shader = minifyWgsl(compact);
+const shader = minifyWgsl(compactShaderLocals(compact));
 if (!code.includes(shader)) throw Error("Bundled shader does not match current minifier output");
 
 function astNodes(source) {

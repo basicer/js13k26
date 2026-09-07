@@ -19,7 +19,9 @@ for (const name of ["shader"]) {
 					"utf8",
 				),
 			);
-		check(source);
+		// Generated aliases are semantically transparent, but this external
+		// normalizer renames every symbol differently when one is introduced.
+		check(source, minifyWgsl(source), { compare: false });
 	});
 }
 
@@ -44,6 +46,13 @@ test("Incomplete declarations fail instead of hanging", () => {
 	assert.throws(() => minifyWgsl("var<storage,"), /Incomplete/);
 	assert.throws(() => minifyWgsl("@compute"), /Incomplete/);
 });
+
+test("generated composite aliases compile", () =>
+	check(
+		"struct Storage{first:array<vec4<f32>,8>,second:array<vec4<f32>,8>,third:array<vec4<f32>,8>,}",
+		undefined,
+		{ compare: false },
+	));
 
 for (const [name, source] of Object.entries(fixtures)) {
 	// wgsl-minifier 0.7 cannot serialize overrides. Resolve this fixture's

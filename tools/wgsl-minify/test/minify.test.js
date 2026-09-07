@@ -85,6 +85,22 @@ test("type aliases cannot capture shorthand substitutions", () => {
 	);
 });
 
+test("repeated composite types receive a profitable generated alias", () => {
+	const output = minifyWgsl(
+		"enable f16;var<private> first:texture_3d<f32>;var<private> second:texture_3d<f32>;var<private> third:texture_3d<f32>;",
+	);
+	const match = /^enable f16;alias (\w+)=texture_3d<f32>;/.exec(output);
+	assert.ok(match);
+	assert.match(output, new RegExp(`:${match[1]};var<private>\\w+:${match[1]};`));
+});
+
+test("infrequent composite types are left alone", () => {
+	assert.equal(
+		minifyWgsl("var<private> first:texture_3d<f32>;var<private> second:texture_3d<f32>;"),
+		"var<private>a:texture_3d<f32>;var<private>b:texture_3d<f32>;",
+	);
+});
+
 test("literal shortening retains type and does not change integer leading-zero literals", () => {
 	assert.equal(
 		minifyWgsl("1.0f 0.00f 0.5f 01.0f 1.0 1.0h"),

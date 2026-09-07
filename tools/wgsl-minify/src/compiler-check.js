@@ -5,7 +5,7 @@ import path from "node:path";
 import { spawnSync } from "node:child_process";
 import { minifyWgsl } from "./minify.js";
 
-export function checkShader(source, compact = minifyWgsl(source)) {
+export function checkShader(source, compact = minifyWgsl(source), { compare = true } = {}) {
 	const scratch = fs.mkdtempSync(path.join(os.tmpdir(), "wgsl-test-"));
 	try {
 		const compile = (text, name) => {
@@ -29,7 +29,9 @@ export function checkShader(source, compact = minifyWgsl(source)) {
 			);
 			return fs.readFileSync(output, "utf8");
 		};
-		assert.equal(compile(compact, "compact"), compile(source, "original"));
+		const compactOutput = compile(compact, "compact");
+		const sourceOutput = compile(source, "original");
+		if (compare) assert.equal(compactOutput, sourceOutput);
 	} finally {
 		fs.rmSync(scratch, { recursive: true, force: true });
 	}

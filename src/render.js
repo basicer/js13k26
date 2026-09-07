@@ -1,4 +1,4 @@
-import { $, d, c, Q, G, GenArray, canvasSrgbFormat, cameraFov } from "./globals.js";
+import { $, d, c, Q, G, canvasSrgbFormat, cameraFov } from "./globals.js";
 import * as E from "./entities-const.js";
 import shaderCode from "../shaders/shader.wgsl";
 import { palette } from "./palette.js";
@@ -76,9 +76,7 @@ c.addEventListener("pointermove", (event) => {
 });
 c.addEventListener("pointerleave", () => (renderState[4] = -1000));
 
-// Bit-packed -1/+1 cube vertices.
-const vertices = new Float32Array(GenArray(24, (i) => (((i / 3) >> (i % 3)) & 1) * 2 - 1));
-
+// Bit-packed cube vertices are generated in the vertex shader.
 const entityBuffer = d.createBuffer({
 	"size": entities.byteLength,
 	"usage": GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST,
@@ -105,41 +103,25 @@ let sceneView;
 let entityIndexTexture;
 let entityIndexView;
 
-const vertexBuffer = d.createBuffer({
-	"size": vertices.byteLength,
-	"usage": GPUBufferUsage.VERTEX | GPUBufferUsage.COPY_DST,
-});
-const indexBuffer = d.createBuffer({
-	"size": 36 * 2,
-	"usage": GPUBufferUsage.INDEX | GPUBufferUsage.COPY_DST,
-});
-
-// One digit per index; faces wind inward.
-let idx = Uint16Array.from("013032467475051045237276026064157173", Number);
-Q.writeBuffer(vertexBuffer, /*bufferOffset=*/ 0, vertices);
-Q.writeBuffer(indexBuffer, /*bufferOffset=*/ 0, idx);
-
 const shader = d.createShaderModule({ "code": shaderCode });
 
 let scaleDown = 0;
 function resizeCanvas() {
 	const bounds = c.getBoundingClientRect();
 	const pixelRatio = window.devicePixelRatio * 2 ** -scaleDown;
-	const width = Math.max(1, Math.round(bounds.width * pixelRatio));
-	const height = Math.max(1, Math.round(bounds.height * pixelRatio));
-	if (c.width === width && c.height === height && depthTexture && sceneTexture && entityIndexTexture) return;
+	const size = [Math.max(1, Math.round(bounds.width * pixelRatio)), Math.max(1, Math.round(bounds.height * pixelRatio))];
+	if (c.width === size[0] && c.height === size[1] && depthTexture && sceneTexture && entityIndexTexture) return;
 
-	c.width = width;
-	c.height = height;
+	[c.width, c.height] = size;
 	depthTexture?.destroy();
 	depthTexture = d.createTexture({
-		"size": [width, height],
+		"size": size,
 		"format": "depth24plus",
 		"usage": GPUTextureUsage.RENDER_ATTACHMENT,
 	});
 	sceneTexture?.destroy();
 	sceneTexture = d.createTexture({
-		"size": [width, height],
+		"size": size,
 		// Keep lighting values above 1.0 until the final tone-mapping pass.
 		"format": "rgba16float",
 		"usage": GPUTextureUsage.RENDER_ATTACHMENT | GPUTextureUsage.TEXTURE_BINDING,
@@ -147,7 +129,7 @@ function resizeCanvas() {
 	sceneView = sceneTexture.createView();
 	entityIndexTexture?.destroy();
 	entityIndexTexture = d.createTexture({
-		"size": [width, height],
+		"size": size,
 		"format": "rg32uint",
 		"usage": GPUTextureUsage.RENDER_ATTACHMENT | GPUTextureUsage.COPY_SRC,
 	});
@@ -164,18 +146,6 @@ const pipeline = d.createRenderPipeline({
 	"vertex": {
 		"module": shader,
 		"entryPoint": "vs_main",
-		"buffers": [
-			{
-				"arrayStride": 12,
-				"attributes": [
-					{
-						"shaderLocation": 0,
-						"offset": 0,
-						"format": "float32x3",
-					},
-				],
-			},
-		],
 	},
 	"fragment": {
 		"module": shader,
@@ -277,12 +247,9 @@ export function render() {
 	let pass = e.beginRenderPass(passDescriptor);
 	pass.setBindGroup(0, renderBindGroup);
 	pass.setPipeline(pipeline);
-	pass.setVertexBuffer(0, vertexBuffer);
-	pass.setIndexBuffer(indexBuffer, "uint16");
 	for (let i = 1; i < 128; i++) {
 		pass.setBindGroup(1, BG(pipeline, 1, ...voxT[i].map((texture) => texture.createView())));
-		//pass.draw(vertices.length / 2); // 6 vertices
-		pass.drawIndexed(idx.length, ENTITY_COUNT, 0, 0, i << 16);
+		pass.draw(36, ENTITY_COUNT, 0, i << 16);
 	}
 	pass.end();
 

@@ -27,6 +27,8 @@ const FIXED_NAMES = new Set(
 	),
 );
 const ALPHABET = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ";
+const GENERIC_TYPE = /^(?:array|atomic|ptr|binding_array|vec[234]|mat[234]x[234]|texture_\w+)$/;
+const MIN_ALIAS_SAVINGS = 8;
 
 function tokenAt(source) {
 	return (
@@ -227,6 +229,79 @@ function compactTypes(tokens, declared) {
 	return result;
 }
 
+function genericTypeRanges(tokens) {
+	const ranges = [];
+	for (let start = 0; start < tokens.length; start++) {
+		if (!GENERIC_TYPE.test(tokens[start]) || tokens[start + 1] !== "<") continue;
+		let depth = 0;
+		for (let end = start + 1; end < tokens.length; end++) {
+			if (tokens[end] === "<") depth++;
+			else if (tokens[end] === ">" && !--depth) {
+				ranges.push([start, end + 1]);
+				break;
+			}
+		}
+	}
+	return ranges;
+}
+
+// Introducing an alias costs `alias a=...;`.  Restrict this to composite
+// builtins, whose lexical spelling cannot be confused with a value expression.
+function aliasTypes(tokens) {
+	const counts = new Map();
+	for (const [start, end] of genericTypeRanges(tokens)) {
+		const type = joinTokens(tokens.slice(start, end));
+		const entry = counts.get(type) || { count: 0, tokens: tokens.slice(start, end) };
+		entry.count++;
+		counts.set(type, entry);
+	}
+	const occupied = new Set(tokens);
+	let serial = 0;
+	const aliases = [];
+	for (const [type, { count, tokens: typeTokens }] of [...counts.entries()].sort(
+		([a], [b]) => b.length - a.length || a.localeCompare(b),
+	)) {
+		let name;
+		do name = shortName(serial++);
+		while (occupied.has(name));
+		// Header plus each replacement must be smaller than the original text.
+		if (
+			type.length * count - (`alias ${name}=${type};`.length + count) >=
+			MIN_ALIAS_SAVINGS
+		) {
+			aliases.push({ name, type, tokens: typeTokens });
+			occupied.add(name);
+		}
+	}
+	if (!aliases.length) return tokens;
+
+	// Match longest types first so a nested type does not consume part of its
+	// enclosing type. Definitions deliberately retain their builtin spellings.
+	aliases.sort((a, b) => b.tokens.length - a.tokens.length);
+	const result = [];
+	for (let index = 0; index < tokens.length;) {
+		const alias = aliases.find(({ tokens: type }) =>
+			type.every((token, offset) => tokens[index + offset] === token),
+		);
+		if (alias) {
+			result.push(alias.name);
+			index += alias.tokens.length;
+		} else result.push(tokens[index++]);
+	}
+	// Module directives must precede declarations.
+	let insertAt = 0;
+	while (["enable", "requires", "diagnostic"].includes(result[insertAt])) {
+		while (result[insertAt++] !== ";") {
+			if (insertAt >= result.length) return result;
+		}
+	}
+	return result.toSpliced(
+		insertAt,
+		0,
+		...aliases.flatMap(({ name, type }) => ["alias", name, "=", ...tokenizeWgsl(type), ";"]),
+	);
+}
+
 function joinTokens(tokens) {
 	let result = "",
 		previous = "";
@@ -259,9 +334,9 @@ export function minifyWgsl(source, { preserveNames = [] } = {}) {
 		original,
 		preserveNames,
 	);
-	const tokens = rename(original, declared, protectedNames);
+	const tokens = aliasTypes(compactTypes(rename(original, declared, protectedNames), declared));
 	return joinTokens(
-		compactTypes(tokens, declared).map((token) => {
+		tokens.map((token) => {
 			if (/^(0|[1-9]\d*)\.0+f$/.test(token))
 				return token.replace(/\.0+f$/, "f");
 			// WGSL accepts a fractional literal without its otherwise redundant 0.

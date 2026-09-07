@@ -30,11 +30,15 @@ fn tone_map(color: vec3<f32>) -> vec3<f32> {
 fn aa(uv: vec2<f32>, texel: vec2<f32>) -> vec3<f32> {
     // Adjacent Gaussian taps avoid a grid of ghost images around small emitters.
     var glow = vec3<f32>(0.0f);
+    var color = vec3<f32>(0.0f);
     for (var i = 0; i < 25; i++) {
         let offset = vec2<f32>(f32(i % 5 - 2), f32(i / 5 - 2));
-        glow += max(textureSample(scene_texture, scene_sampler, uv + offset * texel).rgb - vec3<f32>(1.0f), vec3<f32>(0.0f)) * exp(-dot(offset, offset) * 0.5f);
+        let sample = textureSample(scene_texture, scene_sampler, uv + offset * texel).rgb;
+        let radius = dot(offset, offset);
+        glow += max(sample - vec3<f32>(1.0f), vec3<f32>(0.0f)) * exp(-radius * 0.5f);
+        color += sample * select(0.0f, select(1.0f, 4.0f, radius == 0.0f), radius <= 1.0f);
     }
-    return (textureSample(scene_texture, scene_sampler, uv).rgb * 4.0f + textureSample(scene_texture, scene_sampler, uv + vec2<f32>(texel.x, 0.0f)).rgb + textureSample(scene_texture, scene_sampler, uv - vec2<f32>(texel.x, 0.0f)).rgb + textureSample(scene_texture, scene_sampler, uv + vec2<f32>(0.0f, texel.y)).rgb + textureSample(scene_texture, scene_sampler, uv - vec2<f32>(0.0f, texel.y)).rgb) * 0.125f + glow * 0.1f;
+    return color * 0.125f + glow * 0.1f;
 }
 
 @fragment
