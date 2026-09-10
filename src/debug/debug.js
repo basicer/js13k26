@@ -3,7 +3,7 @@ import { ImGui, ImGuiImplWeb, ImVec2, ImVec4 } from "@mori2003/jsimgui";
 import { d, c, heldKeys } from "../globals.js";
 import { cameraEntity, cameraPosition, cameraRotation } from "../entities.js";
 import { startElevatorTest, warpLocations, warpPlayer } from "./elevatorTest.js";
-import { detachCamera, attachCamera } from "./camera.js";
+import { detachCamera, attachCamera, freeCamera } from "./camera.js";
 import { setMarineTrigger } from "../game.js";
 import { palette } from "../palette.js";
 import { entityInspector, selectEntity as setSelectedEntity } from "./entityInspector.js";
@@ -15,6 +15,9 @@ import {
 	loadDebugLayout,
 	saveDebugLayout,
 } from "./settings.js";
+
+// Kind 3 is the development-only DDS projector; kind 6 is the procedural sphere.
+const voxelKinds = [2, 3, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 18, 19, 125];
 
 export const selectEntity = (index) => {
 	setSelectedEntity(index);
@@ -33,7 +36,11 @@ stats.init(d);
 
 // Debug controls move independently of the marine and scene collisions.
 let paused = false;
+let fpsMode = false;
+let fpsLooking = false;
+const thirdPersonCamera = new Float32Array(3);
 export const isPaused = () => paused;
+export const isFpsMode = () => fpsMode;
 const pause = () => {
 	paused = true;
 	setMarineTrigger(false);
@@ -85,6 +92,102 @@ const restartGame = () => {
 	saveSettings();
 	window.location.reload();
 };
+
+const toggleFpsMode = () => {
+	if (!fpsMode) {
+		// The game camera follows the marine's movement root, so this sits just
+		// ahead of the helmet without inheriting the animated body pose.
+		if (!cameraEntity[E.PARENT]) return;
+		thirdPersonCamera.set(cameraPosition);
+		cameraPosition.set([0, 0.88, 0.66]);
+	} else {
+		if (document.pointerLockElement === c) document.exitPointerLock();
+		cameraPosition.set(thirdPersonCamera);
+	}
+	fpsMode = !fpsMode;
+};
+
+const zooMarine = (x, z) => {
+	const root = spawn(1);
+	const [legs, body, arms, gun] = [8, 9, 10, 11].map((kind) => spawn(kind));
+	root.set([x, 0, z], E.POS);
+	body[E.PARENT] = root.id;
+	legs[E.PARENT] = body.id;
+	arms[E.PARENT] = body.id;
+	gun[E.PARENT] = arms.id;
+	gun.set([0.0475, 0.1328125, 0.22375], E.POS);
+	gun.set([0.17, 0.25, 0.56], E.SCALE);
+	gun[E.SPOTLIGHT] = 8.4;
+	gun[E.LIGHT_ANGLE] = Math.PI / 6;
+	for (const part of [legs, body, arms, gun]) part.fill(0, E.TILE, E.TILE + 3);
+	gun.fill(1, E.TILE, E.TILE + 3);
+};
+
+const zooUnicorn = (x, z) => {
+	const body = spawn(2), head = spawn(18);
+	body.set([x, 0, z], E.POS);
+	body[E.DISSOLVE_PALETTE] = 249;
+	head[E.PARENT] = body.id;
+	head.fill(0, E.TILE, E.TILE + 3);
+};
+
+const zooPortal = (x, z) => {
+	const portal = spawn(12);
+	portal[E.SPOTLIGHT] = 2.1;
+	portal[E.LIGHT_ANGLE] = 2.772;
+	portal.set([x, 0.1875, z], E.POS);
+	portal[E.ROT_Y] = Math.PI / 2;
+	portal.set([3.6, 3, 0.45], E.SCALE);
+	portal.fill(0, E.TILE, E.TILE + 3);
+};
+
+const zooPosition = (i) => [(i % 5) * 3, Math.floor(i / 5) * 3];
+
+const zooFloor = () => {
+	const floor = spawn(5);
+	floor.set([6, -0.5, 4.5], E.POS);
+	floor.set([18, 4 / 64, 15], E.SCALE);
+	floor.fill(-2, E.TILE, E.TILE + 3);
+};
+
+const zooLights = () => {
+	for (const [x, y, z, intensity] of [[0, 5, -2, 8], [12, 5, -2, 8], [6, 6, 11, 6]]) {
+		const light = spawn(1);
+		light.set([x, y, z], E.POS);
+		light[E.SPOTLIGHT] = intensity;
+	}
+};
+
+const aimCameraAt = (x, y, z) => {
+	const dx = x - cameraPosition[0], dy = y - cameraPosition[1], dz = z - cameraPosition[2];
+	cameraRotation.set([Math.atan2(dy, Math.hypot(dx, dz)), Math.atan2(dx, -dz), 0]);
+};
+
+const loadZoo = () => {
+	pause();
+	freeCamera();
+	fpsMode = false;
+	if (document.pointerLockElement === c) document.exitPointerLock();
+	EArray.map((entity, id) => {
+		if (id > 1) entity[E.KIND] = 0;
+	});
+	for (const [i, kind] of voxelKinds.entries()) {
+		const [x, z] = zooPosition(i);
+		if (kind === 8) zooMarine(x, z);
+		else if (kind === 2) zooUnicorn(x, z);
+		else if (kind === 12) zooPortal(x, z);
+		else if (kind === 5) zooFloor();
+		else if (![9, 10, 11, 18].includes(kind)) {
+			const entity = spawn(kind);
+			if (!entity) break;
+			entity.set([x, 0, z], E.POS);
+		}
+	}
+	zooLights();
+	// Frame the complete five-column display and target its center precisely.
+	cameraPosition.set([6, 8, -14]);
+	aimCameraAt(6, 1.2, 4.5);
+};
 window.addEventListener("pagehide", saveSettings);
 document.addEventListener("visibilitychange", () => {
 	if (document.visibilityState === "hidden") saveSettings();
@@ -109,13 +212,25 @@ const stopLooking = () => {
 };
 c.addEventListener("contextmenu", (event) => event.preventDefault());
 c.addEventListener("pointerdown", (event) => {
-	if (event.button !== 2 || wantsMouse()) return;
+	if (event.button !== 2 || wantsMouse() || fpsMode) return;
 	detachCamera();
 	lookPointer = event.pointerId;
 	lookX = event.clientX;
 	lookY = event.clientY;
 	c.setPointerCapture(event.pointerId);
 	event.preventDefault();
+});
+c.addEventListener("pointerdown", (event) => {
+	if (fpsMode && !wantsMouse()) c.requestPointerLock();
+});
+document.addEventListener("pointerlockchange", () => {
+	fpsLooking = document.pointerLockElement === c;
+});
+document.addEventListener("mousemove", (event) => {
+	if (!fpsLooking) return;
+	cameraRotation[1] += event.movementX * 0.003;
+	cameraRotation[0] = Math.max(-Math.PI / 2, Math.min(Math.PI / 2,
+		cameraRotation[0] - event.movementY * 0.003));
 });
 c.addEventListener("pointermove", (event) => {
 	if (event.pointerId !== lookPointer) return;
@@ -157,6 +272,7 @@ export function debug(passEncoder, entities, entitySize, overrides) {
 			else pause();
 		}
 		if (ImGui.Button("Reset")) restartGame();
+		if (ImGui.Button(fpsMode ? "Third person" : "FPS")) toggleFpsMode();
 		if (ImGui.Button("TEST")) {
 			play();
 			startElevatorTest(EArray[cameraEntity[E.PARENT]]);
@@ -179,6 +295,9 @@ export function debug(passEncoder, entities, entitySize, overrides) {
 		if (ImGui.BeginMenu("Scene")) {
 			if (ImGui.MenuItem("Reset")) {
 				restartGame();
+			}
+			if (ImGui.MenuItem("Zoo")) {
+				loadZoo();
 			}
 			if (ImGui.MenuItem("Spheres")) {
 				EArray.map((e, id) => {

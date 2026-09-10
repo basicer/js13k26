@@ -5,7 +5,6 @@ import { cameraEntity, cameraRotation, spawn, EArray, setupEntities } from "./en
 import * as sound from "./sfx.js";
 import { canStand, moveActor, clearShot, shotFraction, entityShotFraction, setupLevel, sections } from "./level.js";
 
-
 function placeActor(type, x, z, parent) {
 	if (type === 11) return spawnUnicorn(x, z);
 	const portal = spawn(12);
@@ -17,17 +16,20 @@ function placeActor(type, x, z, parent) {
 	portal.set([3.6, 3, 0.45], E.SCALE);
 	portal.fill(0, E.TILE, E.TILE + 3);
 	portal[E.HEALTH] = portal[E.MAX_HEALTH] = 50;
-	portal[E.DISSOLVE_RATE] = .5;
+	portal[E.DISSOLVE_RATE] = 0.5;
 	portal[E.HIT_RADIUS] = 24.5 / 64;
 	portal[E.PARENT] = parent;
 }
 
 function spawnUnicorn(x, z, y = 0) {
-	if (!canStand(x, z, .45, true)) return false;
+	if (!canStand(x, z, 0.45, true)) return false;
 	const unicorn = spawn(2);
 	if (!unicorn) return;
 	const head = spawn(18);
-	if (!head) { unicorn.fill(0); return; }
+	if (!head) {
+		unicorn.fill(0);
+		return;
+	}
 	// Shared model coordinates, like the marine: the torso is the gameplay root.
 	head[E.PARENT] = unicorn.id;
 	head.fill(0, E.TILE, E.TILE + 3);
@@ -36,9 +38,10 @@ function spawnUnicorn(x, z, y = 0) {
 	unicorn[E.POS_Z] = z;
 	unicorn[E.DISSOLVE_PALETTE] = 249;
 	unicorn[E.HEALTH] = 4;
-	unicorn[E.WALK_STRIDE] = .35;
-	unicorn[E.HIT_RADIUS] = .3;
+	unicorn[E.WALK_STRIDE] = 0.35;
+	unicorn[E.HIT_RADIUS] = 0.3;
 	unicorn[E.HIT_CENTER_Y] = 10.5 / 64;
+	lastSpawnedUnicorn = unicorn;
 	sound.wobble();
 	return true;
 }
@@ -55,9 +58,9 @@ const weapons = [
 	[30, 2.5875, 0.08, 1],
 	[8, 2.3, 0.7, 12],
 ];
-let player, marineParts, marineLegs, marineBody, marineArms, marineGun, muzzleFlash;
+let player, marineParts, marineLegs, marineBody, marineArms, marineGun, muzzleFlash, lastSpawnedUnicorn;
 let selectedWeapon, weapon, triggerConsumed, shotgunPumpPending, shotCooldown, triggerHeld, emptyClickPlayed;
-let reloadCooldown, marineLegYaw, marineHealth, hurtCooldown, portals;
+let reloadCooldown, marineLegYaw, marineHealth, hurtCooldown, portals, elevatorSide;
 
 export function setupGame() {
 	setupEntities();
@@ -68,7 +71,7 @@ export function setupGame() {
 	// Translation-only root: body aiming and death poses must not rotate the camera.
 	player[E.POS_X] = -11;
 	player[E.POS_Z] = -11;
-	player[E.WALK_STRIDE] = .65;
+	player[E.WALK_STRIDE] = 0.65;
 	cameraEntity[E.PARENT] = player.id;
 
 	// Startup is paused, so the splash's lifetime begins with the first input.
@@ -113,11 +116,10 @@ export function setupGame() {
 	muzzleFlash = spawn(6);
 	muzzleFlash[E.PARENT] = marineArms.id;
 	muzzleFlash.set([1 / 64, 10.5 / 64, 30 / 64], E.POS);
-	muzzleFlash.fill(.14, E.SCALE, E.SCALE + 3);
+	muzzleFlash.fill(0.14, E.SCALE, E.SCALE + 3);
 	muzzleFlash.fill(0, E.TILE, E.TILE + 3);
 	muzzleFlash[E.MAT_OVERRIDE] = 246;
 	muzzleFlash[E.TRANSPARENCY] = 1;
-
 
 	selectedWeapon = 1; // Start with the existing rifle; number keys select 1-3.
 	for (const entry of weapons) entry[4] = entry[0];
@@ -132,6 +134,7 @@ export function setupGame() {
 	marineLegYaw = 0;
 	marineHealth = 5;
 	hurtCooldown = 0;
+	elevatorSide = 0;
 }
 setupGame();
 
@@ -149,22 +152,35 @@ const wrapAngle = (angle) => Math.atan2(Math.sin(angle), Math.cos(angle));
 const marineFacing = (yaw) => [-Math.sin(yaw), Math.cos(yaw)];
 
 // Configurable bursts share emission, fading, gravity, and floor settling.
-function particleBurst(position, count, scale, materials, lifetime, velocity, spread, transparency = 0, parent = player[E.PARENT]) {
+function particleBurst(
+	position,
+	count,
+	scale,
+	materials,
+	lifetime,
+	velocity,
+	spread,
+	transparency = 0,
+	parent = player[E.PARENT],
+) {
 	for (let i = 0; i < count; i++) {
 		const entity = spawn(transparency > 0 ? 134 : 6);
 		if (!entity) return;
 		entity.set(position, E.POS);
 		entity[E.PARENT] = parent;
 		entity[E.TRANSPARENCY] = transparency;
-		entity.fill(random(scale, scale * .6), E.SCALE, E.SCALE + 3);
+		entity.fill(random(scale, scale * 0.6), E.SCALE, E.SCALE + 3);
 		entity.fill(0, E.TILE, E.TILE + 3);
 		entity[E.MAT_OVERRIDE] = materials[i % materials.length];
-		entity[E.DISSOLVE] = .5;
-		entity[E.TTL] = random(lifetime, lifetime * .5);
-		entity[E.DISSOLVE_RATE] = .5 / entity[E.TTL];
+		entity[E.DISSOLVE] = 0.5;
+		entity[E.TTL] = random(lifetime, lifetime * 0.5);
+		entity[E.DISSOLVE_RATE] = 0.5 / entity[E.TTL];
 		entity[E.DISSOLVE_TARGET] = 1;
 		entity[E.GRAVITY] = 9;
-		entity.set(velocity.map((value, axis) => value + random(-spread[axis] / 2, spread[axis])), E.VELOCITY);
+		entity.set(
+			velocity.map((value, axis) => value + random(-spread[axis] / 2, spread[axis])),
+			E.VELOCITY,
+		);
 	}
 }
 
@@ -188,9 +204,7 @@ export function selectMarineWeapon(number) {
 // Colored damage reaches 30% before death; eroding props reserve their final
 // collapse for death. All health-driven dissolve uses this one calculation.
 function updateDamageDissolve(entity, health, maximum) {
-	const goal = health > 0
-		? (maximum - health) * .3 / (maximum - (entity[E.DISSOLVE_PALETTE] > 0))
-		: 1;
+	const goal = health > 0 ? ((maximum - health) * 0.3) / (maximum - (entity[E.DISSOLVE_PALETTE] > 0)) : 1;
 	entity[entity[E.DISSOLVE_RATE] ? E.DISSOLVE_TARGET : E.DISSOLVE] = goal;
 }
 
@@ -212,9 +226,9 @@ export function fireMarineGun() {
 
 	const [forwardX, forwardZ] = marineFacing(marineBody[E.ROT_Y]);
 	// The compact gun's transform keeps its bore at the established muzzle point.
-	const muzzleX = player[E.POS_X] + (forwardX * 30 + forwardZ) * player[E.SCALE_X] / 64;
+	const muzzleX = player[E.POS_X] + ((forwardX * 30 + forwardZ) * player[E.SCALE_X]) / 64;
 	const muzzleY = player[E.POS_Y] + (10.5 / 64) * player[E.SCALE_Y];
-	const muzzleZ = player[E.POS_Z] + (forwardZ * 30 - forwardX) * player[E.SCALE_Z] / 64;
+	const muzzleZ = player[E.POS_Z] + ((forwardZ * 30 - forwardX) * player[E.SCALE_Z]) / 64;
 	// Reuse the attached flash for every weapon, including a whole shotgun volley.
 	muzzleFlash[E.AGE] = 0;
 	muzzleFlash[E.TRANSPARENCY] = 0;
@@ -283,9 +297,13 @@ function firePellet(muzzleX, muzzleY, muzzleZ, forwardX, forwardZ, forwardY = 0)
 	if (!target) {
 		if (range > 0 && range < 18) {
 			particleBurst(
-				[hitX - forwardX * .06, muzzleY + traceY - forwardY * .06, hitZ - forwardZ * .06],
-				8, .1, [242, 248], .25,
-				[-forwardX * 2.5, 1.5, -forwardZ * 2.5], [1, 2, 1],
+				[hitX - forwardX * 0.06, muzzleY + traceY - forwardY * 0.06, hitZ - forwardZ * 0.06],
+				8,
+				0.1,
+				[242, 248],
+				0.25,
+				[-forwardX * 2.5, 1.5, -forwardZ * 2.5],
+				[1, 2, 1],
 			);
 		}
 		return;
@@ -300,9 +318,12 @@ function firePellet(muzzleX, muzzleY, muzzleZ, forwardX, forwardZ, forwardY = 0)
 			if (target[E.KIND] === 16) {
 				const gun = spawn(11);
 				if (gun) {
-					gun.set([target[E.POS_X], target[E.POS_Y] - Math.abs(target[E.SCALE_Y]) / 2 + .085, target[E.POS_Z]], E.POS);
+					gun.set(
+						[target[E.POS_X], target[E.POS_Y] - Math.abs(target[E.SCALE_Y]) / 2 + 0.085, target[E.POS_Z]],
+						E.POS,
+					);
 					gun[E.PARENT] = target[E.PARENT];
-					gun.set([.17, .25, .56], E.SCALE);
+					gun.set([0.17, 0.25, 0.56], E.SCALE);
 					gun[E.ROT_Z] = Math.PI / 2;
 					gun.fill(1, E.TILE, E.TILE + 3);
 				}
@@ -310,7 +331,17 @@ function firePellet(muzzleX, muzzleY, muzzleZ, forwardX, forwardZ, forwardY = 0)
 		}
 		return;
 	}
-	particleBurst(target.subarray(E.POS, E.POS + 3), 28, .06, [249], .9, [0, .7, 0], [2, .8, 2], .5, target[E.PARENT]);
+	particleBurst(
+		target.subarray(E.POS, E.POS + 3),
+		28,
+		0.06,
+		[249],
+		0.9,
+		[0, 0.7, 0],
+		[2, 0.8, 2],
+		0.5,
+		target[E.PARENT],
+	);
 	if (target[E.HEALTH] > 0) updateDamageDissolve(target, target[E.HEALTH], 4);
 	if (target[E.HEALTH] <= 0) {
 		// Roll onto the side, keeping the head-to-tail axis level.
@@ -331,7 +362,13 @@ export function setMarineTrigger(held) {
 }
 
 export function reloadMarineGun() {
-	if (!marineHealth || isSprinting() || reloadCooldown > 0 || weapon[4] === weapon[0] || (DEBUG && player[E.KIND] === 0))
+	if (
+		!marineHealth ||
+		isSprinting() ||
+		reloadCooldown > 0 ||
+		weapon[4] === weapon[0] ||
+		(DEBUG && player[E.KIND] === 0)
+	)
 		return;
 	reloadCooldown = weapon[1];
 	shotgunPumpPending = false;
@@ -339,17 +376,58 @@ export function reloadMarineGun() {
 }
 
 export function aimMarineAtCursor(index, x, z) {
-	if (marineHealth && z !== undefined && (EArray[index][E.KIND] >> 2) != 2)
+	if (marineHealth && z !== undefined && EArray[index][E.KIND] >> 2 != 2)
 		marineBody[E.ROT_Y] = lookAtYaw(x - player[E.POS_X], z - player[E.POS_Z]);
 }
 
-export function updateGame(deltaTime, freeCamera = false) {
-	// The stationary platform supplies the drop cadence; no drops outside the ride.
-	if (marineHealth && sections[0][E.POS_Y] % 40 && sections[3][E.AGE] > 4) {
-		spawnUnicorn(random(-19, 3), 22, 4);
-		sections[3][E.AGE] = 0;
+// FPS aiming has no cursor hit when the reticle points into open space.
+export function aimMarineAtYaw(yaw) {
+	if (marineHealth) marineBody[E.ROT_Y] = yaw + Math.PI;
+}
+
+export function activateConsole(entity) {
+	if (entity[E.CONTROLLER] !== sections[0].id) {
+		entity[E.MODEL_VARIANT] ^= 1;
+		return;
 	}
-	if (muzzleFlash[E.AGE] + deltaTime >= .035) {
+	// The lift opens only after the player has cleared half of the active gates.
+	if (!entity[E.MODEL_VARIANT] && !sections[0][E.POS_Y] && portals > 2) {
+		flash(`LOCKED: PORTALS NEARBY`);
+		return;
+	}
+	if (!entity[E.MODEL_VARIANT] && !sections[0][E.POS_Y]) {
+		// The ride is a self-contained encounter; remove defenders left elsewhere.
+		for (const target of EArray) if (target[E.KIND] === 2 || target[E.KIND] === 18) target.fill(0);
+		elevatorSide = 0;
+	}
+	entity[E.MODEL_VARIANT] ^= 1;
+}
+
+function spawnElevatorWave(count) {
+	let spawned = false;
+	for (let lane = 0; lane < count; lane++) {
+		// Alternate the two open ends of the deck; extra members use the next lane.
+		const side = elevatorSide++ & 1;
+		const x = -19 + 1.5 * ((lane / 2) | 0);
+		const outsideZ = side ? 14 : 26;
+		const landingZ = side ? 18 : 22;
+		if (spawnUnicorn(x, outsideZ, 4)) {
+			lastSpawnedUnicorn[E.TARGET_POSITION_Z] = landingZ;
+			spawned = true;
+		}
+	}
+	return spawned;
+}
+
+export function updateGame(deltaTime, freeCamera = false) {
+	// Arrival waves accelerate down the shaft: singles, then pairs, then a final trio.
+	const rideProgress = sections[0][E.POS_Y] / 40;
+	if (marineHealth && rideProgress > 0 && rideProgress < 1) {
+		const waveSize = rideProgress >= 0.85 ? 3 : rideProgress >= 0.5 ? 2 : 1;
+		const interval = 4 - 2.5 * rideProgress;
+		if (sections[3][E.AGE] >= interval && spawnElevatorWave(waveSize)) sections[3][E.AGE] = 0;
+	}
+	if (muzzleFlash[E.AGE] + deltaTime >= 0.035) {
 		muzzleFlash[E.TRANSPARENCY] = 1;
 		muzzleFlash[E.SPOTLIGHT] = 0;
 	}
@@ -401,11 +479,11 @@ export function updateGame(deltaTime, freeCamera = false) {
 
 	for (const entity of EArray) {
 		if (entity[E.KIND] !== 2 || !entity[E.HEALTH] || !marineHealth) continue;
-		// A two-second leap from the shaft side lands one unit inside the rail.
+		// A two-second leap from either open end lands one unit inside its rail.
 		if (entity[E.POS_Y] > 0) {
 			const t = Math.min(2, entity[E.AGE]);
 			entity[E.POS_Y] = 4 + t * (6 - 4 * t);
-			entity[E.POS_Z] = 26 - 2 * t;
+			entity[E.POS_Z] += ((entity[E.TARGET_POSITION_Z] - entity[E.POS_Z]) * t) / 2;
 			continue;
 		}
 		const dx = player[E.POS_X] - entity[E.POS_X];

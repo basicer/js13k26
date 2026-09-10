@@ -99,14 +99,16 @@ The Cargo-side shaft wall follows the guide's 26.6-degree inclination, ending
 below the entrance and extending past the lower stop. It retains the wall material.
 The guide track uses door kind 19 at tile scale -2, preserving the shutter's
 metallic steel and dark seams instead of a flat material override.
-Click the panel on the platform's Cargo-facing rail to launch the 30-second ride.
+Click the panel on the platform's Cargo-facing rail to launch the 30-second ride, after
+destroying at least two portals; the console states how many more must fall. Launching
+clears the current herd before the ride begins.
 It uses the main game entity update and targets the first section via `controller`.
 Once launched, another click cannot interrupt the ride; reset restores the top stop.
-During travel, the platform attempts a unicorn leap every four seconds toward a
-clear spot one unit inside its far railing (Z=22). Arrivals launch from Z=26 at
-height 4, arc upward to 6.25, and land after two seconds. They begin chasing and
-attacking only after reaching deck height. No new
-drops occur before departure or after docking.
+During travel, unicorns leap in from both open ends toward clear spots one unit inside
+their rails (Z=18 and Z=22). Arrivals launch from height 4, arc upward to 6.25, and
+land after two seconds. Waves accelerate from singles to pairs and finish with trios.
+They begin chasing and attacking only after reaching deck height. No new drops occur
+before departure or after docking.
 During transit, invisible marine-only movement bounds keep walking and knockback
 half a unit inside the platform perimeter. They release at both stops and do not
 block the unicorns' incoming arcs or gunfire.

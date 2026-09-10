@@ -14,6 +14,12 @@ export function detachCamera() {
 	cameraEntity[E.PARENT] = 0;
 }
 
+// Scene previews do not have a gameplay root to follow when play resumes.
+export function freeCamera() {
+	detachCamera();
+	parentId = 0;
+}
+
 export function attachCamera() {
 	if (!parentId || version !== entityVersion || cameraEntity[E.PARENT]) return;
 	const parent = EArray[parentId];

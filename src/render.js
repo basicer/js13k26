@@ -10,21 +10,33 @@ import {
 	ENTITY_DATA_SIZE,
 	ENTITY_COUNT,
 	EArray,
+	cameraRotation,
 } from "./entities.js";
 import { voxT } from "./vvm.js";
-import { aimMarineAtCursor, fireMarineGun, setMarineTrigger, updateGame } from "./game.js";
+import {
+	activateConsole,
+	aimMarineAtCursor,
+	aimMarineAtYaw,
+	fireMarineGun,
+	setMarineTrigger,
+	updateGame,
+} from "./game.js";
 
 const story = $.body.appendChild($.createElement("pre"));
-story.style.cssText = "position:fixed;top:66%;width:100%;color:#dff;font-size:30px;text-align:center;text-shadow:2px 0#067,-2px 0#704";
+story.style.cssText =
+	"position:fixed;top:66%;width:100%;color:#dff;font-size:30px;text-align:center;text-shadow:2px 0#067,-2px 0#704";
 story.textContent = "\n\nGlitter & Gunpowder\n\nWASD/R/CLICK";
-let storyText = "", storyAt;
-export const flash = (text) => (storyText = text, storyAt = 0);
-const startStory = () => setInterval(() => story.textContent = ++storyAt < storyText.length + 85 ? storyText.slice(0, storyAt) : "", 35);
+let storyText = "",
+	storyAt;
+export const flash = (text) => ((storyText = text), (storyAt = 0));
+const startStory = () =>
+	setInterval(() => (story.textContent = ++storyAt < storyText.length + 85 ? storyText.slice(0, storyAt) : ""), 35);
 
 let lastFrameTime = performance.now();
 let simulationTime = lastFrameTime / 1000;
 let started = false;
-let cursorReadback, cursorHit = [-1, -1];
+let cursorReadback,
+	cursorHit = [-1, -1];
 
 export const startGame = () => {
 	if (!started) {
@@ -40,29 +52,44 @@ export const isFlying = () => debugModule?.isFlying() ?? false;
 export const isPaused = () => !started || (debugModule?.isPaused() ?? false);
 
 if (DEBUG && import.meta.env.DEBUG) {
-	import("./debug/debug.js").then((module) => { debugModule = module; });
+	import("./debug/debug.js").then((module) => {
+		debugModule = module;
+	});
 }
 
 // The cursor probe is intentionally allowed to be a frame or two old.
 c.addEventListener("pointerdown", (event) => {
-	if (event.button !== 0 || (DEBUG && debugModule?.wantsMouse())) return;
+	const fpsInput = DEBUG && debugModule?.isFpsMode?.();
+	if (event.button !== 0 || (DEBUG && debugModule?.wantsMouse() && !fpsInput)) return;
 	setMarineTrigger(false);
-	c.setPointerCapture(event.pointerId);
-	const [index] = cursorHit;
+	// Pointer lock already owns FPS input; requesting pointer capture again can
+	// reject the event in some browsers before the weapon code runs.
+	if (!fpsInput) c.setPointerCapture(event.pointerId);
 	if (isPaused()) {
 		if (DEBUG) {
 			const bounds = c.getBoundingClientRect();
-			pickEntity((event.clientX - bounds.left) * c.width / bounds.width, (event.clientY - bounds.top) * c.height / bounds.height)
-				.then(([index]) => index >= 0 && debugModule?.selectEntity(index));
+			pickEntity(
+				((event.clientX - bounds.left) * c.width) / bounds.width,
+				((event.clientY - bounds.top) * c.height) / bounds.height,
+			).then(([index]) => index >= 0 && debugModule?.selectEntity(index));
 		}
 		return;
 	}
-	const entity = EArray[index];
-	if (entity?.[E.KIND] === 15) entity[E.MODEL_VARIANT] ^= 1; // Console toggle
-	else {
-		setMarineTrigger(c.hasPointerCapture(event.pointerId));
+	const interact = (index, fire = true) => {
+		const entity = EArray[index];
+		if (entity?.[E.KIND] === 15) activateConsole(entity);
+		else if (fire) {
+			setMarineTrigger(c.hasPointerCapture(event.pointerId));
+			fireMarineGun();
+		}
+	};
+	// Pointer lock has no meaningful cursor position. Use the reticle ray rather
+	// than the last ordinary cursor probe for firing and console interaction.
+	if (fpsInput) {
+		setMarineTrigger(true);
 		fireMarineGun();
-	}
+		pickEntity(c.width / 2, c.height / 2).then(([index]) => interact(index, false));
+	} else interact(cursorHit[0]);
 });
 
 for (const eventName of ["pointerup", "pointercancel", "lostpointercapture"]) {
@@ -109,7 +136,10 @@ let scaleDown = 0;
 function resizeCanvas() {
 	const bounds = c.getBoundingClientRect();
 	const pixelRatio = window.devicePixelRatio * 2 ** -scaleDown;
-	const size = [Math.max(1, Math.round(bounds.width * pixelRatio)), Math.max(1, Math.round(bounds.height * pixelRatio))];
+	const size = [
+		Math.max(1, Math.round(bounds.width * pixelRatio)),
+		Math.max(1, Math.round(bounds.height * pixelRatio)),
+	];
 	if (c.width === size[0] && c.height === size[1] && depthTexture && sceneTexture && entityIndexTexture) return;
 
 	[c.width, c.height] = size;
@@ -203,6 +233,7 @@ export function render() {
 
 	if (DEBUG) debugModule?.updateCamera(deltaTime);
 	if (!isPaused()) {
+		if (DEBUG && debugModule?.isFpsMode?.()) aimMarineAtYaw(cameraRotation[1]);
 		updateGame(deltaTime, isFlying());
 		simulationTime += deltaTime;
 	}
@@ -286,8 +317,12 @@ export function render() {
 
 	if (DEBUG && debugModule) debugModule.stats.end(e);
 	Q.submit([e.finish()]);
-	if (!cursorReadback && renderState[4] >= 0)
-		cursorReadback = pickEntity(renderState[4] * c.width / renderState[6], renderState[5] * c.height / renderState[7]).then((hit) => {
+	const aimingAtCenter = DEBUG && debugModule?.isFpsMode?.();
+	if (!cursorReadback && (aimingAtCenter || renderState[4] >= 0))
+		cursorReadback = pickEntity(
+			aimingAtCenter ? c.width / 2 : (renderState[4] * c.width) / renderState[6],
+			aimingAtCenter ? c.height / 2 : (renderState[5] * c.height) / renderState[7],
+		).then((hit) => {
 			cursorReadback = 0;
 			cursorHit = hit;
 			aimMarineAtCursor(hit[0], hit[1], hit[2]);

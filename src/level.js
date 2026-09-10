@@ -105,10 +105,12 @@ export function canStand(x, z, radius = 0.45, avoid = 0) {
 export function moveActor(entity, dx, dz) {
 	const x = entity[E.POS_X], z = entity[E.POS_Z];
 	const avoid = entity[E.KIND] === 2 && entity;
-	// Invisible marine-only boundaries close both entrances during transit.
-	if (entity[E.KIND] === 1 && sections[0][E.POS_Y] % 40) {
+	// Invisible marine-only boundaries close both entrances during transit and
+	// extend down to the lower landing's opening.
+	const lowerPlatform = sections[0][E.POS_Y] === 40 && z >= 17;
+	if (entity[E.KIND] === 1 && (sections[0][E.POS_Y] % 40 || lowerPlatform)) {
 		dx = Math.max(-20, Math.min(-15, x + dx)) - x;
-		dz = Math.max(17.5, Math.min(22.5, z + dz)) - z;
+		dz = Math.max(lowerPlatform ? 11 : 17.5, Math.min(22.5, z + dz)) - z;
 	}
 	// Small steps prevent tunneling; separate axes let actors slide along walls.
 	const steps = Math.max(1, Math.ceil(Math.hypot(dx, dz) / 0.2));

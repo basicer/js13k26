@@ -286,24 +286,24 @@ export function buildModel(slot, bytecode, parameter = () => 0) {
 }
 
 // Load authored models.
+const models = [
+	[8, marineLegs, legsSource],
+	[9, marineBody, bodySource],
+	[10, marineArms, armsSource],
+	[11, marineGun, gunSource],
+	[12, unicornPortal, portalSource],
+	[13, ggLogo, logoSource],
+	[14, railing, railingSource],
+	[15, computerConsole, consoleSource],
+	[16, woodenCrate, crateSource],
+	[2, unicornBody, unicornBodySource],
+	[18, unicornHead, unicornHeadSource],
+	[5, program3, source3],
+	[7, program4, source4],
+	[125, windowWall, windowSource],
+	[19, door, doorSource],
+];
 {
-	const models = [
-		[8, marineLegs, legsSource],
-		[9, marineBody, bodySource],
-		[10, marineArms, armsSource],
-		[11, marineGun, gunSource],
-		[12, unicornPortal, portalSource],
-		[13, ggLogo, logoSource],
-		[14, railing, railingSource],
-		[15, computerConsole, consoleSource],
-		[16, woodenCrate, crateSource],
-		[2, unicornBody, unicornBodySource],
-		[18, unicornHead, unicornHeadSource],
-		[5, program3, source3],
-		[7, program4, source4],
-		[125, windowWall, windowSource],
-		[19, door, doorSource],
-	];
 	// Kind 1 stays empty: it is the marine's gameplay and transform root.
 	for (const [slot, program] of models) {
 		buildModel(slot, program);

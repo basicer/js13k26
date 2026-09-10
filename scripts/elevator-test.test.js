@@ -62,6 +62,10 @@ test("elevator warp and TEST align both stops, preserve the player during travel
 	// At the lower stop the stationary platform meets the translated landing.
 	run("EArray.filter(e => e[E.KIND] === 19 && e[E.SOLID]).forEach(e => e[E.POS_Y] = 3); moveActor(player,0,-9)");
 	assert.ok(run("Math.hypot(player[E.POS_X]+17.5,player[E.POS_Y],player[E.POS_Z]-11)") < .0001);
+	for (const [dx, dz] of [[20, 0], [-20, 0], [0, 20]]) {
+		run(`player.set([-17.5,0,20],E.POS); moveActor(player,${dx},${dz})`);
+		assert.ok(run("player[E.POS_X]>=-20.0001 && player[E.POS_X]<=-14.9999 && player[E.POS_Z]<=22.5001"), "the lower platform's shaft-facing and side edges remain closed");
+	}
 	assert.equal(run("canStand(-15.5,15)"), false, "the hallway wall collider follows its section");
 	assert.ok(run("shotFraction(-17.5,15,-14,15,.6)") < 1, "shots hit the translated hallway wall");
 	run("startElevatorTest(player); updateEntities(6)");
