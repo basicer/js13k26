@@ -4,7 +4,7 @@ import { d, c, heldKeys } from "../globals.js";
 import { cameraEntity, cameraPosition, cameraRotation } from "../entities.js";
 import { startElevatorTest, warpLocations, warpPlayer } from "./elevatorTest.js";
 import { detachCamera, attachCamera, freeCamera } from "./camera.js";
-import { setMarineTrigger } from "../game.js";
+import { setMarineTrigger, debugUnlockElevator } from "../game.js";
 import { palette } from "../palette.js";
 import { entityInspector, selectEntity as setSelectedEntity } from "./entityInspector.js";
 import { voxelEditor, voxelEditorOpen } from "./voxelEditor.js";
@@ -285,6 +285,7 @@ export function debug(passEncoder, entities, entitySize, overrides) {
 			ImGui.EndMenu();
 		}
 		if (ImGui.Button("NUKE")) {
+			debugUnlockElevator();
 			for (const entity of EArray) {
 				if (![2, 12, 18].includes(entity[E.KIND] & 127)) continue;
 				overrides.delete(entity.id);

@@ -60,9 +60,12 @@ const weapons = [
 ];
 let player, marineParts, marineLegs, marineBody, marineArms, marineGun, muzzleFlash, lastSpawnedUnicorn;
 let selectedWeapon, weapon, triggerConsumed, shotgunPumpPending, shotCooldown, triggerHeld, emptyClickPlayed;
-let reloadCooldown, marineLegYaw, marineHealth, hurtCooldown, portals, elevatorSide;
+let ownedWeapons, cratesBroken;
+let gameTime;
+let reloadCooldown, marineLegYaw, marineHealth, hurtCooldown, portals, elevatorSide, elevatorFinished;
 
 export function setupGame() {
+	gameTime = 0;
 	setupEntities();
 	setupLevel(placeActor);
 	portals = 4;
@@ -70,24 +73,17 @@ export function setupGame() {
 	player = spawn(1);
 	// Translation-only root: body aiming and death poses must not rotate the camera.
 	player[E.POS_X] = -11;
-	player[E.POS_Z] = -11;
+	player[E.POS_Z] = -13.5;
 	player[E.WALK_STRIDE] = 0.65;
 	cameraEntity[E.PARENT] = player.id;
 
-	// Startup is paused, so the splash's lifetime begins with the first input.
+	// Permanent floor inlay, with only a thin gold surface exposed.
 	const logo = spawn(13);
-	// Large, slightly reclined floor sculpture, matching the startup composition.
-	logo.set([-11.7, 0.894, -11], E.POS);
-	logo.set([-0.32, cameraRotation[1], 0], E.ROT);
-	logo.set([5.25, 5.25, 1.3], E.SCALE);
+	logo.set([-11, -30 / 64, -11.5], E.POS);
+	logo.set([-Math.PI / 2, cameraRotation[1], 0], E.ROT);
+	logo.set([5.25, 5.25, 0.05], E.SCALE);
 	logo.fill(0, E.TILE, E.TILE + 3);
-	logo[E.TTL] = 0.1;
 	logo[E.PARENT] = sections[0].id;
-	const logoLight = spawn(1);
-	logoLight.set([-14, 2, -10], E.POS);
-	logoLight[E.SPOTLIGHT] = 8;
-	logoLight[E.TTL] = 0.1;
-	logoLight[E.PARENT] = sections[0].id;
 
 	player[E.DISSOLVE_PALETTE] = 255; // Dissolve into the procedural rainbow material.
 
@@ -104,7 +100,7 @@ export function setupGame() {
 	marineGun[E.SCALE_X] = 0.17;
 	marineGun[E.SCALE_Y] = 0.25;
 	marineGun[E.SCALE_Z] = 0.56;
-	marineGun[E.SPOTLIGHT] = 8.4;
+	marineGun[E.SPOTLIGHT] = 10.5;
 	marineGun[E.LIGHT_ANGLE] = Math.PI / 6; // 30-degree flashlight cone along the gun's +Z.
 
 	for (const part of marineParts) {
@@ -121,7 +117,8 @@ export function setupGame() {
 	muzzleFlash[E.MAT_OVERRIDE] = 246;
 	muzzleFlash[E.TRANSPARENCY] = 1;
 
-	selectedWeapon = 1; // Start with the existing rifle; number keys select 1-3.
+	selectedWeapon = cratesBroken = 0;
+	ownedWeapons = [0];
 	for (const entry of weapons) entry[4] = entry[0];
 	weapon = weapons[selectedWeapon];
 	triggerConsumed = false;
@@ -134,7 +131,7 @@ export function setupGame() {
 	marineLegYaw = 0;
 	marineHealth = 5;
 	hurtCooldown = 0;
-	elevatorSide = 0;
+	elevatorSide = elevatorFinished = 0;
 }
 setupGame();
 
@@ -185,15 +182,16 @@ function particleBurst(
 }
 
 export function toggleMarineFlashlight() {
-	marineGun[E.SPOTLIGHT] = marineGun[E.SPOTLIGHT] ? 0 : 8.4;
+	marineGun[E.SPOTLIGHT] = marineGun[E.SPOTLIGHT] ? 0 : 10.5;
 	sound.emptyClick();
 }
 
-export function selectMarineWeapon(number) {
+export function selectMarineWeapon(number = (selectedWeapon === 1 ? ownedWeapons[0] : 1) + 1) {
 	const next = number - 1;
-	if (!marineHealth || !weapons[next] || next === selectedWeapon) return;
+	if (!marineHealth || !ownedWeapons.includes(next) || next === selectedWeapon) return;
 
 	selectedWeapon = next;
+	flash(["Pistol", "Rifle", "Shotgun"][next]);
 	shotgunPumpPending = false;
 	weapon = weapons[next];
 	reloadCooldown = 0;
@@ -234,11 +232,12 @@ export function fireMarineGun() {
 	muzzleFlash[E.TRANSPARENCY] = 0;
 	muzzleFlash[E.SPOTLIGHT] = 12;
 
-	for (let pellet = 0; pellet < weapon[3]; pellet++) {
+	const pellets = weapon[3]; // A crate unlock can change weapons during this shot.
+	for (let pellet = 0; pellet < pellets; pellet++) {
 		// Uniform solid-angle sampling in an eight-degree cone around the bore.
-		const cosine = weapon[3] === 1 ? 1 : 1 - random() * (1 - Math.cos(0.14));
+		const cosine = pellets === 1 ? 1 : 1 - random() * (1 - Math.cos(0.14));
 		const radial = Math.sqrt(1 - cosine * cosine);
-		const angle = weapon[3] === 1 ? 0 : random(0, Math.PI * 2);
+		const angle = pellets === 1 ? 0 : random(0, Math.PI * 2);
 		const side = radial * Math.cos(angle),
 			vertical = radial * Math.sin(angle);
 		firePellet(
@@ -254,14 +253,15 @@ export function fireMarineGun() {
 
 function firePellet(muzzleX, muzzleY, muzzleZ, forwardX, forwardZ, forwardY = 0) {
 	let target;
-	let range = shotFraction(player[E.POS_X], player[E.POS_Z], muzzleX, muzzleZ, muzzleY) < 1 ? 0 : 18;
+	const bulletRange = 14;
+	let range = shotFraction(player[E.POS_X], player[E.POS_Z], muzzleX, muzzleZ, muzzleY) < 1 ? 0 : bulletRange;
 	let closest = range;
 	const origin = [muzzleX, muzzleY, muzzleZ];
-	const direction = [forwardX * 18, forwardY * 18, forwardZ * 18];
+	const direction = [forwardX * bulletRange, forwardY * bulletRange, forwardZ * bulletRange];
 	for (const entity of EArray) {
 		if (!entity[E.KIND] || !(entity[E.SOLID] || entity[E.HEALTH] > 0 || entity[E.KIND] === 5)) continue;
-		const distance = 18 * entityShotFraction(entity, origin, direction);
-		if (distance < closest || (distance === closest && entity[E.SOLID])) {
+		const distance = bulletRange * entityShotFraction(entity, origin, direction);
+		if (distance < bulletRange && (distance < closest || (distance === closest && entity[E.SOLID]))) {
 			closest = distance;
 			target = entity[E.HEALTH] > 0 ? entity : undefined;
 		}
@@ -290,12 +290,14 @@ function firePellet(muzzleX, muzzleY, muzzleZ, forwardX, forwardZ, forwardY = 0)
 			tracer.set([0.035, 0.035, length], E.SCALE);
 			tracer[E.ROT_Y] = Math.atan2(-traceX, traceZ);
 			tracer[E.ROT_X] = -Math.asin(forwardY);
-			tracer[E.MAT_OVERRIDE] = 242;
+			tracer[E.MAT_OVERRIDE] = 254; // Emissive yellow, above the bloom threshold.
+			tracer[E.SPOTLIGHT] = 2;
+			tracer[E.LIGHT_ANGLE] = Math.PI / 2;
 			tracer.set([forwardX * 45, forwardY * 45, forwardZ * 45, (distance - length) / 45 || -1], E.VELOCITY);
 		}
 	}
 	if (!target) {
-		if (range > 0 && range < 18) {
+		if (range > 0 && range < bulletRange) {
 			particleBurst(
 				[hitX - forwardX * 0.06, muzzleY + traceY - forwardY * 0.06, hitZ - forwardZ * 0.06],
 				8,
@@ -314,19 +316,20 @@ function firePellet(muzzleX, muzzleY, muzzleZ, forwardX, forwardZ, forwardY = 0)
 		updateDamageDissolve(target, target[E.HEALTH], target[E.MAX_HEALTH]);
 		if (!target[E.HEALTH]) {
 			target[E.SOLID] = 0;
-			if (target[E.KIND] === 12) portals > 1 ? flash(--portals + " PORTALS REMAIN") : flash("YOU WIN!");
+			if (target[E.KIND] === 12) --portals ? flash(portals + " PORTALS REMAIN") : flash("YOU WIN! " + String(Math.floor(gameTime / 60)).padStart(2, "0") + ":" + String(Math.floor(gameTime % 60)).padStart(2, "0"));
 			if (target[E.KIND] === 16) {
-				const gun = spawn(11);
-				if (gun) {
-					gun.set(
-						[target[E.POS_X], target[E.POS_Y] - Math.abs(target[E.SCALE_Y]) / 2 + 0.085, target[E.POS_Z]],
-						E.POS,
-					);
-					gun[E.PARENT] = target[E.PARENT];
-					gun.set([0.17, 0.25, 0.56], E.SCALE);
-					gun[E.ROT_Z] = Math.PI / 2;
-					gun.fill(1, E.TILE, E.TILE + 3);
-				}
+				if (++cratesBroken === 1) {
+					ownedWeapons.push(1);
+					flash("Found the rifle (Q to switch).");
+				} else if (target[E.CONTENTS] === 2) {
+					ownedWeapons[0] = 2;
+					selectMarineWeapon(3);
+					flash("Found Shotgun.");
+				} else if (target[E.CONTENTS] === 1) {
+					marineHealth = Math.min(5, marineHealth + 1);
+					updateDamageDissolve(player, marineHealth, 5);
+					flash("Found a Med Kit");
+				} else flash("Found Nothing");
 			}
 		}
 		return;
@@ -385,6 +388,10 @@ export function aimMarineAtYaw(yaw) {
 	if (marineHealth) marineBody[E.ROT_Y] = yaw + Math.PI;
 }
 
+export function debugUnlockElevator() {
+	if (DEBUG) portals = 0;
+}
+
 export function activateConsole(entity) {
 	if (entity[E.CONTROLLER] !== sections[0].id) {
 		entity[E.MODEL_VARIANT] ^= 1;
@@ -398,7 +405,7 @@ export function activateConsole(entity) {
 	if (!entity[E.MODEL_VARIANT] && !sections[0][E.POS_Y]) {
 		// The ride is a self-contained encounter; remove defenders left elsewhere.
 		for (const target of EArray) if (target[E.KIND] === 2 || target[E.KIND] === 18) target.fill(0);
-		elevatorSide = 0;
+		elevatorSide = elevatorFinished = 0;
 	}
 	entity[E.MODEL_VARIANT] ^= 1;
 }
@@ -420,12 +427,16 @@ function spawnElevatorWave(count) {
 }
 
 export function updateGame(deltaTime, freeCamera = false) {
+	if (marineHealth && portals) gameTime += deltaTime;
 	// Arrival waves accelerate down the shaft: singles, then pairs, then a final trio.
 	const rideProgress = sections[0][E.POS_Y] / 40;
-	if (marineHealth && rideProgress > 0 && rideProgress < 1) {
+	if (marineHealth && !elevatorFinished && rideProgress > 0 && rideProgress < 1) {
 		const waveSize = rideProgress >= 0.85 ? 3 : rideProgress >= 0.5 ? 2 : 1;
-		const interval = 4 - 2.5 * rideProgress;
-		if (sections[3][E.AGE] >= interval && spawnElevatorWave(waveSize)) sections[3][E.AGE] = 0;
+		const interval = 6 - 3 * rideProgress;
+		if (sections[3][E.AGE] >= interval && spawnElevatorWave(waveSize)) {
+			sections[3][E.AGE] = 0;
+			elevatorFinished = waveSize === 3;
+		}
 	}
 	if (muzzleFlash[E.AGE] + deltaTime >= 0.035) {
 		muzzleFlash[E.TRANSPARENCY] = 1;

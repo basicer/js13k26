@@ -23,7 +23,7 @@ const tex = (size = [VOXEL_SIZE, VOXEL_SIZE, VOXEL_SIZE]) => {
 	let t = d.createTexture({
 		"size": size,
 		"dimension": "3d",
-		"format": DEBUG ? "rgba32float" : "r32float",
+		"format": "rg8uint",
 		"usage": GPUTextureUsage.TEXTURE_BINDING | GPUTextureUsage.COPY_DST,
 	});
 	t.ROB_SIZE = size;
@@ -37,17 +37,22 @@ if (DEBUG) buffers.set(empty, new Float32Array(VOXEL_SIZE ** 3 * 4));
 export var cube = DEBUG ? tex() : empty;
 if (DEBUG) buffers.set(cube, new Float32Array(VOXEL_SIZE ** 3 * 4).fill(1));
 
-export var voxT = GenArray(256, () => [empty, empty]);
+export var voxT = GenArray(256, () => empty);
 
 // Only the editor needs fallback cubes; release models finish loading before rendering.
-if (DEBUG) voxT[2] = voxT[7] = [cube, cube];
+if (DEBUG) voxT[2] = voxT[7] = cube;
 
-export const flush = (texture, buffer = DEBUG && buffers.get(texture)) => {
+// Retain editable CPU material planes, but use the same RG integer texture as
+// release rendering. A standalone preview repeats its material in both poses.
+export const flush = (texture, buffer = buffers.get(texture), variant = buffer) => {
+	const stride = DEBUG ? 4 : 1;
+	const packed = new Uint8Array((buffer.length / stride) * 2);
+	for (let i = 0; i < packed.length; i++) packed[i] = (i & 1 ? variant : buffer)[(i >> 1) * stride];
 	Q.writeTexture(
 		{ "texture": texture },
-		buffer,
+		packed,
 		{
-			"bytesPerRow": texture.ROB_SIZE[0] * 4 * (DEBUG ? 4 : 1),
+			"bytesPerRow": texture.ROB_SIZE[0] * 2,
 			"rowsPerImage": texture.ROB_SIZE[1],
 		},
 		texture.ROB_SIZE,
@@ -66,7 +71,7 @@ if (DEBUG && import.meta.env.DEBUG) {
 		var T = tex(size);
 		if (voxels) buffers.set(T, voxels);
 		voxT.map((texture, kind) => {
-			if (kind == i + 3) voxT[kind] = [T, T];
+			if (kind == i + 3) voxT[kind] = T;
 		});
 		flush(T);
 	});
@@ -85,7 +90,13 @@ if (DEBUG && import.meta.env.DEBUG) {
 export function runByteCode(bytecode, parameter = () => 0) {
 	let pc = 0;
 	let size = [VOXEL_SIZE, VOXEL_SIZE, VOXEL_SIZE];
-	let buffer = new Float32Array(VOXEL_SIZE ** 3 * (DEBUG ? 4 : 1));
+	let buffer = new (DEBUG ? Float32Array : Uint8Array)(VOXEL_SIZE ** 3 * (DEBUG ? 4 : 1));
+	const each = (lo, hi, visit) => {
+		for (let z = lo[2]; z <= hi[2]; z++)
+			for (let y = lo[1]; y <= hi[1]; y++)
+				for (let x = lo[0]; x <= hi[0]; x++)
+					visit(x, y, z, ((z * size[1] + y) * size[0] + x) * (DEBUG ? 4 : 1));
+	};
 
 	let reg_vec = GenArray(8, () => [0, 0, 0]);
 	reg_vec[7] = size.map((n) => n - 1);
@@ -124,19 +135,19 @@ export function runByteCode(bytecode, parameter = () => 0) {
 				let abx = b[0] - a[0],
 					aby = b[1] - a[1],
 					abz = b[2] - a[2],
-					rr = r * r,
 					length = abx * abx + aby * aby + abz * abz || 1;
-				for (let z = lo[2]; z <= hi[2]; z++)
-					for (let y = lo[1]; y <= hi[1]; y++)
-						for (let x = lo[0]; x <= hi[0]; x++) {
-							let dx = x - a[0], dy = y - a[1], dz = z - a[2];
-							// A sphere is the zero-length case of the capsule calculation.
-							const t = brush == 2 ? Math.max(0, Math.min(1, (dx * abx + dy * aby + dz * abz) / length)) : 0;
-							dx -= abx * t; dy -= aby * t; dz -= abz * t;
-							const hit = brush == 1 || dx * dx + dy * dy + dz * dz <= rr;
-							let index = ((z * size[1] + y) * size[0] + x) * (DEBUG ? 4 : 1);
-							if (hit && (!(cmd & 1) || buffer[index])) buffer[index] = reg_float[0] & 255;
-						}
+				each(lo, hi, (x, y, z, index) => {
+					let dx = x - a[0],
+						dy = y - a[1],
+						dz = z - a[2];
+					// A sphere is the zero-length case of the capsule calculation.
+					const t = brush == 2 ? Math.max(0, Math.min(1, (dx * abx + dy * aby + dz * abz) / length)) : 0;
+					dx -= abx * t;
+					dy -= aby * t;
+					dz -= abz * t;
+					const hit = brush == 1 || dx * dx + dy * dy + dz * dz <= r * r;
+					if (hit && (!(cmd & 1) || buffer[index])) buffer[index] = DEBUG ? reg_float[0] & 255 : reg_float[0];
+				});
 				if (cmd & 2) {
 					reg_vec[0] = b;
 					reg_vec[1] = a;
@@ -144,39 +155,29 @@ export function runByteCode(bytecode, parameter = () => 0) {
 				break;
 			}
 			case OP_PUSHI: {
-				GenArray(cmd & 7, () => stack.push((bytecode[pc++] << 24) >> 24));
+				for (let n = cmd & 7; n--;) stack.push((bytecode[pc++] << 24) >> 24);
 				break;
 			}
 			case OP_SIZE: {
 				size = stack.pop().map((n) => (n === -128 ? 128 : n));
-				buffer = new Float32Array(size[0] * size[1] * size[2] * (DEBUG ? 4 : 1));
+				buffer = new (DEBUG ? Float32Array : Uint8Array)(size[0] * size[1] * size[2] * (DEBUG ? 4 : 1));
 				reg_vec[7] = size.map((n) => n - 1);
 				break;
 			}
 			case OP_VEC:
 				stack.push(new Float32Array(stack.splice(-3)));
 				break;
-			case OP_VLOAD: {
-				let val = reg_vec[cmd & 7];
-				stack.push(val);
+			case OP_VLOAD:
+			case OP_FLOAD: {
+				stack.push((cmd >> 3 === OP_VLOAD ? reg_vec : reg_float)[cmd & 7]);
 				break;
 			}
 			case OP_VSTOREI:
 				reg_vec[cmd & 7] = immediate();
 				break;
-			case OP_VSTORE: {
-				let val = stack.pop();
-				reg_vec[cmd & 7] = val;
-				break;
-			}
-			case OP_FLOAD: {
-				let val = reg_float[cmd & 7];
-				stack.push(val);
-				break;
-			}
+			case OP_VSTORE:
 			case OP_FSTORE: {
-				let val = stack.pop();
-				reg_float[cmd & 7] = val;
+				(cmd >> 3 === OP_VSTORE ? reg_vec : reg_float)[cmd & 7] = stack.pop();
 				break;
 			}
 			case OP_LOADP: {
@@ -188,37 +189,48 @@ export function runByteCode(bytecode, parameter = () => 0) {
 				const flip = cmd >> 3 === OP_FLIP;
 				const axis = cmd & 7;
 				// Both operations reflect around the volume midpoint within the clip bounds.
-				const lo = [...reg_vec[6]], hi = reg_vec[7], sum = size[axis] - 1;
+				const lo = [...reg_vec[6]],
+					hi = reg_vec[7],
+					sum = size[axis] - 1;
 				lo[axis] = Math.max(lo[axis], Math.floor(sum / 2) + 1);
-				for (let z = lo[2]; z <= hi[2]; z++)
-					for (let y = lo[1]; y <= hi[1]; y++)
-						for (let x = lo[0]; x <= hi[0]; x++) {
-							const reflected = [x, y, z];
-							reflected[axis] = sum - reflected[axis];
-							const target = ((z * size[1] + y) * size[0] + x) * (DEBUG ? 4 : 1);
-							const source = ((reflected[2] * size[1] + reflected[1]) * size[0] + reflected[0]) * (DEBUG ? 4 : 1);
-							// VP only writes the material channel; the other channels stay zero.
-							const value = buffer[target];
-							buffer[target] = buffer[source];
-							if (flip) buffer[source] = value;
-						}
+				each(lo, hi, (x, y, z, target) => {
+					const source =
+						target + (sum - 2 * [x, y, z][axis]) * [1, size[0], size[0] * size[1]][axis] * (DEBUG ? 4 : 1);
+					// VP only writes the material channel; the other channels stay zero.
+					const value = buffer[target];
+					buffer[target] = buffer[source];
+					if (flip) buffer[source] = value;
+				});
 				break;
 			}
 		}
 	}
 
-	let result = tex(size);
-	if (DEBUG) buffers.set(result, buffer);
-	flush(result, buffer);
-	return result;
+	return [size, buffer];
+}
+
+function uploadModel(first, second = first) {
+	if (DEBUG && first[0].some((n, i) => n !== second[0][i])) throw Error("Voxel poses must have matching dimensions");
+	const texture = tex(first[0]);
+	const upload = () => flush(texture, first[1], second[1]);
+	if (DEBUG) {
+		try {
+			upload();
+		} catch (error) {
+			texture.destroy();
+			throw error;
+		}
+		buffers.set(texture, first[1]);
+	} else upload();
+	return texture;
 }
 
 if (DEBUG) buffers.forEach((_, texture) => flush(texture));
 
 import sphereProgram from "../vox/sphere.vp";
 // VP literals are integers; parameters preserve the original fractional shape.
-export var sphere = runByteCode(sphereProgram, (index) => (index ? 31.5 : 24.32));
-voxT[6] = [sphere, sphere];
+export var sphere = uploadModel(runByteCode(sphereProgram, (index) => (index ? 31.5 : 24.32)));
+voxT[6] = sphere;
 
 import marineLegs, { debugSource as legsSource } from "../vox/marine-legs.vp";
 import marineBody, { debugSource as bodySource } from "../vox/marine-body.vp";
@@ -248,38 +260,16 @@ export function buildVoxelVariants(bytecode, run, parameter = () => 0) {
 	return [first, usesP0 ? run(bytecode, load) : first];
 }
 
-// Publish both variants together, then retire each old texture only once.
+// Publish both material planes together in one texture. Failed previews retain
+// the previous model; poses are drawn on the CPU before allocating their texture.
 export function buildModel(slot, bytecode, parameter = () => 0) {
-	// Release builds load each model once; texture retirement is editor-only.
-	if (!DEBUG) voxT[slot] = buildVoxelVariants(bytecode, runByteCode, parameter);
-	else {
-		const previous = voxT[slot];
-		const created = [];
-		try {
-			voxT[slot] = buildVoxelVariants(
-				bytecode,
-				(code, load) => {
-					const texture = runByteCode(code, load);
-					created.push(texture);
-					return texture;
-				},
-				parameter,
-			);
-		} catch (error) {
-			for (const texture of created) {
-				buffers.delete(texture);
-				texture.destroy();
-			}
-			throw error;
-		}
-
-		if (DEBUG && import.meta.env.DEBUG) {
-			for (const texture of new Set(previous)) {
-				if (texture !== empty && texture !== cube && texture !== sphere) {
-					buffers.delete(texture);
-					Q.onSubmittedWorkDone().then(() => texture.destroy());
-				}
-			}
+	let previous;
+	if (DEBUG) previous = voxT[slot];
+	voxT[slot] = uploadModel(...buildVoxelVariants(bytecode, runByteCode, parameter));
+	if (DEBUG) {
+		if (previous !== empty && previous !== cube && previous !== sphere) {
+			buffers.delete(previous);
+			Q.onSubmittedWorkDone().then(() => previous.destroy());
 		}
 	}
 	return voxT[slot];

@@ -33,6 +33,8 @@ struct Entity {
     lerpSpeed: f32,
     // Entity ID controlled by a console; zero means unconnected.
     controller: f32,
+    // Crate contents: 0 empty, 1 medkit, 2 shotgun (uses existing padding).
+    contents: f32,
 };
 
 fn local_transform(entity: Entity) -> mat4x4<f32> {

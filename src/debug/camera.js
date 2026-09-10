@@ -6,6 +6,7 @@ let parentId = 0, version;
 // Gameplay's root supplies translation and scale; aiming lives on its body child.
 export function detachCamera() {
 	if (!cameraEntity[E.PARENT]) return;
+	cameraEntity[E.LERP_SPEED] = 0; // Manual camera control cancels the intro glide.
 	parentId = cameraEntity[E.PARENT];
 	version = entityVersion;
 	const parent = EArray[parentId];

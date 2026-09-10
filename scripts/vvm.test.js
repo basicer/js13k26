@@ -13,7 +13,7 @@ import { vec3, vec3_add } from "../src/math.js";
 
 // Execute the real CPU interpreter with only its GPU upload dependencies mocked.
 const source = readFileSync(new URL("../src/vvm.js", import.meta.url), "utf8");
-const buildVoxelVariants = vm.runInNewContext(source.slice(source.indexOf("export function buildVoxelVariants"), source.indexOf("// Publish both variants"))
+const buildVoxelVariants = vm.runInNewContext(source.slice(source.indexOf("export function buildVoxelVariants"), source.indexOf("// Publish both material planes"))
 	.replace("export ", "") + "\nbuildVoxelVariants");
 const interpreter = source.slice(source.indexOf("export function runByteCode"), source.indexOf("\nif (DEBUG) buffers.forEach"))
 	.replace("export ", "").replaceAll("import.meta.env.DEBUG", "true");
@@ -27,7 +27,7 @@ function runBytes(bytecode, parameter, debug = true) {
 		tex: () => ({}), label: String.raw, buffers: new Map(), flush(texture, data) { texture.data = data; }, voxT: [],
 		bytecode, parameter,
 	});
-	return vm.runInContext(interpreter + "\nrunByteCode(bytecode, parameter).data", context, { timeout: 1000 });
+	return vm.runInContext(interpreter + "\nrunByteCode(bytecode, parameter)[1]", context, { timeout: 1000 });
 }
 
 test("single-channel release volumes preserve every material in both authored poses", () => {
@@ -142,13 +142,15 @@ test("variant builder aliases non-P0 models and builds both P0 values when reque
 	assert.deepEqual(Buffer.from(variants[1].buffer), Buffer.from(run(unicorn, [1]).buffer));
 });
 
-test("model rebuild retires aliased textures once and preserves old variants on failure", async () => {
+test("model rebuild retires the old texture once and preserves it on failure", async () => {
 	let destroyed = 0;
 	const old = { destroy: () => destroyed++ };
 	const context = vm.createContext({
-		DEBUG: true, voxT: [[old, old]], buffers: new Map([[old, {}]]), empty: {}, cube: {}, sphere: {},
+		DEBUG: true, voxT: [old], buffers: new Map([[old, {}]]), empty: {}, cube: {}, sphere: {}, flush() {},
 		Q: { onSubmittedWorkDone: () => Promise.resolve() }, buildVoxelVariants,
-		runByteCode: (code, load) => { load(0); return { destroy() {} }; },
+		tex: () => ({ destroy() {} }),
+		uploadModel: () => ({ destroy() {} }),
+		runByteCode: (code, load) => { load(0); return [[1, 1, 1], new Uint8Array(1)]; },
 	});
 	vm.runInContext(source.slice(source.indexOf("export function buildModel"), source.indexOf("\n// Load authored models."))
 		.replace("export ", "").replaceAll("import.meta.env.DEBUG", "true"), context);
@@ -156,14 +158,15 @@ test("model rebuild retires aliased textures once and preserves old variants on 
 	await Promise.resolve();
 	assert.equal(destroyed, 1); assert.equal(context.buffers.has(old), false);
 	const previous = context.voxT[0];
-	let calls = 0, discarded = 0;
+	let calls = 0, allocated = 0;
+	context.uploadModel = () => { allocated++; return { destroy() {} }; };
 	context.runByteCode = (code, load) => {
 		load(0);
 		if (++calls === 2) throw Error("variant failed");
-		return { destroy: () => discarded++ };
+		return [[1, 1, 1], new Uint8Array(1)];
 	};
 	assert.throws(() => vm.runInContext("buildModel(0, [])", context), /variant failed/);
-	assert.equal(context.voxT[0], previous); assert.equal(discarded, 1);
+	assert.equal(context.voxT[0], previous); assert.equal(allocated, 0, "failed poses allocate no GPU textures");
 });
 
 test("JUMPIF encodes signed offsets from the end of its two bytes", () => {
@@ -259,9 +262,11 @@ test("fused and unfused programs produce identical voxels for every model and po
 for (const DEBUG of [false, true]) test(`wall rebuilds preserve independent door textures (DEBUG=${DEBUG})`, async () => {
 	const old = { destroy() {} };
 	const context = vm.createContext({
-		DEBUG, voxT: Array.from({ length: 20 }, () => [old, old]), buffers: new Map([[old, {}]]),
+		DEBUG, voxT: Array.from({ length: 20 }, () => old), buffers: new Map([[old, {}]]), flush() {},
 		empty: {}, cube: {}, sphere: {}, Q: { onSubmittedWorkDone: () => Promise.resolve() },
-		buildVoxelVariants, runByteCode: () => ({ destroy() {} }),
+		tex: () => ({ destroy() {} }),
+		buildVoxelVariants, runByteCode: () => [[1, 1, 1], new Uint8Array(1)],
+		uploadModel: () => ({ destroy() {} }),
 	});
 	vm.runInContext(source.slice(source.indexOf("export function buildModel"), source.indexOf("\n// Load authored models."))
 		.replace("export ", "").replaceAll("import.meta.env.DEBUG", "true"), context);

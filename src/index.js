@@ -21,14 +21,10 @@ $.addEventListener("keydown", (event) => {
 		heldKeys.clear();
 		return;
 	}
-	if (/^[123]$/.test(key)) {
-		if (!event.repeat && !isPaused() && !isFlying()) selectMarineWeapon(Number(key));
-		event.preventDefault();
-		return;
-	}
 	if (event.repeat) return;
 
 	if (!isPaused() && !isFlying()) {
+		if (key === "q") selectMarineWeapon();
 		if (key === "r") reloadMarineGun();
 		if (key === "f") toggleMarineFlashlight();
 	}

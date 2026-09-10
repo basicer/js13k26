@@ -80,6 +80,16 @@ test("incomplete shader functions and attributes fail without hanging", () => {
         assert.throws(() => compactShaderLocals(source), /shader/);
 });
 
+test("packed voxel shader compiles with one uint binding and preserves the pose threshold", () => {
+	const original = fs.readFileSync(new URL("../shaders/shader.wgsl", import.meta.url), "utf8")
+		.replace(/^#import "([^"]*)".*$/gm, (_, name) => fs.readFileSync(new URL(`../shaders/${name}`, import.meta.url), "utf8"));
+	const source = compactShaderEntity(original);
+	assert.match(source, /var vox: texture_3d<u32>/);
+	assert.doesNotMatch(source, /\bvox1\b/);
+	assert.match(source, /\[u32\(e\.modelVariant >= 0\.5f\)\]/);
+	checkShader(source, minifyWgsl(compactShaderLocals(source)));
+});
+
 test("shader-generated cube preserves all original triangle corners and inward winding", () => {
     const source = fs.readFileSync(new URL("../shaders/scene.wgsl", import.meta.url), "utf8");
     const words = source.match(/array<u32, 4>\(([^)]*)\)/)[1].split(",").map(n => Number(n.trim().replace(/u$/, "")));

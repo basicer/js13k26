@@ -55,6 +55,9 @@ export function setupEntities() {
 	cameraEntity[E.KIND] = 254; // Camera entity kind
 	cameraRotation.set([(-50 * Math.PI) / 180, Math.PI / 2, 0]);
 	cameraPosition.set([-9.2 * Math.cos(cameraRotation[0]), -9.2 * Math.sin(cameraRotation[0]), 0]);
+	cameraEntity.set(cameraPosition, E.TARGET_POSITION);
+	cameraPosition.set([-8, 10, 2]);
+	cameraEntity[E.LERP_SPEED] = 1.5;
 	cameraEntity.set([1, 1, 1], E.SCALE);
 
 }

@@ -1,16 +1,33 @@
 # Build analysis tools
 
-The voxel interpreter uses the same opcode set in development and release.
+The player starts with a pistol. The first destroyed crate always grants the rifle,
+overriding its contents. Other crates use their CONTENTS field: 0 empty, 1 medkit,
+2 shotgun. Cargo contains the shotgun, which replaces the pistol and equips it.
+Medkits are fixed: one in the hallway, two in cargo, one in the boss room; each
+heals 1 HP up to 5. Q switches owned guns. Contents and ownership reset with the
+game. Magazines and unlimited reserve ammo are unchanged.
+
+Production and development share the bytecode interpreter in `src/vvm.js`.
+Both poses are drawn on the CPU, then interleaved into the R/G channels of one
+`rg8uint` texture with one upload per model. Models with one pose repeat it in
+both channels. `node --test scripts/voxel-textures.test.js` checks every authored
+pose against saved material-plane hashes, along with uploads and texture cleanup.
+
+The shared VM accepts the same voxel opcode set in both builds.
 Counted LOOP and arbitrary boxed flips have been removed; JUMPIF and FORJUMP
 remain. FLIP reflects around the volume midpoint using the clip bounds.
 The console draws its asymmetric screen after flipping the symmetric backing,
 preserving both original voxel volumes.
 
-Release voxel textures use `r32float` and discard their CPU buffers after upload;
-the editor retains editable `rgba32float` buffers. The title-song build drops
+Both builds use `rg8uint` voxel textures. Release uses byte-sized CPU buffers and discards them after upload;
+the editor retains four-lane Float32Array material buffers for rebuilding poses. The title-song build drops
 unused instruments and patterns without modifying the authored file or played
 sequence. Postprocessing reads clamped texel centers directly, preserving the
 25-tap bloom and antialiasing weights without a sampler binding.
+
+The shared shader uses a single `texture_3d<u32>` voxel binding and converts the
+selected R/G material ID to f32 exactly. The pose threshold remains `>= 0.5`.
+Editor rebuilds interleave both poses before publishing the replacement texture.
 
 `npm run generate:entities` reads `Entity` in `shaders/common.wgsl` and writes
 `src/entities-const.js`. Vite also regenerates it when loading its config
@@ -49,7 +66,9 @@ The route is Start (-12,-12) → dogleg hallway (2,-2) → Cargo (-6,15) →
 Elevator (-17.5,20) → Boss Room (-45.5,6). The footprint spans roughly 64×46 units.
 The route turns east, north, west, then south, curling back toward the starting
 area through the reactor arena. All four room transitions remain mandatory.
-The starter lounge keeps the G&G logo and no portal. A long windowed corridor
+The 12-by-8 starter lounge keeps the G&G logo, with no crates or portal.
+Six crates sit in the hallway, nine in cargo, and five in the boss room.
+A long windowed corridor
 leads into a 20.5×21.5 cargo hold with staggered storage aisles, destructible crates,
 and two side-wall portals. The 30.5×15 elevator shaft leads into a 24×16.5
 reactor arena with two flanking columns and two side-wall portals. Ten initial

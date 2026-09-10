@@ -95,7 +95,7 @@ test("all entities use model batches without separate transparent draws", () => 
 		shader: {}, renderBindGroup: {}, vertexBuffer: {}, indexBuffer: {},
 		idx: { length: 36 }, ENTITY_COUNT: 16,
 		cameraPosition: new Float32Array(3), cameraRotation: new Float32Array(3),
-		voxT: Array.from({ length: 256 }, (_, kind) => [0, 1].map(variant => ({ createView: () => kind * 2 + variant }))),
+		voxT: Array.from({ length: 256 }, (_, kind) => ({ createView: () => kind })),
 		BG: (pipeline, group, ...views) => views,
 		EArray: [
 			entity(0, 254, 0, 0), entity(1, 7, -2, 0),
@@ -119,7 +119,7 @@ test("all entities use model batches without separate transparent draws", () => 
 	assert.equal(draws.length, 125); // Reserved aliases 126/127 are never submitted.
 	assert.ok(draws.every(draw => draw.count === 16));
 	assert.deepEqual(draws.map(({ instance, texture }) => [instance >>> 16, texture]),
-		Array.from({ length: 125 }, (_, i) => [i + 1, [(i + 1) * 2, (i + 1) * 2 + 1]]));
+		Array.from({ length: 125 }, (_, i) => [i + 1, [i + 1]]));
 	assert.ok(draws.every(draw => draw.pipeline === pipelines[0]));
 });
 

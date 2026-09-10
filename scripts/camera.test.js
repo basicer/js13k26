@@ -19,6 +19,20 @@ function scene() {
 	return run;
 }
 
+test("intro camera glides into its usual framing and yields to manual control", () => {
+	const run = scene();
+	assert.deepEqual(Array.from(run("cameraPosition")), [-8, 10, 2]);
+	assert.equal(run("player[E.POS_Z] + cameraPosition[2]"), run("EArray.find(e => e[E.KIND] === 13)[E.POS_Z]"), "pregame framing centers the logo horizontally");
+	const error = () => run("Math.hypot(...Array.from(cameraPosition, (n,i) => n-cameraEntity[E.TARGET_POSITION+i]))");
+	const initial = error();
+	run("updateEntities(1)");
+	assert.ok(error() < initial / 4);
+	run("updateEntities(2)");
+	assert.ok(error() < initial / 80);
+	run("detachCamera()");
+	assert.equal(run("cameraEntity[E.LERP_SPEED]"), 0);
+});
+
 test("camera inherits root movement while aiming and corpse rotation stay on the body", () => {
 	const run = scene();
 	assert.equal(run("cameraEntity[2] === player.id"), true);

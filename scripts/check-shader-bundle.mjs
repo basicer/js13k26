@@ -44,4 +44,4 @@ const source = fs.readFileSync(new URL('../shaders/shader.wgsl', import.meta.url
 // Generated aliases alter the normalizer's private symbol spelling, so this
 // validates both modules when aliases are present rather than comparing names.
 checkShader(compactShaderEntity(source), found[0], { compare: false });
-console.log('Unified shader: all four entry points match original compiler output');
+console.log('Unified shader: all four entry points present; source and bundled shaders compile');

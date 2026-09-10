@@ -27,6 +27,7 @@ for (let i = 0; i < plan.length;) {
 	if (type > 1 && type !== 8 && type < 12) [width, depth] = size(type);
 	else [width, depth] = [plan[i++], plan[i++]];
 	if (type === 13 || type === 15) i += 2; // Height and bottom.
+	if (type === 2) i++; // Crate contents.
 	if (type === 5) z -= .4;
 	things.push({ section, type, x, z, width, depth });
 }

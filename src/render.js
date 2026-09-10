@@ -276,7 +276,7 @@ export function render() {
 	pass.setPipeline(pipeline);
 	// Models 126/127 alias reserved kinds 254/255; neither can be rendered.
 	for (let i = 1; i < 126; i++) {
-		pass.setBindGroup(1, BG(pipeline, 1, ...voxT[i].map((texture) => texture.createView())));
+		pass.setBindGroup(1, BG(pipeline, 1, voxT[i].createView()));
 		pass.draw(36, ENTITY_COUNT, 0, i << 16);
 	}
 	pass.end();

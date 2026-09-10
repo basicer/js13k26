@@ -47,17 +47,15 @@ fn vs_main(
     return out;
 }
 
-@group(1) @binding(0) var vox: texture_3d<f32>;
-@group(1) @binding(1) var vox1: texture_3d<f32>;
+// The two poses share the R/G channels of one integer material texture.
+@group(1) @binding(0) var vox: texture_3d<u32>;
 
 // Dissolved-to-air cells are empty for both traversal and ambient occlusion.
 // The ray keeps walking until it reaches a surviving interior face.
 fn voxel_at(cell: vec3<i32>, volume_size: vec3<i32>, grid_size: vec3<f32>, entity_id: u32) -> f32 {
     if (any(cell < vec3<i32>(0)) || any(vec3<f32>(cell) >= grid_size)) { return 0.0f; }
     let e = entities[entity_id];
-    var material: f32;
-    if (e.modelVariant >= 0.5f) { material = textureLoad(vox1, cell % volume_size, 0).x; }
-    else { material = textureLoad(vox, cell % volume_size, 0).x; }
+    let material = f32(textureLoad(vox, cell % volume_size, 0)[u32(e.modelVariant >= 0.5f)]);
     if (material == 0.0f) { return 0.0f; }
     // Stable 4x4x4 chunks either become air or take the replacement palette.
     if (dissolve_noise(vec3<u32>(cell) / vec3<u32>(4u), entity_id) < e.dissolve) {

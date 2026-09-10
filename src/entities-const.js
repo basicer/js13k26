@@ -47,4 +47,5 @@ export const TARGET_POSITION_Y = 37;
 export const TARGET_POSITION_Z = 38;
 export const LERP_SPEED = 39;
 export const CONTROLLER = 40;
+export const CONTENTS = 41;
 export const STRIDE = 44;

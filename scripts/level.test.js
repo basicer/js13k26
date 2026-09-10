@@ -35,10 +35,29 @@ function level() {
 
 const route = [[-11,-11],[-10,-12],[2,-12],[2,8],[-6,8],[-6,14],[-12.5,14],[-13,20],[-17.5,20]];
 
+test("smaller starting room is crate-free, with loot spread through combat rooms", () => {
+	const { blocks, sections, canStand } = level();
+	assert.deepEqual(Array.from(sections, section => blocks.filter(e => e[E.KIND] === 16 && e[E.PARENT] === section.id).length), [0, 6, 9, 0, 5]);
+	assert.deepEqual(Array.from(sections, section => blocks.filter(e => e[E.KIND] === 16 && e[E.PARENT] === section.id && e[E.CONTENTS] === 1).length), [0, 1, 2, 0, 1]);
+	const shotguns = blocks.filter(e => e[E.KIND] === 16 && e[E.CONTENTS] === 2);
+	assert.equal(shotguns.length, 1);
+	assert.equal(shotguns[0][E.PARENT], sections[2].id);
+	assert.equal(shotguns[0][E.POS_X], 2);
+	assert.equal(shotguns[0][E.POS_Z], 24, "shotgun is tucked into the rear crate cluster");
+	assert.ok(canStand(-11, -13.5), "new marine spawn stays clear");
+	const floor = blocks.find(e => e[E.KIND] === 5 && e[E.PARENT] === sections[0].id);
+	assert.equal(floor[E.SCALE_X], 12);
+	assert.equal(floor[E.SCALE_Z], 8);
+	assert.ok(canStand(-11, -11), "starting position stays clear");
+	assert.ok(canStand(-16.9, -11, 0), "opening camera stays inside the room");
+	assert.equal(canStand(-11, -16), false, "inset back wall seals the room");
+	assert.equal(canStand(-11, -8), false, "inset front wall seals the room");
+});
+
 test("camera-side window walls preserve the room barriers and section parents", () => {
 	const { blocks, sections, canStand } = level();
 	const windows = blocks.filter(e => e[E.KIND] === 253);
-	assert.equal(windows.length,4);
+	assert.equal(windows.length,5);
 	for (const [x,z,section] of [[-2,-1,1],[-14,12,2],[-57.5,4.25,4],[-33.5,4.25,4]]) {
 		const wall = windows.find(e => e[E.POS_X] === x && e[E.POS_Z] === z);
 		assert.equal(wall[E.PARENT],sections[section].id);
@@ -111,6 +130,24 @@ test("bulkheads break long sightlines and gate spawn points are clear", () => {
 	assert.ok(!clearShot(-6,14,-30,3), "the lift conceals the boss arena");
 	assert.ok(clearShot(2,-12,2,4));
 	for (const {x,z} of placements.filter(e => e.type === 10)) assert.ok(canStand(x-1,z), "blocked gate at " + [x,z]);
+});
+
+test("cargo divider blocks distant crate shots while the first console and doorway stay clear", () => {
+	const { blocks, sections, clearShot, canStand } = level();
+	const divider = blocks.find(e => e[E.PARENT] === sections[2].id && e[E.KIND] === 253 && e[E.POS_X] === 3 && e[E.POS_Z] === 16);
+	assert.ok(divider);
+	assert.equal(divider[E.SCALE_X], 1);
+	assert.equal(divider[E.SCALE_Z], 6);
+	assert.ok(Math.abs(divider[E.ROT_Y] - Math.PI / 2) < 1e-6, "pane faces across the corridor");
+	assert.equal(clearShot(1, 10, 1, 23), false);
+	divider[E.SOLID] = 0;
+	assert.equal(clearShot(1, 10, 1, 23), true, "the new divider interrupts this crate approach sightline");
+	const console = blocks.find(e => e[E.KIND] === 15 && e[E.PARENT] === sections[1].id);
+	assert.ok(Math.abs(console[E.POS_Z] + 14.6) < 1e-5);
+	assert.ok(console[E.POS_Z] - console[E.SCALE_X] / 2 > -15.5, "console clears the starting-room wall");
+	const crate = blocks.find(e => e[E.KIND] === 16 && e[E.POS_X] === -5 && e[E.POS_Z] === -13.5);
+	assert.ok(crate && Math.hypot(crate[E.POS_X] - console[E.POS_X], crate[E.POS_Z] - console[E.POS_Z]) < 2);
+	assert.ok(canStand(-6, -12, .65), "nearby crate leaves the door lane open");
 });
 
 test("section height is visual and leaves hit tests and movement unchanged", () => {
