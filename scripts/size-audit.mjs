@@ -1,3 +1,4 @@
+import { deferGame } from "./release-html.mjs";
 // Run after npm run build. Excision probes measure compression, not runnable feature removals.
 import fs from 'node:fs';
 import os from 'node:os';
@@ -28,7 +29,7 @@ const match = /<script>([\s\S]*?)<\/script>/.exec(html);
 if (!match) throw Error('Expected a production inline script');
 let code;
 vm.runInNewContext(`(function(){var ${'abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ'.split('').join(',')};${match[1]}})()`,
-  { eval: value => { code = value; } }, { timeout: 10000 });
+  { setTimeout: callback => callback(), eval: value => { code = value; } }, { timeout: 10000 });
 if (typeof code !== 'string') throw Error('Expected Roadroller-packed JavaScript');
 const config = fs.readFileSync('vite.config.js', 'utf8');
 const packerNode = nodesOf(config).find(n => n.type === 'NewExpression' && n.callee.name === 'Packer');
@@ -131,7 +132,7 @@ for (const name of ['reload', 'hurt']) {
 const scratch = fs.mkdtempSync(path.join(os.tmpdir(), 'js13k-audit-'));
 function pack(source) {
   const { firstLine, secondLine } = new Packer([{ data: source, type: 'js', action: 'eval' }], settings).makeDecoder();
-  return html.replace(match[0], () => `<script>${firstLine}\n${secondLine}</script>`);
+  return html.replace(match[0], () => `<script>${deferGame(firstLine + secondLine)}</script>`);
 }
 function zipSize(contents) {
   const input = path.join(scratch, 'index.html'), zip = path.join(scratch, 'index.zip');

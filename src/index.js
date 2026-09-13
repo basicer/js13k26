@@ -50,7 +50,7 @@ let step = () => {
 if (DEBUG) console.log("Starting render loop");
 step();
 
-// Queue the track once; browsers that block autoplay resume on first input.
+// The release loading screen has already painted before this module runs.
 if (!DEBUG) music1()["loop"] = true;
 for (const event of ["pointerdown", "keydown"]) {
 	$.addEventListener(event, () => {

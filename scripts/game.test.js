@@ -169,27 +169,27 @@ test("fixed crate contents drive rewards while the first crate always grants the
 		crate[E.CONTENTS] = 2; breakCrate();`);
 	assert.equal(run("cratesBroken"), 1);
 	assert.deepEqual(Array.from(run("ownedWeapons")), [0, 1]);
-	assert.equal(run("messages.at(-1)"), "Found the rifle (Q to switch).");
+	assert.equal(run("messages.at(-1)"), "Rifle: Q to switch");
 	run("selectMarineWeapon()");
 	assert.equal(run("selectedWeapon"), 1);
 	run("selectMarineWeapon()");
 	assert.equal(run("selectedWeapon"), 0);
-	run("player[E.HEALTH] = 3; updateDamageDissolve(player, 3, 5); crate[E.CONTENTS] = 1; breakCrate()");
+	run("player[E.HEALTH] = 3; updateDamageDissolve(player, 3, 7); crate[E.CONTENTS] = 1; breakCrate()");
 	assert.equal(run("player[E.HEALTH]"), 4);
-	assert.ok(Math.abs(run("player[E.DISSOLVE]") - .075) < 1e-6);
+	assert.ok(Math.abs(run("player[E.DISSOLVE]") - .15) < 1e-6);
 	assert.equal(run("messages.at(-1)"), "+1 HP");
 	run("crate[E.CONTENTS] = 0; breakCrate()");
 	assert.equal(run("player[E.HEALTH]"), 4);
-	assert.equal(run("messages.at(-1)"), "Found Nothing");
-	run("player[E.HEALTH] = 5; crate[E.CONTENTS] = 1; breakCrate()");
-	assert.equal(run("player[E.HEALTH]"), 5, "healing cannot exceed starting health");
+	assert.equal(run("messages.at(-1)"), "Empty");
+	run("player[E.HEALTH] = 7; crate[E.CONTENTS] = 1; breakCrate()");
+	assert.equal(run("player[E.HEALTH]"), 7, "healing cannot exceed starting health");
 	run("crate[E.CONTENTS] = 0; breakCrate()");
 	assert.equal(run("cratesBroken"), 5);
 	assert.deepEqual(Array.from(run("ownedWeapons")), [0, 1], "fifth crate no longer grants the shotgun");
 	run("crate[E.CONTENTS] = 2; breakCrate()");
 	assert.deepEqual(Array.from(run("ownedWeapons")), [2, 1]);
 	assert.equal(run("selectedWeapon"), 2);
-	assert.equal(run("messages.at(-1)"), "Found Shotgun.");
+	assert.equal(run("messages.at(-1)"), "Shotgun");
 	run("selectMarineWeapon(1)");
 	assert.equal(run("selectedWeapon"), 2, "pistol is no longer owned");
 	run("selectMarineWeapon()");
@@ -1271,7 +1271,7 @@ test("crates announce the rifle once on the fatal hit without spawning a gun", (
 	run("globalThis.position = Array.from(crate.subarray(E.POS, E.POS + 3)); shootCrate();");
 	assert.equal(run("crate[E.HEALTH]"), 0);
 	assert.equal(run("crate[E.KIND]"), 16, "the model remains during collapse");
-	assert.deepEqual(Array.from(run("messages")), ["Found the rifle (Q to switch)."]);
+	assert.deepEqual(Array.from(run("messages")), ["Rifle: Q to switch"]);
 	assert.equal(run("EArray.filter(e => e[E.KIND] === 11).length"), run("gunCount"));
 	assert.equal(
 		run("canStand(...[position[0],position[2]])"),
@@ -1294,7 +1294,7 @@ test("crates announce the rifle once on the fatal hit without spawning a gun", (
 	run("updateGame(2, true); updateEntities(2);");
 	assert.equal(run("crate.every(n => n === 0)"), true, "crate slot clears after collapse");
 	run("shootCrate(); updateGame(10, true); updateEntities(10);");
-	assert.deepEqual(Array.from(run("messages")), ["Found the rifle (Q to switch)."], "no repeat reward after collapse");
+	assert.deepEqual(Array.from(run("messages")), ["Rifle: Q to switch"], "no repeat reward after collapse");
 	assert.equal(run("EArray.filter(e => e[E.KIND] === 11).length"), run("gunCount"));
 	assert.equal(run("EArray.filter(e => e[E.KIND] === 16).length"), crateCount - 1, "other crates stay intact");
 });

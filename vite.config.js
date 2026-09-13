@@ -6,6 +6,7 @@ import { execFileSync } from "node:child_process";
 import vm from "node:vm";
 import { parseAst } from "rolldown/parseAst";
 import { Packer } from "roadroller";
+import { releaseHtml } from "./scripts/release-html.mjs";
 import ClosureCompiler from "google-closure-compiler";
 import { assemble } from "./src/vvm-tools.js";
 import { minifyWgsl } from "./tools/wgsl-minify/src/minify.js";
@@ -132,7 +133,7 @@ var roadroller = (enabled) => ({
 			return html.replace(/<script.*?<\/script>/, () => `<script>${data}</script>`).trim();
 		}
 		const packer = new Packer([{ data, type: "text", action: "eval" }], {
-			maxMemoryMB: 1536,
+			maxMemoryMB: 768,
 			modelRecipBaseCount: 62,
 			dynamicModels: 0,
 			modelMaxCount: 3,
@@ -169,7 +170,7 @@ var roadroller = (enabled) => ({
 			throw Error("Packed game failed its code round-trip check");
 		}
 
-		return html.replace(/<script.*?<\/script>/, `<script>${code}</script>`).trim();
+		return html.replace(/<script.*?<\/script>/, () => releaseHtml(code)).trim();
 	},
 });
 

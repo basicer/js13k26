@@ -127,7 +127,7 @@ export function setupGame() {
 setupGame();
 
 const clockDigits = n => ("" + (n | 0)).padStart(2, "0");
-const random = (minimum = 0, range = 1) => minimum + Math.random() * range;
+const random = (minimum, range) => minimum + Math.random() * range;
 const isSprinting = () =>
 	player[E.HEALTH] &&
 	heldKeys.has("shift") &&
@@ -149,8 +149,8 @@ function particleBurst(
 	lifetime,
 	velocity,
 	spread,
-	transparency = 0,
-	parent = player[E.PARENT],
+	transparency,
+	parent,
 ) {
 	for (let i = 0; i < count; i++) {
 		const entity = spawn(transparency > 0 ? 134 : 6);
@@ -226,7 +226,7 @@ export function fireMarineGun() {
 	const pellets = weapon[3]; // A crate unlock can change weapons during this shot.
 	for (let pellet = 0; pellet < pellets; pellet++) {
 		// Uniform solid-angle sampling in an eight-degree cone around the bore.
-		const cosine = pellets === 1 ? 1 : 1 - random() * (1 - Math.cos(0.14));
+		const cosine = pellets === 1 ? 1 : 1 - Math.random() * (1 - Math.cos(0.14));
 		const radial = Math.sqrt(1 - cosine * cosine);
 		const angle = pellets === 1 ? 0 : random(0, Math.PI * 2);
 		const side = radial * Math.cos(angle),
@@ -315,16 +315,15 @@ export function firePellet(shooter, muzzleX, muzzleY, muzzleZ, forwardX, forward
 			if (target[E.KIND] === 16) {
 				if (++cratesBroken === 1) {
 					ownedWeapons.push(1);
-					flash("Found the rifle (Q to switch).");
+					flash("Rifle: Q to switch");
 				} else if (target[E.CONTENTS] === 2) {
 					ownedWeapons[0] = 2;
 					selectMarineWeapon(3);
-					flash("Found Shotgun.");
 				} else if (target[E.CONTENTS] === 1) {
 					player[E.HEALTH] = Math.min(7, player[E.HEALTH] + 1);
 					updateDamageDissolve(player, player[E.HEALTH], 7);
 					flash("+1 HP");
-				} else flash("Found Nothing");
+				} else flash("Empty");
 			}
 		}
 		return;

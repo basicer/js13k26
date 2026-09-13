@@ -1,3 +1,4 @@
+import { deferGame } from "./release-html.mjs";
 // Compression probes for the production WGSL string.  These excisions are
 // deliberately not runnable shaders: use them to prioritize real experiments.
 import fs from "node:fs";
@@ -19,7 +20,7 @@ const html = fs.readFileSync(path.join(root, "dist/index.html"), "utf8");
 const packed = /<script>([\s\S]*?)<\/script>/.exec(html)?.[1];
 if (!packed) throw Error("Run npm run build first");
 let code;
-vm.runInNewContext(`(function(){var ${"abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ".split("").join(",")};${packed}})()`, { eval: value => { code = value; } }, { timeout: 10000 });
+vm.runInNewContext(`(function(){var ${"abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ".split("").join(",")};${packed}})()`, { setTimeout: callback => callback(), eval: value => { code = value; } }, { timeout: 10000 });
 if (typeof code !== "string") throw Error("Could not decode the release JavaScript");
 
 const expand = file => fs.readFileSync(path.join(root, "shaders", file), "utf8")
@@ -44,7 +45,7 @@ const settings = vm.runInNewContext(`(${config.slice(packer.arguments[1].start, 
 const scratch = fs.mkdtempSync(path.join(os.tmpdir(), "js13k-shader-audit-"));
 function pack(source) {
     const { firstLine, secondLine } = new Packer([{ data: source, type: "js", action: "eval" }], settings).makeDecoder();
-    return html.replace(/<script>[\s\S]*?<\/script>/, `<script>${firstLine}\n${secondLine}</script>`);
+    return html.replace(/<script>[\s\S]*?<\/script>/, `<script>${deferGame(firstLine + secondLine)}</script>`);
 }
 function zipSize(contents) {
     const input = path.join(scratch, "index.html"), zip = path.join(scratch, "index.zip");
