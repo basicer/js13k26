@@ -190,7 +190,7 @@ export function selectMarineWeapon(number = (selectedWeapon === 1 ? ownedWeapons
 // Colored damage reaches 30% before death; eroding props reserve their final
 // collapse for death. All health-driven dissolve uses this one calculation.
 function updateDamageDissolve(entity, health, maximum) {
-	const goal = health > 0 ? ((maximum - health) * 0.3) / (maximum - (entity[E.DISSOLVE_PALETTE] > 0)) : 1;
+	const goal = health ? ((maximum - health) * 0.3) / (maximum - (entity[E.DISSOLVE_PALETTE] > 0)) : 1;
 	entity[entity[E.DISSOLVE_RATE] ? E.DISSOLVE_TARGET : E.DISSOLVE] = goal;
 }
 
@@ -249,11 +249,11 @@ export function firePellet(shooter, muzzleX, muzzleY, muzzleZ, forwardX, forward
 	const origin = [muzzleX, muzzleY, muzzleZ];
 	const direction = [forwardX * bulletRange, forwardY * bulletRange, forwardZ * bulletRange];
 	for (const entity of EArray) {
-		if (entity === shooter || !entity[E.KIND] || !(entity[E.SOLID] || entity[E.HEALTH] > 0 || entity[E.KIND] === 5)) continue;
+		if (entity === shooter || !entity[E.KIND] || !(entity[E.SOLID] || entity[E.HEALTH] || entity[E.KIND] === 5)) continue;
 		const distance = bulletRange * entityShotFraction(entity, origin, direction);
 		if (distance < bulletRange && (distance < closest || (distance === closest && entity[E.SOLID]))) {
 			closest = distance;
-			target = entity[E.HEALTH] > 0 ? entity : undefined;
+			target = entity[E.HEALTH] ? entity : undefined;
 		}
 	}
 	range = closest;
@@ -285,7 +285,7 @@ export function firePellet(shooter, muzzleX, muzzleY, muzzleZ, forwardX, forward
 		tracer.set([forwardX * 45, forwardY * 45, forwardZ * 45, (distance - length) / 45 || -1], E.VELOCITY);
 	}
 	if (!target) {
-		if (range > 0 && range < bulletRange) {
+		if (range && range < bulletRange) {
 			particleBurst(
 				[hitX - forwardX * 0.06, muzzleY + traceY - forwardY * 0.06, hitZ - forwardZ * 0.06],
 				8,
@@ -320,7 +320,7 @@ export function firePellet(shooter, muzzleX, muzzleY, muzzleZ, forwardX, forward
 				} else if (target[E.CONTENTS] === 1) {
 					player[E.HEALTH] = Math.min(5, player[E.HEALTH] + 1);
 					updateDamageDissolve(player, player[E.HEALTH], 5);
-					flash("Found a Med Kit");
+					flash("+1 HP");
 				} else flash("Found Nothing");
 			}
 		}
@@ -337,7 +337,7 @@ export function firePellet(shooter, muzzleX, muzzleY, muzzleZ, forwardX, forward
 		0.5,
 		target[E.PARENT],
 	);
-	if (target[E.HEALTH] > 0) updateDamageDissolve(target, target[E.HEALTH], 4);
+	if (target[E.HEALTH]) updateDamageDissolve(target, target[E.HEALTH], 4);
 	if (target[E.HEALTH] <= 0) {
 		// Roll onto the side, keeping the head-to-tail axis level.
 		target[E.ROT_X] = 0;
@@ -465,7 +465,7 @@ export function updateGame(deltaTime, freeCamera = false) {
 	}
 	if (shotgunPumpPending && shotCooldown === 0) {
 		shotgunPumpPending = false;
-		if (player[E.HEALTH] && weapon[4] > 0 && reloadCooldown <= 0) sound.shotgunPump();
+		if (player[E.HEALTH] && weapon[4] && reloadCooldown <= 0) sound.shotgunPump();
 	}
 	if (reloadCooldown > 0) {
 		reloadCooldown -= deltaTime;

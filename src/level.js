@@ -96,7 +96,7 @@ export function canStand(x, z, radius = 0.45, avoid = 0) {
 		(entity) => {
 			const dx = x - collisionPosition(entity, 0), dz = z - collisionPosition(entity, 2), c = Math.cos(entity[E.ROT_Y]), s = Math.sin(entity[E.ROT_Y]);
 			// Unicorn movement/spawns reserve space around other living unicorns.
-			return avoid && entity !== avoid && entity[E.KIND] === 2 && entity[E.HEALTH] > 0 && Math.hypot(dx, dz) < .8 || entity[E.KIND] && entity[E.SOLID] &&
+			return avoid && entity !== avoid && entity[E.KIND] === 2 && entity[E.HEALTH] && Math.hypot(dx, dz) < .8 || entity[E.KIND] && entity[E.SOLID] &&
 				(entity[E.KIND] !== 19 || collisionPosition(entity, 1) - Math.abs(entity[E.SCALE_Y]) / 2 < 1.25) &&
 				Math.abs(dx * c + dz * s) < Math.abs(entity[E.SCALE_X]) / 2 + radius &&
 				Math.abs(dz * c - dx * s) < Math.abs(entity[E.SCALE_Z]) / 2 + radius;
