@@ -13,6 +13,7 @@ test("cursor readback round-trips the shader's 128-unit range at 1/256 precision
 	};
 	let data;
 	const context = vm.createContext({
+		DEBUG: false,
 		entityIndexTexture: {}, c: { width: 100, height: 100 },
 		GPUBufferUsage: { COPY_DST: 1, MAP_READ: 2 }, GPUMapMode: { READ: 1 },
 		Q: { submit() {} },

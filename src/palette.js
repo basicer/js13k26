@@ -1,9 +1,12 @@
 // Two palette texels per material: RGBA, then metal/rough/emissive/reserved.
 export const palette = new Uint8Array(2048);
+// Standalone tooling retains the full palette. Release omits unused colors;
+// gray 216 and rainbow 255 have their RGB replaced below/in the shader.
+const editorPalette = typeof DEBUG === "undefined" || DEBUG;
 
 let utility = [
-	0x80dfff, 0xffff00, 0xff4040, 0x40ff40, 0x4080ff, 0xff8800, 0x00ff99, 0xffcc00, 0xff0000, 0xff00ff, 0x00ffff,
-	0x00ff40, 0, 0xffff00, 0xffffff,
+	0x80dfff, 0xffff00, 0xff4040, 0x40ff40, editorPalette ? 0x4080ff : 0, 0xff8800, editorPalette ? 0x00ff99 : 0, 0xffcc00, 0xff0000, editorPalette ? 0xff00ff : 0, editorPalette ? 0x00ffff : 0,
+	editorPalette ? 0x00ff40 : 0, 0, 0xffff00, editorPalette ? 0xffffff : 0,
 ];
 
 for (let i = 1; i < 256; i++) {
@@ -21,9 +24,9 @@ for (let i = 1; i < 256; i++) {
 			[49,-1,0,110], [73,0x172318,0x769b80,225],
 			[89,0xffddc7,0x301c18,220], [101,0x111913,0x70462f,225],
 			[105,0x1a2021,0x566267,200], [125,0x210006,0xff3652,65,235],
-			[145,0x03162d,0xa5f6ff,30,205], [157,0x18304d,0xe8fcff,20,45],
+			...(editorPalette ? [[145,0x03162d,0xa5f6ff,30,205], [157,0x18304d,0xe8fcff,20,45]] : [[157]]),
 			[177,0x1d2020,0x68705c,230], [189,0x20262d,0xb9cad3,30,255,210],
-			[201,0x003d4c,0x46ffff,20,255,0,240], [217,0,0xffffff,180],
+			[201,0x003d4c,0x46ffff,20,255,0,240], [217,0,editorPalette ? 0xffffff : 0,180],
 			[241,-2,0,60,255,0,160]
 		];
 		let low = 1;

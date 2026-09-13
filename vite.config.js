@@ -66,7 +66,8 @@ var zzfxm = (pack) => ({
 		if (!/\.zzfxm$/.test(id)) return undefined;
 		let code = readFileSync(id).toString("utf-8");
 		code = code.replace(/[{][^}]*[}]/gm, "{}");
-		return compactTrack(code, pack && id.endsWith("Main Title.zzfxm"));
+		const legacy = id.endsWith("Main Title.zzfxm");
+		return compactTrack(code, pack && legacy, legacy);
 	},
 });
 
@@ -130,15 +131,15 @@ var roadroller = (enabled) => ({
 			if (/<\/script/i.test(data)) throw Error("Unsafe inline script terminator");
 			return html.replace(/<script.*?<\/script>/, () => `<script>${data}</script>`).trim();
 		}
-		const packer = new Packer([{ data, type: "js", action: "eval" }], {
-			maxMemoryMB: 128,
-			modelRecipBaseCount: 62,
+		const packer = new Packer([{ data, type: "text", action: "eval" }], {
+			maxMemoryMB: 1536,
+			modelRecipBaseCount: 61,
 			dynamicModels: 0,
 			modelMaxCount: 3,
 			numAbbreviations: 0,
 			sparseSelectors: [0, 1, 2, 3, 5, 6, 7, 10, 13, 22, 25, 45, 51, 81, 230, 249, 345, 396, 417, 423],
 			precision: 16,
-			recipLearningRate: 2501,
+			recipLearningRate: 3100,
 			// The packed release owns its single page; game code has its own wrapper.
 			allowFreeVars: true,
 		});

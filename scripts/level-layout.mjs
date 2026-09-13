@@ -23,7 +23,7 @@ for (let i = 0; i < plan.length;) {
 	const type = plan[i++];
 	if (type === 9) { section++; continue; }
 	let x = plan[i++] - 16, z = plan[i++] - 16, width, depth;
-	if (type === 10 || type === 11) { actors.push({type,x,z,section}); continue; }
+	if (type === 10 || type === 11 || type === 16) { actors.push({type,x,z,section}); continue; }
 	if (type > 1 && type !== 8 && type < 12) [width, depth] = size(type);
 	else [width, depth] = [plan[i++], plan[i++]];
 	if (type === 13 || type === 15) i += 2; // Height and bottom.
@@ -54,8 +54,8 @@ const route = [[-11,-11],[-10,-12],[2,-12],[2,8],[-6,8],[-6,14],[-12.5,14],[-13,
 const labels = [[-12,-9,"01 START"],[2,-2,"02 HALLWAY"],[-6,22,"03 CARGO"],[-17.5,22,"04 ELEVATOR"],[-45.5,10,"05 BOSS ROOM"]]
 	.map(([x, z, label]) => { const [px, py] = point(x, z); return `<text x="${px}" y="${py}">${label}</text>`; }).join("");
 // Actor markers come from the same ordered plan as scenery.
-const portals = actors.filter(e => e.type === 10).map(({x,z}) => {
-	const yaw = Math.PI / 2;
+const portals = actors.filter(e => e.type === 10 || e.type === 16).map(({type,x,z}) => {
+	const yaw = (type === 16 ? -1 : 1) * Math.PI / 2;
 	const [px,py] = point(x,z);
 	return `<g transform="translate(${px} ${py}) rotate(${-yaw*180/Math.PI})"><title>Portal at ${x}, ${z}; arrow points into room</title><path d="M-23 0H23" stroke="#ff647e" stroke-width="6"/><path d="M0 -8V-27m-7 7 7-7 7 7" fill="none" stroke="#ffb2bf" stroke-width="3"/></g>`;
 }).join("");

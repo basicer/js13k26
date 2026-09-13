@@ -106,14 +106,14 @@ test("win message shows elapsed gameplay as MM:SS and freezes the finished time"
 	for (const [seconds, formatted] of [[0, "00:00"], [9.9, "00:09"], [65.9, "01:05"], [600, "10:00"]]) {
 		const { run } = game(false);
 		assert.equal(run("gameTime"), 0);
-		run(`EArray.forEach(e => e[E.SOLID] = e[E.HEALTH] = 0);
+		run(`EArray.filter(e => e !== player).forEach(e => e[E.SOLID] = e[E.HEALTH] = 0);
 			EArray.filter(e => e[E.KIND] === 5).forEach(e => e[E.KIND] = 0);
 			player.set([0,0,0], E.POS); updateGame(${seconds}, true);
 			globalThis.portal = getPortals()[0]; portal[E.PARENT] = 0;
 			portal.set([2,.2,0], E.POS); portal.fill(1, E.SCALE, E.SCALE+3);
 			portal[E.HEALTH] = 1; portals = 1;
 			globalThis.message = ""; flash = text => message = text;
-			firePellet(0,.2,0,1,0);`);
+			firePellet(player, 0,.2,0,1,0, 0);`);
 		assert.equal(run("message"), "YOU WIN! " + formatted);
 		assert.equal(run("portals"), 0);
 		run("updateGame(10, true)");
@@ -164,7 +164,7 @@ test("fixed crate contents drive rewards while the first crate always grants the
 		player[E.POS_X] = 4; player[E.POS_Z] = -11;
 		globalThis.breakCrate = () => {
 			crate[E.HEALTH] = 1; crate[E.SOLID] = 1;
-			firePellet(4, .1, -11, 0, 1);
+			firePellet(player, 4, .1, -11, 0, 1, 0);
 		};
 		crate[E.CONTENTS] = 2; breakCrate();`);
 	assert.equal(run("cratesBroken"), 1);
@@ -174,15 +174,15 @@ test("fixed crate contents drive rewards while the first crate always grants the
 	assert.equal(run("selectedWeapon"), 1);
 	run("selectMarineWeapon()");
 	assert.equal(run("selectedWeapon"), 0);
-	run("marineHealth = 3; updateDamageDissolve(player, 3, 5); crate[E.CONTENTS] = 1; breakCrate()");
-	assert.equal(run("marineHealth"), 4);
+	run("player[E.HEALTH] = 3; updateDamageDissolve(player, 3, 5); crate[E.CONTENTS] = 1; breakCrate()");
+	assert.equal(run("player[E.HEALTH]"), 4);
 	assert.ok(Math.abs(run("player[E.DISSOLVE]") - .075) < 1e-6);
-	assert.equal(run("messages.at(-1)"), "Found a Med Kit");
+	assert.equal(run("messages.at(-1)"), "+1 HP");
 	run("crate[E.CONTENTS] = 0; breakCrate()");
-	assert.equal(run("marineHealth"), 4);
+	assert.equal(run("player[E.HEALTH]"), 4);
 	assert.equal(run("messages.at(-1)"), "Found Nothing");
-	run("marineHealth = 5; crate[E.CONTENTS] = 1; breakCrate()");
-	assert.equal(run("marineHealth"), 5, "healing cannot exceed starting health");
+	run("player[E.HEALTH] = 5; crate[E.CONTENTS] = 1; breakCrate()");
+	assert.equal(run("player[E.HEALTH]"), 5, "healing cannot exceed starting health");
 	run("crate[E.CONTENTS] = 0; breakCrate()");
 	assert.equal(run("cratesBroken"), 5);
 	assert.deepEqual(Array.from(run("ownedWeapons")), [0, 1], "fifth crate no longer grants the shotgun");
@@ -267,13 +267,13 @@ test("elevator arrivals accelerate from both ends, land by the rails, then fight
 	assert.equal(run("getUnicorns().length"), 0, "the final trio only happens once, even with clear spawn lanes");
 });
 
-test("elevator console requires two surviving portals and clears the herd on launch", () => {
+test("elevator console requires three surviving portals and clears the herd on launch", () => {
 	const { run } = game();
 	run(
 		"globalThis.panel = EArray.find(e => e[E.KIND] === 15 && e[E.CONTROLLER] === sections[0].id); activateConsole(panel);",
 	);
 	assert.equal(run("panel[E.MODEL_VARIANT]"), 0);
-	run("portals = 2; elevatorFinished = true; activateConsole(panel);");
+	run("portals = 3; elevatorFinished = true; activateConsole(panel);");
 	assert.equal(run("elevatorFinished"), 0, "launch resets the final-wave latch");
 	assert.equal(run("panel[E.MODEL_VARIANT]"), 1);
 	assert.equal(run("getUnicorns().length"), 0);
@@ -302,7 +302,7 @@ test("start room contains a permanent floor inlay and no enemy gate", () => {
 	assert.equal(run("logo[E.SOLID]"), 0);
 	run("updateEntities(10)");
 	assert.equal(run("logo[E.KIND]"), 13, "inlay persists after starting play");
-	assert.equal(run("getPortals().length"), 4);
+	assert.equal(run("getPortals().length"), 5);
 	assert.equal(run("getPortals().some(e => e[E.POS_X] < -7 && e[E.POS_Z] < -7)"), false);
 	assert.equal(
 		run("EArray.some(e => e[E.KIND] === 13 && e[E.POS_X] === -11 && e[E.POS_Z] === -11.5)"),
@@ -332,7 +332,7 @@ test("sections move rendering while combat and effects keep map-local coordinate
 	assert.equal(run("getUnicorns().at(-1)[E.PARENT]"), 0);
 	assert.equal(run("getUnicorns().at(-1)[E.POS_Y]"), 0);
 	run(
-		"globalThis.crate = EArray.find(e => e[E.KIND] === 16 && e[E.PARENT] === sections[2].id); crate[E.HEALTH] = 1; player[E.POS_X] = crate[E.POS_X]; player[E.POS_Z] = crate[E.POS_Z]-1; firePellet(crate[E.POS_X],.1,crate[E.POS_Z]-1,0,1);",
+		"globalThis.crate = EArray.find(e => e[E.KIND] === 16 && e[E.PARENT] === sections[2].id); crate[E.HEALTH] = 1; player[E.POS_X] = crate[E.POS_X]; player[E.POS_Z] = crate[E.POS_Z]-1; firePellet(player, crate[E.POS_X],.1,crate[E.POS_Z]-1,0,1, 0);",
 	);
 	assert.equal(run("EArray.some(e => e[E.KIND] === 11 && e[E.PARENT] === sections[2].id)"), true);
 	run("particleBurst([0,0,1],1,.1,[249],1,[0,0,0],[0,0,0],0,sections[2].id);");
@@ -347,15 +347,15 @@ test("only a fatal hit schedules one restart after five seconds", () => {
 	touch();
 	run("updateGame(0);");
 	assert.equal(timers.length, 0);
-	run("marineHealth = 1; hurtCooldown = 0;");
+	run("player[E.HEALTH] = 1; hurtCooldown = 0;");
 	touch();
 	run("updateGame(0); updateGame(1); updateGame(10);");
-	assert.equal(run("marineHealth"), 0);
+	assert.equal(run("player[E.HEALTH]"), 0);
 	assert.equal(timers.length, 1);
 	assert.equal(timers[0].delay, 5000);
-	assert.equal(run("marineHealth"), 0);
+	assert.equal(run("player[E.HEALTH]"), 0);
 	timers[0].callback();
-	assert.equal(run("marineHealth"), 5);
+	assert.equal(run("player[E.HEALTH]"), 5);
 	assert.equal(run("getUnicorns().length"), 5);
 	assert.equal(run("getPortals().every(e => e[25] === 50)"), true);
 	assert.equal(run("weapons.every(w => w[4] === w[0])"), true);
@@ -385,7 +385,7 @@ test("in-place setup restores the entire world and advances the debug camera ver
 	for (let cycle = 0; cycle < 2; cycle++) {
 		run(`
 			globalThis.oldVersion = entityVersion;
-			marineHealth = 1; hurtCooldown = 0;
+			player[E.HEALTH] = 1; hurtCooldown = 0;
 			globalThis.enemy = EArray.find(e => e[0] === 2);
 			enemy[4] = player[4]; enemy[6] = player[6]; updateGame(0);
 			heldKeys.add('w'); entityOverrides.set(1, {});
@@ -395,7 +395,7 @@ test("in-place setup restores the entire world and advances the debug camera ver
 		timers[cycle].callback();
 		assert.equal(run("entities === storage && EArray[1] === view"), true);
 		assert.equal(run("entities.every((value, i) => value === initial[i])"), true);
-		assert.equal(run("marineHealth === 5 && selectedWeapon === 1 && weapons.every(w => w[4] === w[0])"), true);
+		assert.equal(run("player[E.HEALTH] === 5 && selectedWeapon === 1 && weapons.every(w => w[4] === w[0])"), true);
 		assert.equal(run("!heldKeys.size && !entityOverrides.size && !triggerHeld && !reloadCooldown"), true);
 		assert.equal(run("entityVersion === oldVersion + 1"), true);
 		assert.equal(run("entities.every((value, i) => value === initial[i])"), true);
@@ -485,7 +485,7 @@ test("wall and interior pillar portals survive 49 hits and dissolve completely a
 			globalThis.normal = marineFacing(portalTarget[9]);
 			player[4] = portalTarget[4] + normal[0] * 3;
 			player[6] = portalTarget[6] + normal[1] * 3;
-			globalThis.shootPortal = () => firePellet(player[4], 0.2, player[6], -normal[0], -normal[1]);`);
+			globalThis.shootPortal = () => firePellet(player, player[4], 0.2, player[6], -normal[0], -normal[1], 0);`);
 		run("for (let hit = 0; hit < 49; hit++) shootPortal();");
 		assert.equal(run("portalTarget[25]"), 1);
 		assert.equal(run("portalTarget[3]"), 0);
@@ -510,18 +510,18 @@ test("wall and interior pillar portals survive 49 hits and dissolve completely a
 test("portal shots respect cover, nearer unicorns and the elliptical outline", () => {
 	const { run } = game();
 	// Cargo at (5, 5) blocks this ray to the south wall portal.
-	run("getUnicorns().forEach(e => e[0] = 0); player[4] = 6; player[6] = 0; firePellet(6, 0.2, 0, 0, 1);");
+	run("getUnicorns().forEach(e => e[0] = 0); player[4] = 6; player[6] = 0; firePellet(player, 6, 0.2, 0, 0, 1, 0);");
 	assert.equal(run("getPortals()[2][25]"), 50);
 	// A unicorn between the gun and the north portal absorbs the hit.
-	run("player[4] = 3; player[6] = -12; spawnUnicorn(3, -13); firePellet(3, 0.2, -12, 0, -1);");
+	run("player[4] = 3; player[6] = -12; spawnUnicorn(3, -13); firePellet(player, 3, 0.2, -12, 0, -1, 0);");
 	assert.equal(run("getUnicorns()[0][25]"), 3);
 	assert.equal(run("getPortals()[0][25]"), 50);
-	run("getUnicorns().forEach(e => e[0] = 0); firePellet(3, 2, -12, 0, -1); firePellet(4.8, 0.2, -12, 0, -1);");
+	run("getUnicorns().forEach(e => e[0] = 0); firePellet(player, 3, 2, -12, 0, -1, 0); firePellet(player, 4.8, 0.2, -12, 0, -1, 0);");
 	assert.equal(run("getPortals()[0][25]"), 50);
 	// The wider lower arc takes hits, but its empty upper corners do not.
-	run("firePellet(4.2, 0.2, -12, 0, -1);");
+	run("firePellet(player, 4.2, 0.2, -12, 0, -1, 0);");
 	assert.equal(run("getPortals()[0][25]"), 49);
-	run("firePellet(4.2, 1.1, -12, 0, -1);");
+	run("firePellet(player, 4.2, 1.1, -12, 0, -1, 0);");
 	assert.equal(run("getPortals()[0][25]"), 49);
 });
 
@@ -571,7 +571,7 @@ test("portal damage advances spawning but respects crowding and destruction", ()
 		hurtCooldown = 10;
 		gate[E.AGE] = 11.5;
 		player[E.POS_X] = gate[E.POS_X] - 3; player[E.POS_Z] = gate[E.POS_Z];
-		globalThis.shootGate = () => firePellet(player[E.POS_X],gate[E.POS_Y],player[E.POS_Z],1,0);
+		globalThis.shootGate = () => firePellet(player, player[E.POS_X],gate[E.POS_Y],player[E.POS_Z],1,0, 0);
 		shootGate();`);
 	assert.equal(run("gate[E.HEALTH]"), 49);
 	assert.equal(run("gate[E.AGE]"), 12.5);
@@ -675,7 +675,7 @@ test("shotgun ready sound plays once at cooldown completion", () => {
 });
 
 test("shotgun ready sound is suppressed after switching, reloading, death, or the last shell", () => {
-	for (const action of ["selectMarineWeapon(1)", "reloadMarineGun()", "marineHealth = 0", "weapon[4] = 0"]) {
+	for (const action of ["selectMarineWeapon(1)", "reloadMarineGun()", "player[E.HEALTH] = 0", "weapon[4] = 0"]) {
 		const { run, sounds } = game();
 		run(`getUnicorns().forEach(e => e[0] = 0); selectMarineWeapon(3); fireMarineGun(); ${action}; updateGame(1);`);
 		assert.equal(sounds.shotgunPump, 0, action);
@@ -731,10 +731,10 @@ test("shotgun fires twelve distinct pellet rays per shell with a 0.7 second cool
 test("pellet height affects hits and short cover intersection", () => {
 	const { run } = game();
 	run(
-		"EArray.forEach(e => e[28] = 0); getUnicorns().forEach(e => e[0] = 0); spawnUnicorn(0, 8); firePellet(0, 0.1640625, 0, 0, Math.cos(0.14), Math.sin(0.14));",
+		"EArray.forEach(e => e[28] = 0); getUnicorns().forEach(e => e[0] = 0); spawnUnicorn(0, 8); firePellet(player, 0, 0.1640625, 0, 0, Math.cos(0.14), Math.sin(0.14));",
 	);
 	assert.equal(run("getUnicorns()[0][25]"), 4);
-	run("firePellet(0, 0.1640625, 0, 0, 1, 0);");
+	run("firePellet(player, 0, 0.1640625, 0, 0, 1, 0);");
 	assert.equal(run("getUnicorns()[0][25]"), 3);
 	run("block(0, 5.5, 2, 0.5 - ground, 1);");
 	assert.equal(run("shotFraction(0, 0, 0, 10, 0.2, 2)"), 1);
@@ -898,12 +898,12 @@ test("walk cycle is frame-rate independent and freezes when blocked, stopped, or
 test("unicorns must close to one unit before contact damage", () => {
 	const { run, sounds } = game();
 	run("getUnicorns()[0][4] = player[4] + 1.3; getUnicorns()[0][6] = player[6]; updateGame(0);");
-	assert.equal(run("marineHealth"), 5);
+	assert.equal(run("player[E.HEALTH]"), 5);
 	run("updateGame(0.1);");
-	assert.equal(run("marineHealth"), 5);
+	assert.equal(run("player[E.HEALTH]"), 5);
 	assert.ok(run("getUnicorns()[0][4] - player[4] < 1.3"));
 	run("updateGame(0.1);");
-	assert.equal(run("marineHealth"), 4);
+	assert.equal(run("player[E.HEALTH]"), 4);
 	assert.equal(sounds.hurt, 1);
 });
 
@@ -911,7 +911,7 @@ test("contact hurts once, plays a sound and pushes the marine away", () => {
 	const { run, touch, sounds } = game();
 	touch();
 	run("updateGame(0)");
-	assert.equal(run("marineHealth"), 4);
+	assert.equal(run("player[E.HEALTH]"), 4);
 	assert.equal(sounds.hurt, 1);
 	assert.equal(run("getUnicorns()[0][4]"), -1, "attacker is not knocked back");
 	assert.ok(Math.abs(run("player[4]") + 2.9) < 0.00001);
@@ -920,7 +920,7 @@ test("contact hurts once, plays a sound and pushes the marine away", () => {
 	run("updateGame(0.4)");
 	assert.equal(sounds.hurt, 1);
 	run("updateGame(0.46)");
-	assert.equal(run("marineHealth"), 3);
+	assert.equal(run("player[E.HEALTH]"), 3);
 	assert.equal(sounds.hurt, 2);
 });
 
@@ -928,7 +928,7 @@ test("a crowd cannot deal multiple hits in one frame", () => {
 	const { run, touch, sounds } = game();
 	touch();
 	run("spawnUnicorn(player[4] - 1, player[6]); updateGame(0)");
-	assert.equal(run("marineHealth"), 4);
+	assert.equal(run("player[E.HEALTH]"), 4);
 	assert.equal(sounds.hurt, 1);
 });
 
@@ -958,7 +958,7 @@ test("fifth hit leaves a corpse and disables movement, aiming, firing and reload
 		run("updateGame(0.86)");
 		if (i === 4) assert.deepEqual(Array.from(run("player.subarray(4, 7)")), position);
 	}
-	assert.equal(run("marineHealth"), 0);
+	assert.equal(run("player[E.HEALTH]"), 0);
 	assert.equal(sounds.hurt, 5);
 	assert.equal(sounds.explode, 1);
 	assert.ok(Math.abs(run("marineBody[8]") - Math.PI / 2) < 0.001);
@@ -1004,13 +1004,13 @@ test("knockback stays inside the arena and cover prevents contact damage", () =>
 test("bullets stop at 14 units and ray misses cannot damage distant or off-axis crates", () => {
 	for (const [x, z, health] of [[13, 0, 3], [15, 0, 4], [4, 4, 4]]) {
 		const { run } = game();
-		run(`EArray.forEach(e => e[E.SOLID] = e[E.HEALTH] = 0);
+		run(`EArray.filter(e => e !== player).forEach(e => e[E.SOLID] = e[E.HEALTH] = 0);
 			EArray.filter(e => e[E.KIND] === 5).forEach(e => e[E.KIND] = 0);
 			player.set([0, 0, 0], E.POS);
 			globalThis.crate = EArray.find(e => e[E.KIND] === 16);
 			crate[E.PARENT] = 0; crate.set([${x}, .2, ${z}], E.POS);
 			crate[E.SOLID] = 1; crate[E.HEALTH] = 4;
-			firePellet(0, .2, 0, 1, 0);
+			firePellet(player, 0, .2, 0, 1, 0, 0);
 			globalThis.tracer = effects().find(e => e[E.KIND] === 7);`);
 		assert.equal(run("crate[E.HEALTH]"), health);
 		const end = run("tracer[E.POS_X] + tracer[E.VELOCITY_X] * tracer[E.TTL] + tracer[E.SCALE_Z] / 2");
@@ -1024,7 +1024,7 @@ test("bullets stop at 14 units and ray misses cannot damage distant or off-axis 
 
 test("yellow tracers exceed the bloom threshold and retire their local lights", () => {
 	const { run } = game();
-	run("firePellet(-11, .2, -11.5, 1, 0); globalThis.tracer = effects().find(e => e[E.KIND] === 7)");
+	run("firePellet(player, -11, .2, -11.5, 1, 0, 0); globalThis.tracer = effects().find(e => e[E.KIND] === 7)");
 	assert.equal(run("tracer[E.MAT_OVERRIDE]"), 254);
 	assert.deepEqual(Array.from(palette.slice(254 * 4, 254 * 4 + 3)), [255, 255, 0]);
 	assert.ok(palette[1024 + 254 * 4 + 2] / 255 * 4 > 1, "emission alone passes the bloom cutoff");
@@ -1238,7 +1238,7 @@ test("floor uses the same box intersection and dead targets or effects do not in
 	run(`EArray.forEach(e => e[0] = 0);
 		const floor = spawn(5); floor.set([0,-32/64,0], E.POS); floor.set([32,4/64,32], E.SCALE);
 		player[E.POS_X] = player[E.POS_Z] = 0;
-		firePellet(0, .5, 0, 0, Math.SQRT1_2, -Math.SQRT1_2);`);
+		firePellet(player, 0, .5, 0, 0, Math.SQRT1_2, -Math.SQRT1_2);`);
 	assert.equal(run("effects().filter(e => e[E.MAT_OVERRIDE] === 242 && e[E.KIND] === 6).length"), 4);
 	const { run: shoot } = game();
 	shoot(`getUnicorns()[0].set([-2+1/64, 0, 2], E.POS); getUnicorns()[0][E.HEALTH] = 0;
@@ -1254,7 +1254,7 @@ test("crates announce the rifle once on the fatal hit without spawning a gun", (
 		globalThis.gunCount = EArray.filter(e => e[E.KIND] === 11).length;
 		globalThis.crate = EArray.find(e => e[E.KIND] === 16 && e[E.POS_X] === 4 && e[E.POS_Z] === -10);
 		player[E.POS_X] = crate[E.POS_X]; player[E.POS_Z] = crate[E.POS_Z] - 1;
-		globalThis.shootCrate = () => firePellet(player[E.POS_X], .1, player[E.POS_Z], 0, 1);`);
+		globalThis.shootCrate = () => firePellet(player, player[E.POS_X], .1, player[E.POS_Z], 0, 1, 0);`);
 	assert.equal(
 		run("EArray.filter(e => e[E.KIND] === 16).every(e => e[E.HEALTH] === 4 && e[E.DISSOLVE_PALETTE] === 0)"),
 		true,
@@ -1305,9 +1305,9 @@ test("crate cover protects a target until the fatal pellet; subsequent pellets p
 		globalThis.crate = EArray.find(e => e[E.KIND] === 16 && e[E.POS_X] === 4 && e[E.POS_Z] === -10);
 		player[E.POS_X] = crate[E.POS_X]; player[E.POS_Z] = crate[E.POS_Z] - 1;
 		spawnUnicorn(crate[E.POS_X], crate[E.POS_Z] + 1);
-		for (let hit = 0; hit < 4; hit++) firePellet(player[E.POS_X], .1, player[E.POS_Z], 0, 1);`);
+		for (let hit = 0; hit < 4; hit++) firePellet(player, player[E.POS_X], .1, player[E.POS_Z], 0, 1, 0);`);
 	assert.equal(run("getUnicorns()[0][E.HEALTH]"), 4);
-	run("firePellet(player[E.POS_X], .1, player[E.POS_Z], 0, 1);");
+	run("firePellet(player, player[E.POS_X], .1, player[E.POS_Z], 0, 1, 0);");
 	assert.equal(run("getUnicorns()[0][E.HEALTH]"), 3);
 });
 
@@ -1333,9 +1333,9 @@ test("one permanent muzzle flash follows the arms and reuses its 35ms timer", ()
 	assert.equal(run("flash[E.TRANSPARENCY]"), 1);
 	assert.equal(run("EArray.filter(e => e[E.KIND] === 6 && e[E.MAT_OVERRIDE] === 246).length"), 1);
 	assert.equal(run("flash === muzzleFlash"), true);
-	for (const setup of ["weapon[4] = 0", "reloadCooldown = 1", "marineHealth = 0"]) {
+	for (const setup of ["weapon[4] = 0", "reloadCooldown = 1", "player[E.HEALTH] = 0"]) {
 		run(
-			`weapon[4] = 10; reloadCooldown = 0; marineHealth = 5; setMarineTrigger(false); ${setup}; fireMarineGun();`,
+			`weapon[4] = 10; reloadCooldown = 0; player[E.HEALTH] = 5; setMarineTrigger(false); ${setup}; fireMarineGun();`,
 		);
 		assert.equal(run("flash[E.SPOTLIGHT]"), 0, "blocked firing cannot reactivate the flash");
 	}

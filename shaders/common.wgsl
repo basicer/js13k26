@@ -35,6 +35,8 @@ struct Entity {
     controller: f32,
     // Crate contents: 0 empty, 1 medkit, 2 shotgun (uses existing padding).
     contents: f32,
+    // Seconds between unicorn spawns; zero disables spawning (existing padding).
+    unicornInterval: f32,
 };
 
 fn local_transform(entity: Entity) -> mat4x4<f32> {
@@ -65,19 +67,11 @@ struct FragmentOutput {
     @builtin(frag_depth) depth: f32,
 };
 
-struct VoxelHit {
-    distance: f32,
-    material: f32,
-    normal: vec3<f32>,
-    cell: vec3<i32>,
-};
-
 struct RenderState {
     time: f32,
     aspect: f32,
-    fov: f32,
-    padding: f32,
-    mouse: vec4<f32>,
+    // Cursor coordinates remain CPU-only; retain their uniform-buffer space.
+    @size(24) fov: f32,
     light_entities: array<vec4<u32>, 8>,
 };
 

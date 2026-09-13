@@ -14,11 +14,10 @@ fn shade_surface(base_color: vec3<f32>, normal: vec3<f32>, view: vec3<f32>, roug
         let transform = world_transform(index);
         let axis = transform[2].xyz;
         // Spawn and the inspector already constrain cone angles to 0..2PI.
-        let cutoff = cos(light.light_angle * 0.5f);
         let to_light = transform[3].xyz - world_position;
         let distance_squared = max(dot(to_light, to_light), 0.000001f);
         let light_direction = to_light * inverseSqrt(distance_squared);
-        if (dot(-light_direction, axis / max(length(axis), 0.000001f)) < cutoff) { continue; }
+        if (dot(-light_direction, axis / max(length(axis), 0.000001f)) < cos(light.light_angle * 0.5f)) { continue; }
         color += direct_lighting(base_color, normal, view, roughness, metalness, light_direction) * light.spotlight / (1.0f + distance_squared);
     }
     return color + direct_lighting(base_color, normal, view, roughness, metalness, normalize(vec3<f32>(-0.4f, 0.8f, -0.5f))) * 0.25f;

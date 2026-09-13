@@ -53,6 +53,7 @@ export function entityInspector(overrides, open) {
 	const modelVariant = [entity[E.MODEL_VARIANT] >= 0.5];
 	const velocity = Array.from(entity.subarray(E.VELOCITY, E.VELOCITY + 3));
 	const ttl = [entity[E.TTL]];
+	const unicornInterval = [entity[E.UNICORN_INTERVAL]];
 	const targetPosition = Array.from(entity.subarray(E.TARGET_POSITION, E.TARGET_POSITION + 3));
 	const lerpSpeed = [entity[E.LERP_SPEED]];
 	const target = [entity[E.CONTROLLER]];
@@ -132,6 +133,10 @@ export function entityInspector(overrides, open) {
 	if (ImGui.DragFloat("TTL (seconds, 0 = forever)", ttl, 0.05)) {
 		entity[E.TTL] = ttl[0];
 		entity[E.AGE] = 0;
+		changed = true;
+	}
+	if (ImGui.DragFloat("Unicorn interval (seconds, 0 = off)", unicornInterval, 0.1)) {
+		entity[E.UNICORN_INTERVAL] = Math.max(0, unicornInterval[0]);
 		changed = true;
 	}
 	if (ImGui.DragFloat3("Rotation (rad)", rotation, 0.01)) {

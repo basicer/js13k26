@@ -44,7 +44,12 @@ if (DEBUG) voxT[2] = voxT[7] = cube;
 
 // Retain editable CPU material planes, but use the same RG integer texture as
 // release rendering. A standalone preview repeats its material in both poses.
-export const flush = (texture, buffer = buffers.get(texture), variant = buffer) => {
+// Release uploads always supply both planes; only editor calls need defaults.
+export const flush = (texture, buffer, variant) => {
+	if (DEBUG) {
+		if (buffer === undefined) buffer = buffers.get(texture);
+		if (variant === undefined) variant = buffer;
+	}
 	const stride = DEBUG ? 4 : 1;
 	const packed = new Uint8Array((buffer.length / stride) * 2);
 	for (let i = 0; i < packed.length; i++) packed[i] = (i & 1 ? variant : buffer)[(i >> 1) * stride];
@@ -262,7 +267,7 @@ export function buildVoxelVariants(bytecode, run, parameter = () => 0) {
 
 // Publish both material planes together in one texture. Failed previews retain
 // the previous model; poses are drawn on the CPU before allocating their texture.
-export function buildModel(slot, bytecode, parameter = () => 0) {
+export function buildModel(slot, bytecode, parameter) {
 	let previous;
 	if (DEBUG) previous = voxT[slot];
 	voxT[slot] = uploadModel(...buildVoxelVariants(bytecode, runByteCode, parameter));

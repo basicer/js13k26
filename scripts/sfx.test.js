@@ -38,7 +38,7 @@ test("main title pads retain the tracker pitch through their sustain", () => {
 	vm.runInContext("zzfxP = (...channels) => channels", context);
 	vm.runInContext(source.slice(source.indexOf("export let music1"), source.indexOf("/*", source.indexOf("export let music1"))).replace("export ", ""), context);
 	for (const note of [18, 25]) {
-		context.music1_js = [track[0], [[[8, 0, note, 0, 0, 0, 0, 0, 0, 0]]], [0], 125, {}];
+		context.music1_js = [track[0], [[[8, 0, note, 0, 0, 0, 0, 0, 0, 0]]], [0], 125, true];
 		const samples = vm.runInContext("music1()[0]", context);
 		const expectedHz = 220 * 2 ** ((note - 12) / 12);
 		for (const start of [.1, .5]) {

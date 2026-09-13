@@ -12,6 +12,48 @@ function entityContext() {
 	return context;
 }
 
+test("spawn prefers free slots over live disposable particles", () => {
+	const context = entityContext();
+	const result = vm.runInContext(`
+		const particle = spawn(134);
+		particle[E.GRAVITY] = 9;
+		const next = spawn(2);
+		[particle.id, next.id, particle[E.KIND], particle[E.GRAVITY]];
+	`, context);
+	assert.deepEqual(Array.from(result), [1, 2, 134, 9]);
+});
+
+test("full pools recycle particles without touching actors, scenery or permanent effects", () => {
+	const context = entityContext();
+	const result = vm.runInContext(`
+		for (let i = 1; i < ENTITY_COUNT; i++) {
+			const e = spawn([2, 7, 6, 18][i % 4]);
+			e[E.HEALTH] = 4;
+			e[E.TTL] = i % 4 ? 0 : 5;
+		}
+		const particle = EArray[100];
+		particle.fill(9);
+		particle[E.KIND] = 134;
+		const before = entities.slice();
+		const replacement = spawn(6);
+		const pristine = replacement.slice();
+		replacement[E.GRAVITY] = 9;
+		const second = spawn(2);
+		({ before, after: entities.slice(), pristine, id: replacement.id, secondId: second.id });
+	`, context);
+	assert.equal(result.id, 100);
+	assert.equal(result.secondId, 100);
+	const expected = new Float32Array(E.STRIDE);
+	expected[E.KIND] = 6;
+	expected[E.LIGHT_ANGLE] = Math.PI * 2;
+	expected.fill(1, E.SCALE, E.SCALE + 3);
+	expected.fill(-2, E.TILE, E.TILE + 3);
+	assert.deepEqual(Array.from(result.pristine), Array.from(expected));
+	for (let i = 0; i < result.before.length; i++) {
+		if (Math.floor(i / E.STRIDE) !== 100) assert.equal(result.after[i], result.before[i]);
+	}
+});
+
 test("CPU lifetimes handle forever, exact expiry, overshoot, negative TTL and pause", () => {
 	const context = entityContext();
 	const step = (kind, ttl, dt, age = 0, light = 0) => {
@@ -143,22 +185,23 @@ test("render uploads current CPU entities and light IDs without compute or readb
 	Object.assign(context, {
 		simulationTime: 1, deltaTime: .05, isPaused: () => false,
 		c: { width: 800, height: 600 }, cameraFov: 60,
-		renderState: new Float32Array(8), renderStateBuffer: "uniforms",
-		entityBuffer: "entities", spotlightBuffer: "lights",
-		Q: { writeBuffer: (buffer, offset, data) => calls.push([buffer, Array.from(data)]) },
+		renderState: new Float32Array(40), renderStateBuffer: "uniforms",
+		entityBuffer: "entities",
+		Q: { writeBuffer: (buffer, offset, data) => calls.push([buffer, data.slice()]) },
 	});
+	context.renderLights = new Uint32Array(context.renderState.buffer, 32);
 	vm.runInContext("const moving = spawn(6); moving[20] = 2; moving[1] = 3;", context);
 	const frame = source.slice(source.indexOf("\tupdateEntities(isPaused()"), source.indexOf("\n\tlet canvasTexture ="));
 	vm.runInContext(frame, context);
-	assert.deepEqual(calls.map(c => c[0]), ["uniforms", "entities", "lights"]);
+	assert.deepEqual(calls.map(c => c[0]), ["uniforms", "entities"]);
 	const id = vm.runInContext("moving.id", context);
 	assert.ok(Math.abs(calls[1][1][id * E.STRIDE + E.POS_X] - .1) < 1e-6);
-	assert.ok(calls[2][1].includes(id));
+	assert.ok(new Uint32Array(calls[0][1].buffer, 32).includes(id));
 	context.isPaused = () => true;
 	vm.runInContext("moving[1] = 0", context);
 	vm.runInContext(frame, context);
-	assert.equal(calls[4][1][id * E.STRIDE + E.POS_X], calls[1][1][id * E.STRIDE + E.POS_X]);
-	assert.ok(!calls[5][1].includes(id));
+	assert.equal(calls[3][1][id * E.STRIDE + E.POS_X], calls[1][1][id * E.STRIDE + E.POS_X]);
+	assert.ok(!new Uint32Array(calls[2][1].buffer, 32).includes(id));
 	assert.doesNotMatch(source, /beginComputePass|createComputePipeline|entityReadbacks|mergeEntityFrame/);
 });
 
@@ -177,7 +220,7 @@ test("crosshair follows canvas-local CSS coordinates and hides on pointer leave"
 	vm.runInContext(source.slice(source.indexOf('c.addEventListener("pointermove"'), source.indexOf("// Bit-packed")), context);
 	listeners.pointermove({ clientX: 140, clientY: 110 });
 	assert.deepEqual(Array.from(renderState.slice(4)), [120, 80, 800, 600]);
-	assert.deepEqual(aim, [120, 80, 800, 600]);
+	assert.equal(aim, undefined, "aiming waits for the GPU cursor probe, not CSS coordinates");
 	listeners.pointerleave();
 	assert.equal(renderState[4], -1000);
 });

@@ -39,8 +39,8 @@ export let magic = zzfx([, , 539, 0, 0.04, 0.29, 1, 1.92, , , 567, 0.02, 0.02, ,
 	spaceholder7 = zzfx([0.4, , 161, 0.36, , 0.21, 3, 2.7, , 23, , , , , , , , 0.8, 0.01, , 998]);
 
 import music1_js from "../music/Main Title.zzfxm";
-// This song was authored with the tracker's older, phase-based modulation.
-export let music1 = () => zzfxP(...zzfxM(...music1_js.slice(0, 4), true));
+// The loader marks this song for the tracker's older, phase-based modulation.
+export let music1 = () => zzfxP(...zzfxM(...music1_js));
 
 /*
 import ambident1_js from "./music/Ambient1.zzfxm";

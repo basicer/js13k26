@@ -19,15 +19,25 @@ test("release song pruning preserves the sequence and every played pattern and i
         const original = vm.runInNewContext(source), context = vm.createContext({});
         vm.runInContext(compactTrack(source, true).replace("export default ", "globalThis.result = "), context);
         const packed = context.result;
-        assert.deepEqual(shape(packed.slice(2)), shape(original.slice(2)), name);
-        for (const index of original[2]) {
-            assert.deepEqual(shape(packed[1][index]), shape(original[1][index]), name);
-            for (const channel of original[1][index]) {
-                const instrument = channel[0] || 0;
-                assert.deepEqual(shape(packed[0][instrument]), shape(original[0][instrument]), name);
+        assert.deepEqual(shape(packed.slice(3)), shape(original.slice(3)), name);
+        assert.equal(packed[2].length, original[2].length);
+        for (let step = 0; step < original[2].length; step++) {
+            const before = original[1][original[2][step]], after = packed[1][packed[2][step]];
+            assert.equal(after.length, before.length);
+            for (let channel = 0; channel < before.length; channel++) {
+                assert.deepEqual(shape(after[channel].slice(1)), shape(before[channel].slice(1)), name);
+                assert.deepEqual(shape(packed[0][after[channel][0] || 0]), shape(original[0][before[channel][0] || 0]), name);
             }
         }
     }
+});
+
+test("legacy tracker mode is carried in the loaded track instead of a runtime slice", () => {
+    const source = fs.readFileSync(new URL("../music/Main Title.zzfxm", import.meta.url), "utf8");
+    const context = vm.createContext({});
+    vm.runInContext(compactTrack(source, true, true).replace("export default ", "globalThis.result = "), context);
+    assert.equal(context.result[4], true);
+    assert.equal(context.result.length, 5);
 });
 
 test("track factoring preserves every note, instrument, sparse hole and array length", () => {

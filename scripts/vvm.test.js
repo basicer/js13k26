@@ -176,7 +176,7 @@ test("JUMPIF encodes signed offsets from the end of its two bytes", () => {
 });
 
 test("FORJUMP checks stack occupancy without consuming or testing the top value", () => {
-	assert.deepEqual([...assemble("FORJUMP end end:")], [0, 0]);
+	assert.deepEqual([...assemble("FORJUMP end end:")], [opcodes.OP_FORJUMP << 3, 0]);
 	assert.deepEqual(voxelInstructionEnds(assemble("FORJUMP end end:")), [0, 2]);
 	assert.equal(run("FORJUMP end 9 FSTORE:MATERIAL end: BOX FSTORE:BRUSH STROKE")[0], 9);
 	for (const value of [0, -1, 9])

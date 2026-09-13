@@ -24,7 +24,7 @@ import {
 
 const story = $.body.appendChild($.createElement("pre"));
 story.style.cssText =
-	"position:fixed;top:66%;width:100%;color:#dff;font-size:30px;text-align:center;text-shadow:2px 0#067,-2px 0#704";
+	"position:fixed;top:66%;width:100%;color:#dff;font-size:30px;text-align:center;text-shadow:2px 0#067,-2px 0#704;user-select:none;pointer-events:none";
 story.textContent = "\n\nGlitter & Gunpowder\n\nWASD/R/CLICK";
 let storyText = "",
 	storyAt;
@@ -105,14 +105,15 @@ c.addEventListener("pointerleave", () => (renderState[4] = -1000));
 
 // Bit-packed cube vertices are generated in the vertex shader.
 const entityBuffer = d.createBuffer({
-	"size": entities.byteLength,
+	"size": ENTITY_COUNT * ENTITY_DATA_SIZE * 4,
 	"usage": GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST,
 });
-const renderState = new Float32Array(40);
+const RENDER_STATE_SIZE = 40;
+const renderState = new Float32Array(RENDER_STATE_SIZE);
 const renderLights = new Uint32Array(renderState.buffer, 32);
 renderState[4] = -1000;
 const renderStateBuffer = d.createBuffer({
-	"size": renderState.byteLength,
+	"size": RENDER_STATE_SIZE * 4,
 	"usage": GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST,
 });
 
@@ -140,7 +141,7 @@ function resizeCanvas() {
 		Math.max(1, Math.round(bounds.width * pixelRatio)),
 		Math.max(1, Math.round(bounds.height * pixelRatio)),
 	];
-	if (c.width === size[0] && c.height === size[1] && depthTexture && sceneTexture && entityIndexTexture) return;
+	if (c.width === size[0] && c.height === size[1] && entityIndexTexture) return;
 
 	[c.width, c.height] = size;
 	depthTexture?.destroy();
@@ -166,7 +167,7 @@ function resizeCanvas() {
 	entityIndexView = entityIndexTexture.createView();
 }
 
-if (window.ResizeObserver) new ResizeObserver(resizeCanvas).observe(c);
+new ResizeObserver(resizeCanvas).observe(c);
 
 // $.addEventListener("resize", resizeCanvas);
 resizeCanvas();
@@ -332,7 +333,7 @@ export function render() {
 }
 
 export async function pickEntity(x, y) {
-	if (!entityIndexTexture) return [-1, -1];
+	if (DEBUG && !entityIndexTexture) return [-1, -1];
 	const pixelX = Math.max(0, Math.min(c.width - 1, Math.floor(x)));
 	const pixelY = Math.max(0, Math.min(c.height - 1, Math.floor(y)));
 	const readback = d.createBuffer({

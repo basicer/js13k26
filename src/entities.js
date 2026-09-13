@@ -33,8 +33,8 @@ export const EArray = GenArray(ENTITY_COUNT, (i) => {
 });
 
 export const spawn = (kind) => {
-	let e = EArray.find((e) => e[E.KIND] === 0);
-	if (!e) return null;
+	// Only disposable blood/spark particles have gravity; recycle one if full.
+	let e = EArray.find((e) => e[E.KIND] === 0) || EArray.find((e) => e[E.GRAVITY]);
 	// Entities are recycled (muzzle flashes and blood use the same pool), so
 	// clear overrides, rotations, lights, and parent links from their old role.
 	e.fill(0);
@@ -58,7 +58,7 @@ export function setupEntities() {
 	cameraEntity.set(cameraPosition, E.TARGET_POSITION);
 	cameraPosition.set([-8, 10, 2]);
 	cameraEntity[E.LERP_SPEED] = 1.5;
-	cameraEntity.set([1, 1, 1], E.SCALE);
+	cameraEntity.fill(1, E.SCALE, E.SCALE + 3);
 
 }
 
