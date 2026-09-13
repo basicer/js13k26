@@ -133,11 +133,11 @@ var roadroller = (enabled) => ({
 		}
 		const packer = new Packer([{ data, type: "text", action: "eval" }], {
 			maxMemoryMB: 1536,
-			modelRecipBaseCount: 61,
+			modelRecipBaseCount: 62,
 			dynamicModels: 0,
 			modelMaxCount: 3,
 			numAbbreviations: 0,
-			sparseSelectors: [0, 1, 2, 3, 5, 6, 7, 10, 13, 22, 25, 45, 51, 81, 230, 249, 345, 396, 417, 423],
+			sparseSelectors: [0, 1, 2, 3, 5, 6, 7, 10, 11, 13, 22, 25, 45, 51, 81, 230, 249, 345, 396, 417, 423],
 			precision: 16,
 			recipLearningRate: 3100,
 			// The packed release owns its single page; game code has its own wrapper.

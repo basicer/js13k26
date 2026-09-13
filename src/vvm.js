@@ -64,24 +64,6 @@ export const flush = (texture, buffer, variant) => {
 	);
 };
 
-if (DEBUG && import.meta.env.DEBUG) {
-	let { ddsVolume } = await import("./dds.js");
-
-	[
-		"../dds/Projector.dds.gz",
-		//"../dds/FloorTile-LR01.dds.gz",
-		//"../dds/FloorTile-S04.dds.gz",
-	].map(async (dds, i) => {
-		let { size, voxels } = await ddsVolume((await import(dds)).default, true);
-		var T = tex(size);
-		if (voxels) buffers.set(T, voxels);
-		voxT.map((texture, kind) => {
-			if (kind == i + 3) voxT[kind] = T;
-		});
-		flush(T);
-	});
-}
-
 /**
  *
  * RESITERS:

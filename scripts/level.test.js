@@ -129,7 +129,7 @@ test("bulkheads break long sightlines and gate spawn points are clear", () => {
 	assert.ok(!clearShot(-11,-11,-6,15), "the bent hall conceals cargo");
 	assert.ok(!clearShot(-6,14,-30,3), "the lift conceals the boss arena");
 	assert.ok(clearShot(2,-12,2,4));
-	for (const {type,x,z} of placements.filter(e => e.type === 10 || e.type === 16)) assert.ok(canStand(x + (type === 16 ? 1 : -1),z), "blocked gate at " + [x,z]);
+	for (const {type,x,z} of placements.filter(e => e.type === 10 || e.type === 16 || e.type === 17)) assert.ok(canStand(x + (type === 17 ? 0 : type === 16 ? 1 : -1),z + (type === 17 ? 1 : 0)), "blocked gate at " + [x,z]);
 });
 
 test("cargo divider blocks distant crate shots while the first console and doorway stay clear", () => {

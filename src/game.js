@@ -3,7 +3,7 @@ import { heldKeys } from "./globals.js";
 import { flash } from "./render.js";
 import { cameraEntity, cameraRotation, spawn, EArray, setupEntities } from "./entities.js";
 import * as sound from "./sfx.js";
-import { canStand, moveActor, clearShot, shotFraction, entityShotFraction, setupLevel, sections } from "./level.js";
+import { collisionPosition, canStand, moveActor, clearShot, shotFraction, entityShotFraction, setupLevel, sections } from "./level.js";
 
 function placeActor(type, x, z, parent) {
 	if (type === 11) return spawnUnicorn(x, z);
@@ -12,7 +12,7 @@ function placeActor(type, x, z, parent) {
 	portal[E.SPOTLIGHT] = 2.1;
 	portal[E.LIGHT_ANGLE] = 2.772;
 	portal.set([x, 0.1875, z], E.POS);
-	portal[E.ROT_Y] = (type === 16 ? -1 : 1) * Math.PI / 2;
+	portal[E.ROT_Y] = (type === 10 ? 1 : type - 17) * Math.PI / 2;
 	portal.set([3.6, 3, 0.45], E.SCALE);
 	portal.fill(0, E.TILE, E.TILE + 3);
 	portal[E.HEALTH] = portal[E.MAX_HEALTH] = 50;
@@ -42,8 +42,10 @@ function spawnUnicorn(x, z, y = 0) {
 
 // Spawners reinforce the placed defenders on their own age timers.
 function spawnFromEntity(entity) {
-	// Portal exits follow their facing; other spawners keep the -X offset.
-	return spawnUnicorn(entity[E.POS_X] - (entity[E.KIND] === 12 ? Math.sin(entity[E.ROT_Y]) : 1), entity[E.POS_Z]);
+	// Spawn on the playable floor, using the same translated position as collisions.
+	return collisionPosition(entity, 1, true) === entity[E.POS_Y] && spawnUnicorn(
+		collisionPosition(entity, 0) - (entity[E.KIND] !== 12 || Math.sin(entity[E.ROT_Y])),
+		collisionPosition(entity, 2) + (entity[E.KIND] === 12 && Math.cos(entity[E.ROT_Y])));
 }
 
 // Capacity, reload seconds, shot interval, pellet count.
@@ -118,12 +120,13 @@ export function setupGame() {
 
 	reloadCooldown = 0;
 	marineLegYaw = 0;
-	player[E.HEALTH] = 5;
+	player[E.HEALTH] = 7;
 	hurtCooldown = 0;
 	elevatorSide = elevatorFinished = 0;
 }
 setupGame();
 
+const clockDigits = n => ("" + (n | 0)).padStart(2, "0");
 const random = (minimum = 0, range = 1) => minimum + Math.random() * range;
 const isSprinting = () =>
 	player[E.HEALTH] &&
@@ -308,7 +311,7 @@ export function firePellet(shooter, muzzleX, muzzleY, muzzleZ, forwardX, forward
 		updateDamageDissolve(target, target[E.HEALTH], target[E.MAX_HEALTH]);
 		if (!target[E.HEALTH]) {
 			target[E.SOLID] = 0;
-			if (target[E.KIND] === 12) --portals ? flash(portals + " PORTALS REMAIN") : flash("YOU WIN! " + ("" + Math.floor(gameTime / 60)).padStart(2, "0") + ":" + ("" + Math.floor(gameTime % 60)).padStart(2, "0"));
+			if (target[E.KIND] === 12) flash(--portals ? portals + " PORTALS REMAIN" : "YOU WIN! " + clockDigits(gameTime / 60) + ":" + clockDigits(gameTime % 60));
 			if (target[E.KIND] === 16) {
 				if (++cratesBroken === 1) {
 					ownedWeapons.push(1);
@@ -318,8 +321,8 @@ export function firePellet(shooter, muzzleX, muzzleY, muzzleZ, forwardX, forward
 					selectMarineWeapon(3);
 					flash("Found Shotgun.");
 				} else if (target[E.CONTENTS] === 1) {
-					player[E.HEALTH] = Math.min(5, player[E.HEALTH] + 1);
-					updateDamageDissolve(player, player[E.HEALTH], 5);
+					player[E.HEALTH] = Math.min(7, player[E.HEALTH] + 1);
+					updateDamageDissolve(player, player[E.HEALTH], 7);
 					flash("+1 HP");
 				} else flash("Found Nothing");
 			}
@@ -421,7 +424,7 @@ function spawnElevatorWave(count) {
 function hurtMarine() {
 	player[E.HEALTH]--;
 	// Four surviving hits ramp rainbow coverage from 0% to 30%.
-	updateDamageDissolve(player, player[E.HEALTH], 5);
+	updateDamageDissolve(player, player[E.HEALTH], 7);
 	hurtCooldown = 0.85;
 	player[E.MAT_OVERRIDE] = player[E.HEALTH] ? 117 : 0;
 	sound.hurt();
